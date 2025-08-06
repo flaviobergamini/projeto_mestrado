@@ -1,0 +1,50 @@
+# Ambiente virtual
+.venv/
+env/
+venv/
+
+# Poetry
+poetry.lock
+
+# Bytecode
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Arquivos temporários
+*.log
+*.tmp
+*.swp
+*.bak
+
+# Testes e relatórios
+.coverage
+htmlcov/
+.tox/
+.cache/
+.pytest_cache/
+
+# Configs do editor
+.idea/
+*.code-workspace
+
+# Arquivos de build
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Notebooks (se usar)
+.ipynb_checkpoints/
+
+# Whisper cache (se usar)
+whisper_cache/
+
+# dotenv
+.env
+.env.*
+!*.env.example
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
