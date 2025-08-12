@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 from domain.schema import RAGRequest
-from services.deepseek_service import DeepseekService
-from services.gpt_service import GptService
+from infrastructure.services.deepseek_service import DeepseekService
+from infrastructure.services.gpt_service import GptService
 
 router = APIRouter()
 agent = GptService() #DeepseekService()
