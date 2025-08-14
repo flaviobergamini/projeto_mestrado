@@ -1,10 +1,11 @@
 from fastapi import APIRouter
 from domain.schema import RAGRequest
 from infrastructure.services.deepseek_service import DeepseekService
+from infrastructure.services.gemini_service import GeminiAgent
 from infrastructure.services.gpt_service import GptService
 
 router = APIRouter()
-agent = GptService() #DeepseekService()
+agent = GeminiAgent() # GptService() #DeepseekService()
 
 @router.post("/rag")
 def responder_pergunta_rag(payload: RAGRequest):
