@@ -9,4 +9,7 @@ class Settings:
     DATABASE_URL = os.getenv("DATABASE_URL")
     GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
+    GPT_MODEL = os.getenv("GPT_MODEL")
+    GPT_EMBEDDING_MODEL = os.getenv("GPT_EMBEDDING_MODEL")
+
 settings = Settings()
