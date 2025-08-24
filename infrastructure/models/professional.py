@@ -22,3 +22,4 @@ class Professional(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 
     clinic = relationship("Clinic", back_populates="professionals")
+    sessions = relationship("TherapeuticSessions", back_populates="professional", cascade="all, delete-orphan")
