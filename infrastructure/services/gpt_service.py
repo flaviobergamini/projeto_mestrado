@@ -7,13 +7,11 @@ class GptService:
     def __init__(self):
         self.client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
 
-    def chat(self, prompt: str, context: Optional[str] = None):
-        full_prompt = f"Context: {context}\n\nQuestion: {prompt}" if context else prompt
-
-        chat_completion = self.client.chat.completions.create(
+    async def chat(self, prompt: str, context: Optional[str] = None):
+        chat_completion = await self.client.chat.completions.create(
             model=settings.GPT_MODEL,
             messages=[
-                {"role": "user", "content": full_prompt}
+                {"role": "user", "content": prompt}
             ]
         )
 
