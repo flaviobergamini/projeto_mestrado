@@ -1,13 +1,37 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+from fastapi.responses import JSONResponse
+from core.kernel.container import Container
+from core.use_case.diary_embedding_use_case import DiaryEmbeddingUseCase
+from core.use_case.query_diary_use_case import QueryDiaryUseCase
 from domain.schema import RAGRequest
-from infrastructure.services.deepseek_service import DeepseekService
-from infrastructure.services.gemini_service import GeminiAgent
-from infrastructure.services.gpt_service import GptService
+from dependency_injector.wiring import inject, Provide
 
 router = APIRouter()
-agent = GeminiAgent() # GptService() #DeepseekService()
 
 @router.post("/rag")
-def responder_pergunta_rag(payload: RAGRequest):
-    resposta = agent.chat(payload.user_id, payload.pergunta)
-    return {"resposta": resposta}
+@inject
+async def rag(
+    payload: RAGRequest, 
+    use_case: DiaryEmbeddingUseCase = Depends(
+        Provide[Container.diary_embedding_use_case]
+    ),
+):
+    try:
+        await use_case.execute(payload.pergunta)
+        return JSONResponse(status_code=200)
+    except:
+        return JSONResponse(content={"error": "Internal server error"}, status_code=500)
+    
+@router.post("/chat")
+@inject
+async def chat(
+    payload: RAGRequest, 
+    use_case: QueryDiaryUseCase = Depends(
+        Provide[Container.query_diary_use_case]
+    ),
+):
+    try:
+        response = await use_case.execute(payload.pergunta)
+        return JSONResponse(content={"value": response}, status_code=200)
+    except:
+        return JSONResponse(content={"error": "Internal server error"}, status_code=500)
