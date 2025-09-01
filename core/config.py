@@ -12,6 +12,7 @@ class Settings:
     GPT_MODEL = os.getenv("GPT_MODEL")
     GPT_EMBEDDING_MODEL = os.getenv("GPT_EMBEDDING_MODEL")
 
-    GROQ_MODEL= os.getenv("GROQ_MODEL")
+    GROQ_MODEL = os.getenv("GROQ_MODEL")
+    JWT_SECRET = os.getenv("JWT_SECRET")
 
 settings = Settings()
