@@ -12,4 +12,6 @@ class Settings:
     GPT_MODEL = os.getenv("GPT_MODEL")
     GPT_EMBEDDING_MODEL = os.getenv("GPT_EMBEDDING_MODEL")
 
+    GROQ_MODEL= os.getenv("GROQ_MODEL")
+
 settings = Settings()

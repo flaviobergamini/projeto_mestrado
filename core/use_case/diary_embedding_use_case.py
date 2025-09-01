@@ -1,16 +1,28 @@
 from datetime import datetime
 from infrastructure.models.diary_embedding import DiaryEmbedding
+from infrastructure.models.diary_embedding_groq import DiaryEmbeddingGroq
+from infrastructure.repositories.diary_embedding_groq_repository import DiaryEmbeddingGroqRepository
 from infrastructure.repositories.diary_embedding_repository import DiaryEmbeddingRepository
-from infrastructure.services.gpt_service import GptService
 import numpy as np
 
-class DiaryEmbeddingUseCase:
-    def __init__(self, diary_embedding_repository: DiaryEmbeddingRepository, gpt_service: GptService):
-        self.diary_embedding_repository=diary_embedding_repository
-        self.gpt_service=gpt_service
+from infrastructure.services.llm_service import LLMService
 
-    async def execute(self, diary: str):
+class DiaryEmbeddingUseCase:
+    def __init__(
+            self, 
+            diary_embedding_repository: DiaryEmbeddingRepository, 
+            llm_service: LLMService, 
+            diary_embedding_groq_repository: DiaryEmbeddingGroqRepository
+            ):
+        self.diary_embedding_repository=diary_embedding_repository
+        self.llm_service=llm_service
+        self.diary_embedding_groq_repository=diary_embedding_groq_repository
+
+    async def execute(self, diary: str, model: str):
         try:
+            self.llm_service.configure(model)
+            provider = self.llm_service.getProvider()
+
             prompt = f"""
             Resuma o seguinte diário em um parágrafo único curto e claro, mantendo o sentido principal e abordando todos os ocorridos:
 
@@ -18,24 +30,45 @@ class DiaryEmbeddingUseCase:
             {diary}
             """
 
-            summary = await self.gpt_service.chat(prompt)
+            summary = await self.llm_service.chat(prompt)
 
-            embedding = await self.gpt_service.generate_embeddings(summary)
+            if provider == 'groq':
+                summary = summary.split("</think>")[-1].strip()
 
-            if len(embedding) == 1536:
-                if isinstance(embedding, list):
-                    embedding = np.array(embedding)
+            chunks = self.llm_service.split_text(summary)
 
+            for chunk in chunks:
+                embedding = await self.llm_service.generate_embeddings(chunk)
 
-                diary_embedding = DiaryEmbedding(
-                    content=summary,
+                if provider == "openai":
+                    if len(embedding) == 1536:
+                        if isinstance(embedding, list):
+                            embedding = np.array(embedding)
+
+                    diary_embedding = DiaryEmbedding(
+                        content=summary,
+                        meta_data={"teste":"teste"},
+                        embedding=embedding,
+                        created_at=datetime.utcnow(),
+                        updated_at=datetime.utcnow()
+                    ) 
+                
+                    await self.diary_embedding_repository.add(diary_embedding)
+
+                if provider == "groq":
+                    if len(embedding) == 384:
+                        if isinstance(embedding, list):
+                            embedding = np.array(embedding)
+
+                    diary_embedding_groq = DiaryEmbeddingGroq(
+                        content=summary,
                     meta_data={"teste":"teste"},
                     embedding=embedding,
                     created_at=datetime.utcnow(),
                     updated_at=datetime.utcnow()
-                ) 
-                
-                await self.diary_embedding_repository.add(diary_embedding)
+                    )
+
+                    await self.diary_embedding_groq_repository.add(diary_embedding_groq)
         except Exception as e:
             print(f"Erro no DiaryEmbeddingUseCase: {e}")
             raise
