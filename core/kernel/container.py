@@ -4,6 +4,7 @@ from dependency_injector.wiring import Provide, inject
 from core.services.jwt_service import JwtService
 from core.use_case.create_user_use_case import CreateUserUseCase
 from core.use_case.diary_embedding_use_case import DiaryEmbeddingUseCase
+from core.use_case.login_user_use_case import LoginUserUseCase
 from core.use_case.query_diary_use_case import QueryDiaryUseCase
 from infrastructure.database_context.database import Database
 from infrastructure.repositories.diary_embedding_groq_repository import DiaryEmbeddingGroqRepository
@@ -66,6 +67,11 @@ class Container(containers.DeclarativeContainer):
         jwt_service=jwt_service
     ) 
 
+    login_user_use_case=providers.Factory(
+        LoginUserUseCase,
+        user_repository=user_repository,
+        jwt_service=jwt_service
+    ) 
 
 
 
