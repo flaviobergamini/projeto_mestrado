@@ -17,7 +17,7 @@ async def rag(
     ),
 ):
     try:
-        await use_case.execute(payload.pergunta)
+        await use_case.execute(payload.pergunta, payload.model)
         return JSONResponse(status_code=200)
     except:
         return JSONResponse(content={"error": "Internal server error"}, status_code=500)
@@ -31,7 +31,7 @@ async def chat(
     ),
 ):
     try:
-        response = await use_case.execute(payload.pergunta)
+        response = await use_case.execute(payload.pergunta, payload.model)
         return JSONResponse(content={"value": response}, status_code=200)
     except:
         return JSONResponse(content={"error": "Internal server error"}, status_code=500)
