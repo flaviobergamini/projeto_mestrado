@@ -20,4 +20,4 @@ class TherapeuticPlan(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     beneficiary = relationship("Beneficiary", back_populates="therapeutic_plans")
-    sessions = relationship("TherapeuticSession", back_populates="therapeutic_plan")
+    sessions = relationship("TherapeuticSessions", back_populates="therapeutic_plan", cascade="all, delete-orphan")

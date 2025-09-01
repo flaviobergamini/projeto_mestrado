@@ -21,3 +21,6 @@ class Supervisor(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 
     autismia = relationship("Autismia", back_populates="supervisors")
+    audits = relationship("Audit", back_populates="supervisor", cascade="all, delete-orphan")
+    family_reunions = relationship("FamilyReunion", back_populates="supervisor", cascade="all, delete-orphan")
+    school_feedbacks = relationship("SchoolFeedback", back_populates="supervisor", cascade="all, delete-orphan")
