@@ -2,7 +2,7 @@ import google.generativeai as genai
 from core.config import settings
 from typing import Optional
 
-class GeminiAgent:
+class GeminiService:
     def __init__(self):
         genai.configure(api_key=settings.GEMINI_API_KEY)
         self.model = genai.GenerativeModel("gemini-2.5-pro")
