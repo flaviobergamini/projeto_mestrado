@@ -1,6 +1,8 @@
 from datetime import datetime
+from core.kernel.result import Result
 from infrastructure.models.diary_embedding import DiaryEmbedding
 from infrastructure.models.diary_embedding_groq import DiaryEmbeddingGroq
+from infrastructure.repositories.beneficiary_repository import BeneficiaryRepository
 from infrastructure.repositories.diary_embedding_groq_repository import DiaryEmbeddingGroqRepository
 from infrastructure.repositories.diary_embedding_repository import DiaryEmbeddingRepository
 import numpy as np
@@ -12,14 +14,21 @@ class DiaryEmbeddingUseCase:
             self, 
             diary_embedding_repository: DiaryEmbeddingRepository, 
             llm_service: LLMService, 
-            diary_embedding_groq_repository: DiaryEmbeddingGroqRepository
+            diary_embedding_groq_repository: DiaryEmbeddingGroqRepository,
+            beneficiary_repository: BeneficiaryRepository
             ):
         self.diary_embedding_repository=diary_embedding_repository
         self.llm_service=llm_service
         self.diary_embedding_groq_repository=diary_embedding_groq_repository
+        self.beneficiary_repository=beneficiary_repository
 
-    async def execute(self, diary: str, model: str):
+    async def execute(self, diary: str, model: str, beneficiary_id: int, user_id: str):
         try:
+            beneficiary = await self.beneficiary_repository.get_by_id(beneficiary_id)
+
+            #if not beneficiary:
+            #    return Result.not_found("Beneficiário não encontrado")
+            
             self.llm_service.configure(model)
             provider = self.llm_service.getProvider()
 
@@ -69,6 +78,7 @@ class DiaryEmbeddingUseCase:
                     )
 
                     await self.diary_embedding_groq_repository.add(diary_embedding_groq)
+            
+            return Result.ok({"value": "Diario criado com sucesso"})
         except Exception as e:
-            print(f"Erro no DiaryEmbeddingUseCase: {e}")
-            raise
+            return Result.error("Erro ao criar diario")

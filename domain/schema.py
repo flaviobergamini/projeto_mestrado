@@ -2,9 +2,10 @@ from pydantic import BaseModel, EmailStr
 from typing import List
 
 
-class RAGRequest(BaseModel):
-    pergunta: str
+class DiaryRequest(BaseModel):
+    diary: str
     model: str
+    beneficiary_id: int
 
 class UserRegister(BaseModel):
     name:str

@@ -1,12 +1,12 @@
 from fastapi import FastAPI
-from api import auth_routes, routes
-from api.routes import router as api_router
+from api import auth_routes, diary_routes
+from api.diary_routes import router as diary_router
 from api.auth_routes import router as auth_router
 from core.kernel.container import Container
 
 container = Container()
 container.config.database.url.from_env("DATABASE_URL")
-container.wire(modules=[routes, auth_routes])
+container.wire(modules=[diary_routes, auth_routes])
 
 app = FastAPI(
     title="Agente IA TEA",
@@ -15,7 +15,7 @@ app = FastAPI(
 )
 app.container = container
 
-app.include_router(api_router)
+app.include_router(diary_router)
 app.include_router(auth_router)
 
 

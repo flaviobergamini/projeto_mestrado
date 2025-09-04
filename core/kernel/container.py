@@ -7,6 +7,7 @@ from core.use_case.diary_embedding_use_case import DiaryEmbeddingUseCase
 from core.use_case.login_user_use_case import LoginUserUseCase
 from core.use_case.query_diary_use_case import QueryDiaryUseCase
 from infrastructure.database_context.database import Database
+from infrastructure.repositories.beneficiary_repository import BeneficiaryRepository
 from infrastructure.repositories.diary_embedding_groq_repository import DiaryEmbeddingGroqRepository
 from infrastructure.repositories.diary_embedding_repository import DiaryEmbeddingRepository
 from infrastructure.repositories.user_repository import UserRepository
@@ -18,7 +19,7 @@ from infrastructure.services.llm_service import LLMService
 
 class Container(containers.DeclarativeContainer):
     wiring_config = containers.WiringConfiguration(
-        modules=["api.routes", "api.auth_routes"],
+        modules=["api.diary_routes", "api.auth_routes"],
     )
 
     config = providers.Configuration()
@@ -46,12 +47,17 @@ class Container(containers.DeclarativeContainer):
         UserRepository, database=database
     ) 
 
+    beneficiary_repository = providers.Factory(
+        BeneficiaryRepository, database=database
+    )
+
     # Use cases
     diary_embedding_use_case=providers.Factory(
         DiaryEmbeddingUseCase,
         diary_embedding_repository=diary_embedding_repository,
         llm_service=llm_service,
-        diary_embedding_groq_repository=diary_embedding_groq_repository
+        diary_embedding_groq_repository=diary_embedding_groq_repository,
+        beneficiary_repository=beneficiary_repository
     )
 
     query_diary_use_case=providers.Factory(
