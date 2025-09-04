@@ -3,7 +3,6 @@ from passlib.context import CryptContext
 import jwt
 from datetime import datetime, timedelta
 
-
 class JwtService:
     def __init__(self):
         self.secret_key = settings.JWT_SECRET
@@ -27,3 +26,9 @@ class JwtService:
             return jwt.decode(token, self.secret_key, algorithms=[self.algorithm])
         except jwt.ExpiredSignatureError:
             return None
+    
+    def get_user_id_from_token(self, token: str) -> str | None:
+        payload = jwt.decode(token, self.secret_key, algorithms=[self.algorithm])
+        if not payload:
+            return None
+        return payload.get("sub")
