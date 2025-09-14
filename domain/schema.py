@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr
-from typing import List
+from datetime import date
 
 
 class DiaryRequest(BaseModel):
@@ -22,3 +22,58 @@ class ForgotPassword(BaseModel):
 class ResetPassword(BaseModel):
     token: str
     new_password: str
+
+class SchoolRequest(BaseModel):
+    name: str
+    address: str
+    telephone: str
+    email: str
+    responsible: str
+
+class SchoolResponse(BaseModel):
+    id: int
+    name: str
+    address: str
+    telephone: str
+    email: str
+    responsible: str
+
+class HealthPlanRequest(BaseModel):
+    name: str
+    address: str
+    telephone: str
+    email: str
+    responsible: str
+
+class HealthPlanResponse(BaseModel):
+    id: int
+    name: str
+    address: str
+    telephone: str
+    email: str
+    responsible: str
+
+class BeneficiaryRequest(BaseModel):
+    name: str
+    date_of_birth: date 
+    diagnosis: str
+    main_responsible: str
+    responsible_contact: str
+    entry_date: date
+    exit_date: date
+    status: str
+    school_id: int
+    healthplan_id: int
+
+class BeneficiaryResponse(BaseModel):
+    id: int
+    name: str
+    date_of_birth: str 
+    diagnosis: str
+    main_responsible: str
+    responsible_contact: str
+    entry_date: str
+    exit_date: str
+    status: str
+    school_id: int
+    healthplan_id: int
