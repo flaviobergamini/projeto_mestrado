@@ -2,6 +2,9 @@ from dependency_injector import containers, providers
 from dependency_injector.wiring import Provide, inject
 
 from core.services.jwt_service import JwtService
+from core.use_case.create_beneficiary_use_case import CreateBeneficiaryUseCase
+from core.use_case.create_health_plan_use_case import CreateHealthPlanUseCase
+from core.use_case.create_school_use_case import CreateSchoolUseCase
 from core.use_case.create_user_use_case import CreateUserUseCase
 from core.use_case.diary_embedding_use_case import DiaryEmbeddingUseCase
 from core.use_case.login_user_use_case import LoginUserUseCase
@@ -10,6 +13,8 @@ from infrastructure.database_context.database import Database
 from infrastructure.repositories.beneficiary_repository import BeneficiaryRepository
 from infrastructure.repositories.diary_embedding_groq_repository import DiaryEmbeddingGroqRepository
 from infrastructure.repositories.diary_embedding_repository import DiaryEmbeddingRepository
+from infrastructure.repositories.health_plan_repository import HealthPlanRepository
+from infrastructure.repositories.school_repository import SchoolRepository
 from infrastructure.repositories.user_repository import UserRepository
 from infrastructure.services.deepseek_service import DeepseekService
 from infrastructure.services.gemini_service import GeminiService
@@ -19,7 +24,7 @@ from infrastructure.services.llm_service import LLMService
 
 class Container(containers.DeclarativeContainer):
     wiring_config = containers.WiringConfiguration(
-        modules=["api.diary_routes", "api.auth_routes"],
+        modules=["api.diary_routes", "api.auth_routes", "api.beneficiary_routes", "api.health_plan_routes", "api.school_routes"],
     )
 
     config = providers.Configuration()
@@ -51,6 +56,14 @@ class Container(containers.DeclarativeContainer):
         BeneficiaryRepository, database=database
     )
 
+    school_repository = providers.Factory(
+        SchoolRepository, database=database
+    )
+
+    health_plan_repository = providers.Factory(
+        HealthPlanRepository, database=database
+    )
+
     # Use cases
     diary_embedding_use_case=providers.Factory(
         DiaryEmbeddingUseCase,
@@ -79,6 +92,23 @@ class Container(containers.DeclarativeContainer):
         jwt_service=jwt_service
     ) 
 
+    create_beneficiary_use_case=providers.Factory(
+        CreateBeneficiaryUseCase,
+        beneficiary_repository=beneficiary_repository,
+        jwt_service=jwt_service
+    )
+
+    create_school_use_case=providers.Factory(
+        CreateSchoolUseCase,
+        school_repository=school_repository,
+        jwt_service=jwt_service
+    )
+
+    create_health_plan_use_case=providers.Factory(
+        CreateHealthPlanUseCase,
+        health_plan_repository=health_plan_repository,
+        jwt_service=jwt_service 
+    )
 
 
 
