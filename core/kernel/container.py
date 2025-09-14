@@ -95,20 +95,17 @@ class Container(containers.DeclarativeContainer):
 
     create_beneficiary_use_case=providers.Factory(
         CreateBeneficiaryUseCase,
-        beneficiary_repository=beneficiary_repository,
-        jwt_service=jwt_service
+        beneficiary_repository=beneficiary_repository
     )
 
     create_school_use_case=providers.Factory(
         CreateSchoolUseCase,
-        school_repository=school_repository,
-        jwt_service=jwt_service
+        school_repository=school_repository
     )
 
     create_health_plan_use_case=providers.Factory(
         CreateHealthPlanUseCase,
-        health_plan_repository=health_plan_repository,
-        jwt_service=jwt_service 
+        health_plan_repository=health_plan_repository
     )
 
     list_health_plan_use_case=providers.Factory(

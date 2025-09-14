@@ -1,14 +1,11 @@
 from datetime import datetime
 from core.kernel.result import Result
-from core.services.jwt_service import JwtService
 from infrastructure.models.health_plan import HealthPlan
-from infrastructure.models.school import School
 from infrastructure.repositories.health_plan_repository import HealthPlanRepository
 
 class CreateHealthPlanUseCase:
-    def __init__(self, health_plan_repository: HealthPlanRepository, jwt_service: JwtService):
+    def __init__(self, health_plan_repository: HealthPlanRepository):
         self.health_plan_repository = health_plan_repository
-        self.jwt_service = jwt_service
 
     async def execute(self, heath_plan: HealthPlan):
         try:

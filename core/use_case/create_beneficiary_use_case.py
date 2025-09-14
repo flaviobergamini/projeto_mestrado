@@ -1,13 +1,11 @@
 from datetime import datetime
 from core.kernel.result import Result
-from core.services.jwt_service import JwtService
 from infrastructure.models.beneficiary import Beneficiary
 from infrastructure.repositories.beneficiary_repository import BeneficiaryRepository
 
 class CreateBeneficiaryUseCase:
-    def __init__(self, beneficiary_repository: BeneficiaryRepository, jwt_service: JwtService):
+    def __init__(self, beneficiary_repository: BeneficiaryRepository):
         self.beneficiary_repository = beneficiary_repository
-        self.jwt_service = jwt_service
 
     async def execute(self, beneficiary: Beneficiary):
         try:

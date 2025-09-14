@@ -1,13 +1,11 @@
 from datetime import datetime
 from core.kernel.result import Result
-from core.services.jwt_service import JwtService
 from infrastructure.models.school import School
 from infrastructure.repositories.school_repository import SchoolRepository
 
 class CreateSchoolUseCase:
-    def __init__(self, school_repository: SchoolRepository, jwt_service: JwtService):
+    def __init__(self, school_repository: SchoolRepository):
         self.school_repository = school_repository
-        self.jwt_service = jwt_service
 
     async def execute(self, school: School):
         try:
