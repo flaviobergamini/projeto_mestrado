@@ -16,7 +16,19 @@ class BeneficiaryRepository:
             
             return beneficiary
         
-    async def get_by_id(self, id: int) -> Beneficiary | None:
+    async def verify(self, entity: Beneficiary) -> Beneficiary | None:
         async with self.database.session() as session:
-            result = await session.execute(select(Beneficiary).where(Beneficiary.id == id))
+            stmt = select(Beneficiary).filter_by(
+                name=entity.name,
+                date_of_birth=entity.date_of_birth,
+                diagnosis=entity.diagnosis,
+                main_responsible=entity.main_responsible,
+                responsible_contact=entity.responsible_contact,
+                entry_date=entity.entry_date,
+                exit_date=entity.exit_date,
+                status=entity.status,
+                school_id=entity.school_id,
+                healthplan_id=entity.healthplan_id
+            )
+            result = await session.execute(stmt)
             return result.scalars().first()
