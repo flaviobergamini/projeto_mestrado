@@ -32,3 +32,8 @@ class HealthPlanRepository:
             )
             result = await session.execute(stmt)
             return result.scalars().first()
+    
+    async def list_all(self) -> list[HealthPlan]:
+        async with self.database.session() as session:
+            result = await session.execute(select(HealthPlan))
+            return result.scalars().all()
