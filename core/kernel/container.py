@@ -8,6 +8,7 @@ from core.use_case.create_school_use_case import CreateSchoolUseCase
 from core.use_case.create_user_use_case import CreateUserUseCase
 from core.use_case.diary_embedding_use_case import DiaryEmbeddingUseCase
 from core.use_case.list_health_plan_use_case import ListHealthPlanUseCase
+from core.use_case.list_school_use_case import ListSchoolUseCase
 from core.use_case.login_user_use_case import LoginUserUseCase
 from core.use_case.query_diary_use_case import QueryDiaryUseCase
 from infrastructure.database_context.database import Database
@@ -113,5 +114,7 @@ class Container(containers.DeclarativeContainer):
         health_plan_repository=health_plan_repository
     )
 
-
-
+    list_school_use_case=providers.Factory(
+        ListSchoolUseCase,
+        school_repository=school_repository
+    )

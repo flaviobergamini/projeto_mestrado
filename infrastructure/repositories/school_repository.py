@@ -27,3 +27,8 @@ class SchoolRepository:
             )
             result = await session.execute(stmt)
             return result.scalars().first()
+        
+    async def list_all(self) -> list[School]:
+        async with self.database.session() as session:
+            result = await session.execute(select(School))
+            return result.scalars().all()
