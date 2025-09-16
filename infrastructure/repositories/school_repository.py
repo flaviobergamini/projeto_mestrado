@@ -32,3 +32,9 @@ class SchoolRepository:
         async with self.database.session() as session:
             result = await session.execute(select(School))
             return result.scalars().all()
+    
+    async def get_by_id(self, school_id: int) -> School | None:
+        async with self.database.session() as session:
+            stmt = select(School).filter_by(id=school_id)
+            result = await session.execute(stmt)
+            return result.scalars().first()

@@ -7,6 +7,7 @@ from core.use_case.create_health_plan_use_case import CreateHealthPlanUseCase
 from core.use_case.create_school_use_case import CreateSchoolUseCase
 from core.use_case.create_user_use_case import CreateUserUseCase
 from core.use_case.diary_embedding_use_case import DiaryEmbeddingUseCase
+from core.use_case.get_school_by_id_use_case import GetSchoolByIdUseCase
 from core.use_case.list_health_plan_use_case import ListHealthPlanUseCase
 from core.use_case.list_school_use_case import ListSchoolUseCase
 from core.use_case.login_user_use_case import LoginUserUseCase
@@ -116,5 +117,10 @@ class Container(containers.DeclarativeContainer):
 
     list_school_use_case=providers.Factory(
         ListSchoolUseCase,
+        school_repository=school_repository
+    )
+
+    get_school_by_id_use_case=providers.Factory(
+        GetSchoolByIdUseCase,
         school_repository=school_repository
     )
