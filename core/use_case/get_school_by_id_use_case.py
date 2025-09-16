@@ -10,7 +10,7 @@ class GetSchoolByIdUseCase:
         try:
             school = await self.school_repository.get_by_id(school_id)
             if not school:
-                return Result.Error("Escola não encontrada")
+                return Result.not_found("Escola não encontrada")
             return Result.ok(school)
         except Exception as e:
             return Result.error(f"Erro ao obter escola por ID")
