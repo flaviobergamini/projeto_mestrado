@@ -38,3 +38,14 @@ class SchoolRepository:
             stmt = select(School).filter_by(id=school_id)
             result = await session.execute(stmt)
             return result.scalars().first()
+    
+    async def update(self, school: School) -> School:
+        try:
+            async with self.database.session() as session:
+                merged_school = await session.merge(school)  # faz attach do objeto existente
+                await session.commit()
+                await session.refresh(merged_school)
+                
+                return merged_school
+        except Exception as e:
+            raise e

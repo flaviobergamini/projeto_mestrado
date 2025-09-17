@@ -13,6 +13,7 @@ from core.use_case.list_health_plan_use_case import ListHealthPlanUseCase
 from core.use_case.list_school_use_case import ListSchoolUseCase
 from core.use_case.login_user_use_case import LoginUserUseCase
 from core.use_case.query_diary_use_case import QueryDiaryUseCase
+from core.use_case.update_school_use_case import UpdateSchoolUseCase
 from infrastructure.database_context.database import Database
 from infrastructure.repositories.beneficiary_repository import BeneficiaryRepository
 from infrastructure.repositories.diary_embedding_groq_repository import DiaryEmbeddingGroqRepository
@@ -129,4 +130,9 @@ class Container(containers.DeclarativeContainer):
     get_health_plan_by_id_use_case=providers.Factory(
         GetHealthPlanByIdUseCase,
         health_plan_repository=health_plan_repository
+    )
+
+    update_school_use_case=providers.Factory(
+        UpdateSchoolUseCase,
+        school_repository=school_repository
     )
