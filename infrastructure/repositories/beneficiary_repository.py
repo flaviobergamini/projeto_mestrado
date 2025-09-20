@@ -32,3 +32,8 @@ class BeneficiaryRepository:
             )
             result = await session.execute(stmt)
             return result.scalars().first()
+    
+    async def list_all(self) -> list[Beneficiary]:
+        async with self.database.session() as session:
+            result = await session.execute(select(Beneficiary))
+            return result.scalars().all()
