@@ -3,6 +3,7 @@ from fastapi.responses import JSONResponse
 from api.dependencies import get_current_user
 from core.kernel.container import Container
 from core.use_case.create_school_use_case import CreateSchoolUseCase
+from core.use_case.delete_school_use_case import DeleteSchoolUseCase
 from core.use_case.get_school_by_id_use_case import GetSchoolByIdUseCase
 from core.use_case.list_school_use_case import ListSchoolUseCase
 from core.use_case.update_school_use_case import UpdateSchoolUseCase
@@ -174,5 +175,33 @@ async def update(
         )
 
         return JSONResponse(status_code=200, content={"data": response_school.dict()})
+    except:
+        return JSONResponse(content={"error": "Internal server error"}, status_code=500)
+    
+@router.delete("/delete/{school_id}")
+@inject
+async def delete(
+    school_id: int,
+    use_case:   DeleteSchoolUseCase = Depends(
+        Provide[Container.delete_school_use_case],
+    ),
+    user_id: str = Depends(get_current_user),
+):
+    try:
+        response = await use_case.execute(school_id)
+        
+        if response.is_not_found:
+            return JSONResponse(
+                status_code=HTTP_404_NOT_FOUND,
+                content={"error": "Escola não encontrada"}
+            )
+        
+        if response.is_err:
+            return JSONResponse(
+                status_code=HTTP_500_INTERNAL_SERVER_ERROR,
+                content={"error": response.error}
+            )
+
+        return JSONResponse(status_code=200, content={"data": "Escola deletada com sucesso"})
     except:
         return JSONResponse(content={"error": "Internal server error"}, status_code=500)

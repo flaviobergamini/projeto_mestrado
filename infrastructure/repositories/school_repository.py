@@ -49,3 +49,11 @@ class SchoolRepository:
                 return merged_school
         except Exception as e:
             raise e
+
+    async def delete(self, school: School) -> None:
+        try:
+            async with self.database.session() as session:
+                await session.delete(school)
+                await session.commit()
+        except Exception as e:
+            raise e
