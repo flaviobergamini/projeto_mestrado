@@ -14,6 +14,7 @@ from core.use_case.list_health_plan_use_case import ListHealthPlanUseCase
 from core.use_case.list_school_use_case import ListSchoolUseCase
 from core.use_case.login_user_use_case import LoginUserUseCase
 from core.use_case.query_diary_use_case import QueryDiaryUseCase
+from core.use_case.update_health_plan_use_case import UpdateHealthPlanUseCase
 from core.use_case.update_school_use_case import UpdateSchoolUseCase
 from infrastructure.database_context.database import Database
 from infrastructure.repositories.beneficiary_repository import BeneficiaryRepository
@@ -141,4 +142,9 @@ class Container(containers.DeclarativeContainer):
     delete_school_use_case=providers.Factory(
         DeleteSchoolUseCase,
         school_repository=school_repository
+    )
+
+    update_health_plan_use_case=providers.Factory(
+        UpdateHealthPlanUseCase,
+        health_plan_repository=health_plan_repository
     )

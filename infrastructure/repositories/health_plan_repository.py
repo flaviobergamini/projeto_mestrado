@@ -37,3 +37,14 @@ class HealthPlanRepository:
         async with self.database.session() as session:
             result = await session.execute(select(HealthPlan))
             return result.scalars().all()
+    
+    async def update(self, health_plan: HealthPlan) -> HealthPlan:
+        try:
+            async with self.database.session() as session:
+                merged_health_plan = await session.merge(health_plan)
+                await session.commit()
+                await session.refresh(merged_health_plan)
+                
+                return merged_health_plan
+        except Exception as e:
+            raise e
