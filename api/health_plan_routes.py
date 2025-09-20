@@ -3,6 +3,7 @@ from fastapi.responses import JSONResponse
 from api.dependencies import get_current_user
 from core.kernel.container import Container
 from core.use_case.create_health_plan_use_case import CreateHealthPlanUseCase
+from core.use_case.delete_health_plan_use_case import DeleteHealthPlanUseCase
 from core.use_case.get_health_plan_by_id_use_case import GetHealthPlanByIdUseCase
 from core.use_case.list_health_plan_use_case import ListHealthPlanUseCase
 from core.use_case.update_health_plan_use_case import UpdateHealthPlanUseCase
@@ -173,5 +174,33 @@ async def update_health_plan(
         )
 
         return JSONResponse(status_code=200, content={"data": health_plan_response.dict()})
+    except:
+        return JSONResponse(content={"error": "Internal server error"}, status_code=500)
+    
+@router.delete("/delete/{health_plan_id}")
+@inject
+async def delete_health_plan(
+    health_plan_id: int,
+    use_case: DeleteHealthPlanUseCase = Depends(
+        Provide[Container.delete_health_plan_use_case],
+    ),
+    user_id: str = Depends(get_current_user),
+):
+    try:
+        response = await use_case.execute(health_plan_id)
+        
+        if response.is_bad_request:
+            return JSONResponse(
+                status_code=400,
+                content={"error": response.bad_request_error}
+            )
+
+        if response.is_not_found:
+            return JSONResponse(
+                status_code=HTTP_404_NOT_FOUND,
+                content={"error": "Plano de saúde não encontrado"}
+            )
+        
+        return JSONResponse(status_code=200, content={"data": "Plano de saúde deletado com sucesso"})
     except:
         return JSONResponse(content={"error": "Internal server error"}, status_code=500)

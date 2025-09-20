@@ -48,3 +48,11 @@ class HealthPlanRepository:
                 return merged_health_plan
         except Exception as e:
             raise e
+    
+    async def delete(self, health_plan: HealthPlan) -> None:
+        try:
+            async with self.database.session() as session:
+                await session.delete(health_plan)
+                await session.commit()
+        except Exception as e:
+            raise e
