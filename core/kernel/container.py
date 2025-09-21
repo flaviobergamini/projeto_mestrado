@@ -9,6 +9,7 @@ from core.use_case.create_user_use_case import CreateUserUseCase
 from core.use_case.delete_health_plan_use_case import DeleteHealthPlanUseCase
 from core.use_case.delete_school_use_case import DeleteSchoolUseCase
 from core.use_case.diary_embedding_use_case import DiaryEmbeddingUseCase
+from core.use_case.get_beneficiary_use_case import GetBeneficiaryByIdUseCase
 from core.use_case.get_health_plan_by_id_use_case import GetHealthPlanByIdUseCase
 from core.use_case.get_school_by_id_use_case import GetSchoolByIdUseCase
 from core.use_case.list_beneficiary_use_case import ListBeneficiaryUseCase
@@ -158,5 +159,10 @@ class Container(containers.DeclarativeContainer):
 
     list_beneficiary_use_case=providers.Factory(
         ListBeneficiaryUseCase,
+        beneficiary_repository=beneficiary_repository
+    )
+
+    get_beneficiary_use_case=providers.Factory(
+        GetBeneficiaryByIdUseCase,
         beneficiary_repository=beneficiary_repository
     )

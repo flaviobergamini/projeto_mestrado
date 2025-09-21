@@ -37,3 +37,8 @@ class BeneficiaryRepository:
         async with self.database.session() as session:
             result = await session.execute(select(Beneficiary))
             return result.scalars().all()
+    
+    async def get_by_id(self, id: int) -> Beneficiary | None:
+        async with self.database.session() as session:
+            result = await session.execute(select(Beneficiary).where(Beneficiary.id == id))
+            return result.scalars().first()
