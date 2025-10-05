@@ -2,6 +2,7 @@ from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_groq import ChatGroq
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from sentence_transformers import SentenceTransformer
+from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings  # Gemini
 from core.config import settings
 import asyncio
 
@@ -21,12 +22,20 @@ class LLMService:
             # para embeddings você pode usar HuggingFace local
             self.embedding_model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
 
+        elif self.provider == "gemini":
+            self.llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=settings.GEMINI_API_KEY)
+            self.embedding_model = GoogleGenerativeAIEmbeddings(model="text-embedding-004", google_api_key=settings.GEMINI_API_KEY)
+
         else:
             raise ValueError("Provider não suportado")
 
     async def chat(self, prompt: str) -> str:
-        resp = self.llm.invoke(prompt)
-        return resp.content
+        try:
+            resp = self.llm.invoke(prompt)
+            return resp.content
+        except Exception as e:
+            print(f"Erro ao chamar LLM: {e}")
+            raise e
 
     async def generate_embeddings(self, text: str) -> list[float]:
         if self.provider == "groq":

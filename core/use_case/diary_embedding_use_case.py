@@ -78,6 +78,20 @@ class DiaryEmbeddingUseCase:
                     )
 
                     await self.diary_embedding_groq_repository.add(diary_embedding_groq)
+
+                if provider == "gemini":
+                    if len(embedding) == 768:
+                        if isinstance(embedding, list):
+                            embedding = np.array(embedding)
+
+                    diary_embedding = DiaryEmbedding(
+                        content=summary,
+                        meta_data={"teste":"teste"},
+                        embedding=embedding,
+                        created_at=datetime.utcnow(),
+                        updated_at=datetime.utcnow()
+                    )
+                    await self.diary_embedding_repository.add(diary_embedding)
             
             return Result.ok({"value": "Diario criado com sucesso"})
         except Exception as e:
