@@ -1,8 +1,10 @@
 from datetime import datetime
 from core.kernel.result import Result
 from infrastructure.models.diary_embedding import DiaryEmbedding
+from infrastructure.models.diary_embedding_gemini import DiaryEmbeddingGemini
 from infrastructure.models.diary_embedding_groq import DiaryEmbeddingGroq
 from infrastructure.repositories.beneficiary_repository import BeneficiaryRepository
+from infrastructure.repositories.diary_embedding_gemini_repository import DiaryEmbeddingGeminiRepository
 from infrastructure.repositories.diary_embedding_groq_repository import DiaryEmbeddingGroqRepository
 from infrastructure.repositories.diary_embedding_repository import DiaryEmbeddingRepository
 import numpy as np
@@ -15,12 +17,14 @@ class DiaryEmbeddingUseCase:
             diary_embedding_repository: DiaryEmbeddingRepository, 
             llm_service: LLMService, 
             diary_embedding_groq_repository: DiaryEmbeddingGroqRepository,
+            diary_embedding_gemini_repository: DiaryEmbeddingGeminiRepository,
             beneficiary_repository: BeneficiaryRepository
             ):
         self.diary_embedding_repository=diary_embedding_repository
         self.llm_service=llm_service
         self.diary_embedding_groq_repository=diary_embedding_groq_repository
         self.beneficiary_repository=beneficiary_repository
+        self.diary_embedding_gemini_repository=diary_embedding_gemini_repository
 
     async def execute(self, diary: str, model: str, beneficiary_id: int, user_id: str):
         try:
@@ -84,14 +88,14 @@ class DiaryEmbeddingUseCase:
                         if isinstance(embedding, list):
                             embedding = np.array(embedding)
 
-                    diary_embedding = DiaryEmbedding(
+                    diary_embedding = DiaryEmbeddingGemini(
                         content=summary,
                         meta_data={"teste":"teste"},
                         embedding=embedding,
                         created_at=datetime.utcnow(),
                         updated_at=datetime.utcnow()
                     )
-                    await self.diary_embedding_repository.add(diary_embedding)
+                    await self.diary_embedding_gemini_repository.add(diary_embedding)
             
             return Result.ok({"value": "Diario criado com sucesso"})
         except Exception as e:

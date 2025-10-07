@@ -21,6 +21,7 @@ from core.use_case.update_health_plan_use_case import UpdateHealthPlanUseCase
 from core.use_case.update_school_use_case import UpdateSchoolUseCase
 from infrastructure.database_context.database import Database
 from infrastructure.repositories.beneficiary_repository import BeneficiaryRepository
+from infrastructure.repositories.diary_embedding_gemini_repository import DiaryEmbeddingGeminiRepository
 from infrastructure.repositories.diary_embedding_groq_repository import DiaryEmbeddingGroqRepository
 from infrastructure.repositories.diary_embedding_repository import DiaryEmbeddingRepository
 from infrastructure.repositories.health_plan_repository import HealthPlanRepository
@@ -72,13 +73,18 @@ class Container(containers.DeclarativeContainer):
         HealthPlanRepository, database=database
     )
 
+    diary_embedding_gemini_repository = providers.Factory(
+        DiaryEmbeddingGeminiRepository, database=database
+    )
+
     # Use cases
     diary_embedding_use_case=providers.Factory(
         DiaryEmbeddingUseCase,
         diary_embedding_repository=diary_embedding_repository,
         llm_service=llm_service,
         diary_embedding_groq_repository=diary_embedding_groq_repository,
-        beneficiary_repository=beneficiary_repository
+        beneficiary_repository=beneficiary_repository,
+        diary_embedding_gemini_repository=diary_embedding_gemini_repository
     )
 
     query_diary_use_case=providers.Factory(
