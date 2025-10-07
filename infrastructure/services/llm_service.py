@@ -23,8 +23,8 @@ class LLMService:
             self.embedding_model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
 
         elif self.provider == "gemini":
-            self.llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=settings.GEMINI_API_KEY)
-            self.embedding_model = GoogleGenerativeAIEmbeddings(model="text-embedding-004", google_api_key=settings.GEMINI_API_KEY)
+            self.llm = ChatGoogleGenerativeAI(model=settings.GEMINI_MODEL, google_api_key=settings.GEMINI_API_KEY)
+            self.embedding_model = GoogleGenerativeAIEmbeddings(model=settings.GEMINI_EMBEDDING_MODEL, google_api_key=settings.GEMINI_API_KEY)
 
         else:
             raise ValueError("Provider não suportado")
