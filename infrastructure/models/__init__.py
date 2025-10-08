@@ -16,6 +16,8 @@ from .school import School
 from .supervisor import Supervisor
 from .therapeutic_plan import TherapeuticPlan
 from .therapeutic_sessions import TherapeuticSessions
+from .diary_embedding_groq import DiaryEmbeddingGroq
+from .diary_embedding_gemini import DiaryEmbeddingGemini
 
 __all__ = [
     "User",
@@ -36,4 +38,6 @@ __all__ = [
     "Supervisor",
     "TherapeuticPlan", 
     "TherapeuticSessions",
+    "DiaryEmbeddingGroq",
+    "DiaryEmbeddingGemini",
 ]

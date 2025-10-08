@@ -19,3 +19,5 @@ class Clinic(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 
     professionals = relationship("Professional", back_populates="clinic")
+    beneficiaries = relationship("BeneficiaryClinic", back_populates="clinic", cascade="all, delete-orphan")
+    sessions = relationship("TherapeuticSessions", back_populates="clinic", cascade="all, delete-orphan")
