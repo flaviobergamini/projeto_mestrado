@@ -6,6 +6,7 @@ from core.use_case.create_beneficiary_use_case import CreateBeneficiaryUseCase
 from core.use_case.create_health_plan_use_case import CreateHealthPlanUseCase
 from core.use_case.create_school_use_case import CreateSchoolUseCase
 from core.use_case.create_user_use_case import CreateUserUseCase
+from core.use_case.delete_beneficiary_use_case import DeleteBeneficiaryUseCase
 from core.use_case.delete_health_plan_use_case import DeleteHealthPlanUseCase
 from core.use_case.delete_school_use_case import DeleteSchoolUseCase
 from core.use_case.diary_embedding_use_case import DiaryEmbeddingUseCase
@@ -17,17 +18,18 @@ from core.use_case.list_health_plan_use_case import ListHealthPlanUseCase
 from core.use_case.list_school_use_case import ListSchoolUseCase
 from core.use_case.login_user_use_case import LoginUserUseCase
 from core.use_case.query_diary_use_case import QueryDiaryUseCase
+from core.use_case.update_beneficiary_use_case import UpdateBeneficiaryUseCase
 from core.use_case.update_health_plan_use_case import UpdateHealthPlanUseCase
 from core.use_case.update_school_use_case import UpdateSchoolUseCase
 from infrastructure.database_context.database import Database
 from infrastructure.repositories.beneficiary_repository import BeneficiaryRepository
+from infrastructure.repositories.diary_embedding_gemini_repository import DiaryEmbeddingGeminiRepository
 from infrastructure.repositories.diary_embedding_groq_repository import DiaryEmbeddingGroqRepository
 from infrastructure.repositories.diary_embedding_repository import DiaryEmbeddingRepository
 from infrastructure.repositories.health_plan_repository import HealthPlanRepository
 from infrastructure.repositories.school_repository import SchoolRepository
 from infrastructure.repositories.user_repository import UserRepository
 from infrastructure.services.deepseek_service import DeepseekService
-from infrastructure.services.gemini_service import GeminiService
 from infrastructure.services.gpt_service import GptService
 from infrastructure.services.llm_service import LLMService
 
@@ -43,7 +45,6 @@ class Container(containers.DeclarativeContainer):
 
     # Services
     gpt_service = providers.Factory(GptService)
-    gemini_service = providers.Factory(GeminiService)
     deepseek_service = providers.Factory(DeepseekService)
     llm_service = providers.Factory(LLMService)
 
@@ -74,13 +75,18 @@ class Container(containers.DeclarativeContainer):
         HealthPlanRepository, database=database
     )
 
+    diary_embedding_gemini_repository = providers.Factory(
+        DiaryEmbeddingGeminiRepository, database=database
+    )
+
     # Use cases
     diary_embedding_use_case=providers.Factory(
         DiaryEmbeddingUseCase,
         diary_embedding_repository=diary_embedding_repository,
         llm_service=llm_service,
         diary_embedding_groq_repository=diary_embedding_groq_repository,
-        beneficiary_repository=beneficiary_repository
+        beneficiary_repository=beneficiary_repository,
+        diary_embedding_gemini_repository=diary_embedding_gemini_repository
     )
 
     query_diary_use_case=providers.Factory(
@@ -164,5 +170,15 @@ class Container(containers.DeclarativeContainer):
 
     get_beneficiary_use_case=providers.Factory(
         GetBeneficiaryByIdUseCase,
+        beneficiary_repository=beneficiary_repository
+    )
+
+    update_beneficiary_use_case=providers.Factory(
+        UpdateBeneficiaryUseCase,
+        beneficiary_repository=beneficiary_repository
+    )
+
+    delete_beneficiary_use_case=providers.Factory(
+        DeleteBeneficiaryUseCase,
         beneficiary_repository=beneficiary_repository
     )
