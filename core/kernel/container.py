@@ -6,6 +6,7 @@ from core.use_case.create_beneficiary_use_case import CreateBeneficiaryUseCase
 from core.use_case.create_health_plan_use_case import CreateHealthPlanUseCase
 from core.use_case.create_school_use_case import CreateSchoolUseCase
 from core.use_case.create_user_use_case import CreateUserUseCase
+from core.use_case.delete_beneficiary_use_case import DeleteBeneficiaryUseCase
 from core.use_case.delete_health_plan_use_case import DeleteHealthPlanUseCase
 from core.use_case.delete_school_use_case import DeleteSchoolUseCase
 from core.use_case.diary_embedding_use_case import DiaryEmbeddingUseCase
@@ -17,6 +18,7 @@ from core.use_case.list_health_plan_use_case import ListHealthPlanUseCase
 from core.use_case.list_school_use_case import ListSchoolUseCase
 from core.use_case.login_user_use_case import LoginUserUseCase
 from core.use_case.query_diary_use_case import QueryDiaryUseCase
+from core.use_case.update_beneficiary_use_case import UpdateBeneficiaryUseCase
 from core.use_case.update_health_plan_use_case import UpdateHealthPlanUseCase
 from core.use_case.update_school_use_case import UpdateSchoolUseCase
 from infrastructure.database_context.database import Database
@@ -168,5 +170,15 @@ class Container(containers.DeclarativeContainer):
 
     get_beneficiary_use_case=providers.Factory(
         GetBeneficiaryByIdUseCase,
+        beneficiary_repository=beneficiary_repository
+    )
+
+    update_beneficiary_use_case=providers.Factory(
+        UpdateBeneficiaryUseCase,
+        beneficiary_repository=beneficiary_repository
+    )
+
+    delete_beneficiary_use_case=providers.Factory(
+        DeleteBeneficiaryUseCase,
         beneficiary_repository=beneficiary_repository
     )
