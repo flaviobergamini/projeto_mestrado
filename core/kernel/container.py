@@ -29,8 +29,6 @@ from infrastructure.repositories.diary_embedding_repository import DiaryEmbeddin
 from infrastructure.repositories.health_plan_repository import HealthPlanRepository
 from infrastructure.repositories.school_repository import SchoolRepository
 from infrastructure.repositories.user_repository import UserRepository
-from infrastructure.services.deepseek_service import DeepseekService
-from infrastructure.services.gpt_service import GptService
 from infrastructure.services.llm_service import LLMService
 
 
@@ -44,8 +42,6 @@ class Container(containers.DeclarativeContainer):
     database = providers.Singleton(Database, url=config.database.url)
 
     # Services
-    gpt_service = providers.Factory(GptService)
-    deepseek_service = providers.Factory(DeepseekService)
     llm_service = providers.Factory(LLMService)
 
     jwt_service = providers.Factory(JwtService)

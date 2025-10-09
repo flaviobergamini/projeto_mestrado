@@ -1,7 +1,7 @@
-from langchain_openai import ChatOpenAI, OpenAIEmbeddings
-from langchain_groq import ChatGroq
+#from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+#from langchain_groq import ChatGroq
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from sentence_transformers import SentenceTransformer
+#from sentence_transformers import SentenceTransformer
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings  # Gemini
 from core.config import settings
 import asyncio
@@ -14,13 +14,15 @@ class LLMService:
         self.provider = provider
 
         if self.provider == "openai":
-            self.llm = ChatOpenAI(model=settings.GPT_MODEL, api_key=settings.OPENAI_API_KEY)
-            self.embedding_model = OpenAIEmbeddings(model=settings.GPT_EMBEDDING_MODEL, api_key=settings.OPENAI_API_KEY)
+            pass
+            #self.llm = ChatOpenAI(model=settings.GPT_MODEL, api_key=settings.OPENAI_API_KEY)
+            #self.embedding_model = OpenAIEmbeddings(model=settings.GPT_EMBEDDING_MODEL, api_key=settings.OPENAI_API_KEY)
 
         elif self.provider == "groq":
-            self.llm = ChatGroq(model=settings.GROQ_MODEL, api_key=settings.GROQ_API_KEY)
+            pass
+            #self.llm = ChatGroq(model=settings.GROQ_MODEL, api_key=settings.GROQ_API_KEY)
             # para embeddings você pode usar HuggingFace local
-            self.embedding_model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
+            #self.embedding_model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
 
         elif self.provider == "gemini":
             self.llm = ChatGoogleGenerativeAI(model=settings.GEMINI_MODEL, google_api_key=settings.GEMINI_API_KEY)
