@@ -11,13 +11,29 @@ on:
   workflow_dispatch:
 
 jobs:
+  # -------------------
+  # Build phase
+  # -------------------
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - name: Upload artifact for deployment jobs
+      # (Opcional) Validar se o arquivo requirements.txt existe
+      - name: Check for requirements.txt
+        run: |
+          if [ ! -f "requirements.txt" ]; then
+            echo "❌ requirements.txt não encontrado!"
+            exit 1
+          fi
+          echo "✅ requirements.txt encontrado."
+
+      # Upload dos arquivos do projeto (sem criar venv)
+      - name: Upload artifact for deployment
         uses: actions/upload-artifact@v4
         with:
           name: python-app
@@ -51,3 +67,4 @@ jobs:
           slot-name: 'Production'
 
           
+
