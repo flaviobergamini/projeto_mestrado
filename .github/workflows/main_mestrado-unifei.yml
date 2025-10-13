@@ -89,7 +89,7 @@ jobs:
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_D41D07E865FB4A05BD84B6D2307A4725 }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_765FAC8CDB6A4CBD8078642EA0C4074D }}
 
-      - name: Get Resource Group and Stop App Service
+      - name: Prepare for deployment
         run: |
           echo "🔍 Descobrindo o Resource Group..."
           RESOURCE_GROUP=$(az resource list --name mestrado-unifei --resource-type "Microsoft.Web/sites" --query "[0].resourceGroup" -o tsv)
@@ -101,71 +101,50 @@ jobs:
 
           echo "📦 Resource Group encontrado: $RESOURCE_GROUP"
 
-          echo "⏹️ Parando o App Service..."
-          az webapp stop --name mestrado-unifei --resource-group $RESOURCE_GROUP
+          # Apenas reinicia para limpar processos - o deploy com --clean vai limpar arquivos
+          echo "🔄 Reiniciando App Service para limpar processos..."
+          az webapp restart --name mestrado-unifei --resource-group $RESOURCE_GROUP
 
-          echo "⏳ Verificando status e aguardando..."
-          for i in {1..12}; do
-            STATUS=$(az webapp show --name mestrado-unifei --resource-group $RESOURCE_GROUP --query state -o tsv)
-            echo "Status atual: $STATUS (tentativa $i/12)"
-            if [ "$STATUS" = "Stopped" ]; then
-              echo "✅ App Service parado com sucesso!"
-              break
-            fi
-            sleep 5
-          done
-
-          echo "⏳ Aguardando mais 10 segundos para garantir limpeza de processos..."
-          sleep 10
+          echo "⏳ Aguardando 15 segundos para estabilizar..."
+          sleep 15
 
           echo "✅ Pronto para deploy!"
         continue-on-error: false
 
-      - name: Clean old deployments
+      - name: Create ZIP package
         run: |
-          echo "🧹 Limpando deployments antigos..."
+          echo "📦 Criando pacote ZIP..."
+          zip -r app.zip . -x "*.git*" "*.github*" "*__pycache__*" "*.pyc" "*.pyo"
+          ls -lh app.zip
+          echo "✅ Pacote criado!"
+
+      - name: 'Deploy to Azure Web App via ZIP'
+        run: |
+          echo "🚀 Fazendo deploy via ZIP..."
           RESOURCE_GROUP=$(az resource list --name mestrado-unifei --resource-type "Microsoft.Web/sites" --query "[0].resourceGroup" -o tsv)
 
-          # Limpa o histórico de deployment
-          az webapp deployment source delete --name mestrado-unifei --resource-group $RESOURCE_GROUP 2>/dev/null || echo "⚠️ Nenhum deployment source para limpar"
+          # Deploy usando ZIP deploy (mais confiável no Free tier)
+          az webapp deploy --resource-group $RESOURCE_GROUP \
+            --name mestrado-unifei \
+            --src-path app.zip \
+            --type zip \
+            --async false \
+            --restart true \
+            --clean true
 
-          # Reinicia o App Service para limpar processos travados
-          echo "🔄 Reiniciando App Service para limpar processos..."
-          az webapp restart --name mestrado-unifei --resource-group $RESOURCE_GROUP
+          echo "✅ Deploy concluído!"
 
-          echo "⏳ Aguardando 20 segundos após restart..."
-          sleep 20
-
-          echo "⏹️ Parando novamente para o deploy..."
-          az webapp stop --name mestrado-unifei --resource-group $RESOURCE_GROUP
-          sleep 10
-
-          echo "✅ Limpeza concluída!"
-        continue-on-error: true
-
-      - name: 'Deploy to Azure Web App'
-        uses: azure/webapps-deploy@v3
-        id: deploy-to-webapp
-        with:
-          app-name: 'mestrado-unifei'
-          slot-name: 'Production'
-          package: .
-          clean: true
-          restart: true
-
-      - name: Start App Service
+      - name: Verify deployment
         run: |
-          echo "🔍 Descobrindo o Resource Group..."
+          echo "🔍 Verificando status do deployment..."
           RESOURCE_GROUP=$(az resource list --name mestrado-unifei --resource-type "Microsoft.Web/sites" --query "[0].resourceGroup" -o tsv)
 
-          if [ -z "$RESOURCE_GROUP" ]; then
-            echo "❌ Erro: Não foi possível encontrar o Resource Group"
-            exit 1
-          fi
+          STATUS=$(az webapp show --name mestrado-unifei --resource-group $RESOURCE_GROUP --query state -o tsv)
+          echo "📊 Status do App Service: $STATUS"
 
-          echo "▶️ Iniciando o App Service..."
-          az webapp start --name mestrado-unifei --resource-group $RESOURCE_GROUP
-
-          echo "✅ App Service iniciado com sucesso!"
+          echo "✅ Deployment finalizado!"
           echo "🌐 URL: https://mestrado-unifei-fzg4awcvb6cxb3eb.brazilsouth-01.azurewebsites.net"
+          echo ""
+          echo "⚠️ Nota: O Oryx vai instalar as dependências na primeira requisição."
+          echo "Aguarde 2-3 minutos antes de acessar a aplicação."
         continue-on-error: false
