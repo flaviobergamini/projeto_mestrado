@@ -92,7 +92,13 @@ jobs:
       - name: Get Resource Group and Stop App Service
         run: |
           echo "🔍 Descobrindo o Resource Group..."
-          RESOURCE_GROUP=$(az webapp show --name mestrado-unifei --query resourceGroup -o tsv)
+          RESOURCE_GROUP=$(az resource list --name mestrado-unifei --resource-type "Microsoft.Web/sites" --query "[0].resourceGroup" -o tsv)
+
+          if [ -z "$RESOURCE_GROUP" ]; then
+            echo "❌ Erro: Não foi possível encontrar o Resource Group"
+            exit 1
+          fi
+
           echo "📦 Resource Group encontrado: $RESOURCE_GROUP"
 
           echo "⏹️ Parando o App Service..."
@@ -116,7 +122,12 @@ jobs:
       - name: Start App Service
         run: |
           echo "🔍 Descobrindo o Resource Group..."
-          RESOURCE_GROUP=$(az webapp show --name mestrado-unifei --query resourceGroup -o tsv)
+          RESOURCE_GROUP=$(az resource list --name mestrado-unifei --resource-type "Microsoft.Web/sites" --query "[0].resourceGroup" -o tsv)
+
+          if [ -z "$RESOURCE_GROUP" ]; then
+            echo "❌ Erro: Não foi possível encontrar o Resource Group"
+            exit 1
+          fi
 
           echo "▶️ Iniciando o App Service..."
           az webapp start --name mestrado-unifei --resource-group $RESOURCE_GROUP
