@@ -73,10 +73,3 @@ jobs:
         with:
           app-name: 'mestrado'
           slot-name: 'Production'
-          package: .
-          clean: true
-          restart: true
-
-      - name: Start Azure Web App
-        run: |
-          az webapp start --name mestrado --resource-group mestrado_group
