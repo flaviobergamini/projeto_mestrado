@@ -32,7 +32,18 @@ jobs:
           source antenv/bin/activate
           pip install -r requirements.txt
                 
-      # By default, when you enable GitHub CI/CD integration through the Azure portal, the platform automatically sets the SCM_DO_BUILD_DURING_DEPLOYMENT application setting to true. This triggers the use of Oryx, a build engine that handles application compilation and dependency installation (e.g., pip install) directly on the platform during deployment. Hence, we exclude the antenv virtual environment directory from the deployment artifact to reduce the payload size. 
+      # By default, when you enable GitHub CI/CD integration through the Azure portal, the platform automatically sets the SCM_DO_BUILD_DURING_DEPLOYMENT application setting to true. This triggers the use of Oryx, a build engine that handles application compilation and dependency installation (e.g., pip install) directly on the platform during deployment. Hence, we exclude the antenv virtual environment directory from the deployment artifact to reduce the payload size.
+
+      - name: Clean unnecessary files to reduce artifact size
+        run: |
+          # Remove arquivos desnecessários para reduzir drasticamente o tamanho
+          rm -rf .git .github .vscode __pycache__ .pytest_cache alembic
+          find . -type d -name "__pycache__" -exec rm -rf {} + || true
+          find . -type f -name "*.pyc" -delete || true
+          find . -type f -name "*.pyo" -delete || true
+          find . -type f -name "*.log" -delete || true
+          rm -f requirements.txt.backup || true
+
       - name: Upload artifact for deployment jobs
         uses: actions/upload-artifact@v4
         with:
@@ -40,6 +51,17 @@ jobs:
           path: |
             .
             !antenv/
+            !.git/
+            !.github/
+            !.vscode/
+            !__pycache__/
+            !*.pyc
+            !*.pyo
+            !*.log
+            !.env
+            !.env.*
+            !alembic/
+            !requirements.txt.backup
 
       # 🚫 Opting Out of Oryx Build
       # If you prefer to disable the Oryx build process during deployment, follow these steps:
@@ -67,10 +89,19 @@ jobs:
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_D41D07E865FB4A05BD84B6D2307A4725 }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_765FAC8CDB6A4CBD8078642EA0C4074D }}
 
+      # - name: Clean Azure App Service storage (opcional)
+      #   run: |
+      #     # Substitua <RESOURCE_GROUP> pelo nome do seu resource group
+      #     az webapp stop --name mestrado-unifei --resource-group <RESOURCE_GROUP>
+      #     sleep 10
+      #     az webapp start --name mestrado-unifei --resource-group <RESOURCE_GROUP>
+      #   continue-on-error: true
+
       - name: 'Deploy to Azure Web App'
         uses: azure/webapps-deploy@v3
         id: deploy-to-webapp
         with:
           app-name: 'mestrado-unifei'
           slot-name: 'Production'
-          
+          package: .
+          clean: true
