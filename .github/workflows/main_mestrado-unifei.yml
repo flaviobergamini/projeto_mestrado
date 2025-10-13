@@ -104,11 +104,44 @@ jobs:
           echo "⏹️ Parando o App Service..."
           az webapp stop --name mestrado-unifei --resource-group $RESOURCE_GROUP
 
-          echo "⏳ Aguardando 15 segundos para garantir que parou..."
-          sleep 15
+          echo "⏳ Verificando status e aguardando..."
+          for i in {1..12}; do
+            STATUS=$(az webapp show --name mestrado-unifei --resource-group $RESOURCE_GROUP --query state -o tsv)
+            echo "Status atual: $STATUS (tentativa $i/12)"
+            if [ "$STATUS" = "Stopped" ]; then
+              echo "✅ App Service parado com sucesso!"
+              break
+            fi
+            sleep 5
+          done
 
-          echo "✅ App Service parado com sucesso!"
+          echo "⏳ Aguardando mais 10 segundos para garantir limpeza de processos..."
+          sleep 10
+
+          echo "✅ Pronto para deploy!"
         continue-on-error: false
+
+      - name: Clean old deployments
+        run: |
+          echo "🧹 Limpando deployments antigos..."
+          RESOURCE_GROUP=$(az resource list --name mestrado-unifei --resource-type "Microsoft.Web/sites" --query "[0].resourceGroup" -o tsv)
+
+          # Limpa o histórico de deployment
+          az webapp deployment source delete --name mestrado-unifei --resource-group $RESOURCE_GROUP 2>/dev/null || echo "⚠️ Nenhum deployment source para limpar"
+
+          # Reinicia o App Service para limpar processos travados
+          echo "🔄 Reiniciando App Service para limpar processos..."
+          az webapp restart --name mestrado-unifei --resource-group $RESOURCE_GROUP
+
+          echo "⏳ Aguardando 20 segundos após restart..."
+          sleep 20
+
+          echo "⏹️ Parando novamente para o deploy..."
+          az webapp stop --name mestrado-unifei --resource-group $RESOURCE_GROUP
+          sleep 10
+
+          echo "✅ Limpeza concluída!"
+        continue-on-error: true
 
       - name: 'Deploy to Azure Web App'
         uses: azure/webapps-deploy@v3
@@ -118,6 +151,7 @@ jobs:
           slot-name: 'Production'
           package: .
           clean: true
+          restart: true
 
       - name: Start App Service
         run: |
