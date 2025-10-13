@@ -114,25 +114,52 @@ jobs:
       - name: Create ZIP package
         run: |
           echo "📦 Criando pacote ZIP..."
-          zip -r app.zip . -x "*.git*" "*.github*" "*__pycache__*" "*.pyc" "*.pyo"
+          # Remove arquivos que já foram limpos antes
+          ls -la
+
+          # Cria ZIP incluindo todos os arquivos necessários
+          zip -r app.zip . -x "*.git*" "*.github*" "*__pycache__*" "*.pyc" "*.pyo" "*antenv*"
+
+          echo "📊 Tamanho do pacote:"
           ls -lh app.zip
+          du -sh app.zip
           echo "✅ Pacote criado!"
 
-      - name: 'Deploy to Azure Web App via ZIP'
+      - name: Get publish profile
+        id: publishprofile
         run: |
-          echo "🚀 Fazendo deploy via ZIP..."
+          echo "🔑 Obtendo credenciais de deploy..."
           RESOURCE_GROUP=$(az resource list --name mestrado-unifei --resource-type "Microsoft.Web/sites" --query "[0].resourceGroup" -o tsv)
 
-          # Deploy usando ZIP deploy (mais confiável no Free tier)
-          az webapp deploy --resource-group $RESOURCE_GROUP \
-            --name mestrado-unifei \
-            --src-path app.zip \
-            --type zip \
-            --async false \
-            --restart true \
-            --clean true
+          # Obtém as credenciais de publicação
+          PUBLISH_PROFILE=$(az webapp deployment list-publishing-profiles --name mestrado-unifei --resource-group $RESOURCE_GROUP --xml)
 
+          # Extrai username e password do XML
+          USERNAME=$(echo "$PUBLISH_PROFILE" | grep -oP '(?<=userName=")[^"]*' | head -1)
+          PASSWORD=$(echo "$PUBLISH_PROFILE" | grep -oP '(?<=userPWD=")[^"]*' | head -1)
+
+          echo "::add-mask::$PASSWORD"
+          echo "username=$USERNAME" >> $GITHUB_OUTPUT
+          echo "password=$PASSWORD" >> $GITHUB_OUTPUT
+          echo "✅ Credenciais obtidas!"
+
+      - name: 'Deploy to Azure Web App via Kudu API'
+        run: |
+          echo "🚀 Fazendo deploy via Kudu API..."
+
+          # Deploy usando a API Kudu zipdeploy
+          curl -X POST \
+            -u "${{ steps.publishprofile.outputs.username }}:${{ steps.publishprofile.outputs.password }}" \
+            --data-binary @app.zip \
+            -H "Content-Type: application/zip" \
+            https://mestrado-unifei-fzg4awcvb6cxb3eb.scm.azurewebsites.net/api/zipdeploy
+
+          echo ""
           echo "✅ Deploy concluído!"
+
+          # Aguarda um pouco para o deploy processar
+          echo "⏳ Aguardando processamento..."
+          sleep 20
 
       - name: Verify deployment
         run: |
