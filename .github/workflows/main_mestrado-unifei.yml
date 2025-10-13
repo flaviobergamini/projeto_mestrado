@@ -89,13 +89,20 @@ jobs:
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_D41D07E865FB4A05BD84B6D2307A4725 }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_765FAC8CDB6A4CBD8078642EA0C4074D }}
 
-      # - name: Clean Azure App Service storage (opcional)
-      #   run: |
-      #     # Substitua <RESOURCE_GROUP> pelo nome do seu resource group
-      #     az webapp stop --name mestrado-unifei --resource-group <RESOURCE_GROUP>
-      #     sleep 10
-      #     az webapp start --name mestrado-unifei --resource-group <RESOURCE_GROUP>
-      #   continue-on-error: true
+      - name: Get Resource Group and Stop App Service
+        run: |
+          echo "🔍 Descobrindo o Resource Group..."
+          RESOURCE_GROUP=$(az webapp show --name mestrado-unifei --query resourceGroup -o tsv)
+          echo "📦 Resource Group encontrado: $RESOURCE_GROUP"
+
+          echo "⏹️ Parando o App Service..."
+          az webapp stop --name mestrado-unifei --resource-group $RESOURCE_GROUP
+
+          echo "⏳ Aguardando 15 segundos para garantir que parou..."
+          sleep 15
+
+          echo "✅ App Service parado com sucesso!"
+        continue-on-error: false
 
       - name: 'Deploy to Azure Web App'
         uses: azure/webapps-deploy@v3
@@ -105,3 +112,15 @@ jobs:
           slot-name: 'Production'
           package: .
           clean: true
+
+      - name: Start App Service
+        run: |
+          echo "🔍 Descobrindo o Resource Group..."
+          RESOURCE_GROUP=$(az webapp show --name mestrado-unifei --query resourceGroup -o tsv)
+
+          echo "▶️ Iniciando o App Service..."
+          az webapp start --name mestrado-unifei --resource-group $RESOURCE_GROUP
+
+          echo "✅ App Service iniciado com sucesso!"
+          echo "🌐 URL: https://mestrado-unifei-fzg4awcvb6cxb3eb.brazilsouth-01.azurewebsites.net"
+        continue-on-error: false
