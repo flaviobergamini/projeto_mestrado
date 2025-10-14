@@ -21,8 +21,20 @@ from core.use_case.query_diary_use_case import QueryDiaryUseCase
 from core.use_case.update_beneficiary_use_case import UpdateBeneficiaryUseCase
 from core.use_case.update_health_plan_use_case import UpdateHealthPlanUseCase
 from core.use_case.update_school_use_case import UpdateSchoolUseCase
+from core.use_case.create_clinic_use_case import CreateClinicUseCase
+from core.use_case.list_clinic_use_case import ListClinicUseCase
+from core.use_case.get_clinic_by_id_use_case import GetClinicByIdUseCase
+from core.use_case.update_clinic_use_case import UpdateClinicUseCase
+from core.use_case.delete_clinic_use_case import DeleteClinicUseCase
+from core.use_case.create_professional_use_case import CreateProfessionalUseCase
+from core.use_case.list_professional_use_case import ListProfessionalUseCase
+from core.use_case.get_professional_by_id_use_case import GetProfessionalByIdUseCase
+from core.use_case.update_professional_use_case import UpdateProfessionalUseCase
+from core.use_case.delete_professional_use_case import DeleteProfessionalUseCase
 from infrastructure.database_context.database import Database
 from infrastructure.repositories.beneficiary_repository import BeneficiaryRepository
+from infrastructure.repositories.clinic_repository import ClinicRepository
+from infrastructure.repositories.professional_repository import ProfessionalRepository
 from infrastructure.repositories.diary_embedding_gemini_repository import DiaryEmbeddingGeminiRepository
 from infrastructure.repositories.diary_embedding_groq_repository import DiaryEmbeddingGroqRepository
 from infrastructure.repositories.diary_embedding_repository import DiaryEmbeddingRepository
@@ -34,7 +46,7 @@ from infrastructure.services.llm_service import LLMService
 
 class Container(containers.DeclarativeContainer):
     wiring_config = containers.WiringConfiguration(
-        modules=["api.diary_routes", "api.auth_routes", "api.beneficiary_routes", "api.health_plan_routes", "api.school_routes"],
+        modules=["api.diary_routes", "api.auth_routes", "api.beneficiary_routes", "api.health_plan_routes", "api.school_routes", "api.clinic_routes", "api.professional_routes"],
     )
 
     config = providers.Configuration()
@@ -73,6 +85,14 @@ class Container(containers.DeclarativeContainer):
 
     diary_embedding_gemini_repository = providers.Factory(
         DiaryEmbeddingGeminiRepository, database=database
+    )
+
+    clinic_repository = providers.Factory(
+        ClinicRepository, database=database
+    )
+
+    professional_repository = providers.Factory(
+        ProfessionalRepository, database=database
     )
 
     # Use cases
@@ -177,4 +197,56 @@ class Container(containers.DeclarativeContainer):
     delete_beneficiary_use_case=providers.Factory(
         DeleteBeneficiaryUseCase,
         beneficiary_repository=beneficiary_repository
+    )
+
+    # Clinic use cases
+    create_clinic_use_case=providers.Factory(
+        CreateClinicUseCase,
+        clinic_repository=clinic_repository
+    )
+
+    list_clinic_use_case=providers.Factory(
+        ListClinicUseCase,
+        clinic_repository=clinic_repository
+    )
+
+    get_clinic_by_id_use_case=providers.Factory(
+        GetClinicByIdUseCase,
+        clinic_repository=clinic_repository
+    )
+
+    update_clinic_use_case=providers.Factory(
+        UpdateClinicUseCase,
+        clinic_repository=clinic_repository
+    )
+
+    delete_clinic_use_case=providers.Factory(
+        DeleteClinicUseCase,
+        clinic_repository=clinic_repository
+    )
+
+    # Professional use cases
+    create_professional_use_case=providers.Factory(
+        CreateProfessionalUseCase,
+        professional_repository=professional_repository
+    )
+
+    list_professional_use_case=providers.Factory(
+        ListProfessionalUseCase,
+        professional_repository=professional_repository
+    )
+
+    get_professional_by_id_use_case=providers.Factory(
+        GetProfessionalByIdUseCase,
+        professional_repository=professional_repository
+    )
+
+    update_professional_use_case=providers.Factory(
+        UpdateProfessionalUseCase,
+        professional_repository=professional_repository
+    )
+
+    delete_professional_use_case=providers.Factory(
+        DeleteProfessionalUseCase,
+        professional_repository=professional_repository
     )
