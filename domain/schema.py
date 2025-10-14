@@ -68,7 +68,7 @@ class BeneficiaryRequest(BaseModel):
 class BeneficiaryResponse(BaseModel):
     id: int
     name: str
-    date_of_birth: str 
+    date_of_birth: str
     diagnosis: str
     main_responsible: str
     responsible_contact: str
@@ -77,3 +77,38 @@ class BeneficiaryResponse(BaseModel):
     status: str
     school_id: int
     healthplan_id: int
+
+class ClinicRequest(BaseModel):
+    name: str
+    address: str
+    telephone: str
+    email: str
+    responsible: str
+
+class ClinicResponse(BaseModel):
+    id: int
+    name: str
+    address: str
+    telephone: str
+    email: str
+    responsible: str
+
+class ProfessionalRequest(BaseModel):
+    name: str
+    function: str
+    specialty: str
+    contact: str
+    availability: str
+    clinic_id: int
+    email: str
+    password: str
+
+class ProfessionalResponse(BaseModel):
+    id: int
+    name: str
+    function: str
+    specialty: str
+    contact: str
+    availability: str
+    clinic_id: int
+    email: str
