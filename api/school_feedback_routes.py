@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 from api.dependencies import get_current_user
+from datetime import datetime
 from core.kernel.container import Container
 from core.use_case.create_school_feedback_use_case import CreateSchoolFeedbackUseCase
 from core.use_case.delete_school_feedback_use_case import DeleteSchoolFeedbackUseCase
@@ -146,7 +147,9 @@ async def update(
             supervisor_id=request.supervisor_id,
             feedback_date=request.feedback_date,
             observation=request.observation,
-            tracking_status=request.tracking_status
+            tracking_status=request.tracking_status,
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow()
         )
 
         response = await use_case.execute(school_feedback)

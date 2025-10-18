@@ -36,21 +36,39 @@ class SchoolFeedbackRepository:
             result = await session.execute(stmt)
             return result.scalars().first()
 
-    async def update(self, school_feedback: SchoolFeedback) -> SchoolFeedback:
+    async def update(self, school_feedback_id: int, **kwargs) -> SchoolFeedback | None:
         try:
             async with self.database.session() as session:
-                merged_school_feedback = await session.merge(school_feedback)
-                await session.commit()
-                await session.refresh(merged_school_feedback)
+                stmt = select(SchoolFeedback).filter_by(id=school_feedback_id)
+                result = await session.execute(stmt)
+                existing_feedback = result.scalars().first()
 
-                return merged_school_feedback
+                if not existing_feedback:
+                    return None
+
+                for key, value in kwargs.items():
+                    if hasattr(existing_feedback, key):
+                        setattr(existing_feedback, key, value)
+
+                await session.commit()
+                await session.refresh(existing_feedback)
+
+                return existing_feedback
         except Exception as e:
             raise e
 
-    async def delete(self, school_feedback: SchoolFeedback) -> None:
+    async def delete(self, school_feedback_id: int) -> bool:
         try:
             async with self.database.session() as session:
+                stmt = select(SchoolFeedback).filter_by(id=school_feedback_id)
+                result = await session.execute(stmt)
+                school_feedback = result.scalars().first()
+
+                if not school_feedback:
+                    return False
+
                 await session.delete(school_feedback)
                 await session.commit()
+                return True
         except Exception as e:
             raise e
