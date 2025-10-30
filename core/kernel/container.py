@@ -71,8 +71,18 @@ from core.use_case.list_therapeutic_sessions_use_case import ListTherapeuticSess
 from core.use_case.get_therapeutic_sessions_by_id_use_case import GetTherapeuticSessionsByIdUseCase
 from core.use_case.update_therapeutic_sessions_use_case import UpdateTherapeuticSessionsUseCase
 from core.use_case.delete_therapeutic_sessions_use_case import DeleteTherapeuticSessionsUseCase
+from core.use_case.create_diary_use_case import CreateDiaryUseCase
+from core.use_case.list_diary_use_case import ListDiaryUseCase
+from core.use_case.get_diary_by_id_use_case import GetDiaryByIdUseCase
+from core.use_case.get_diary_by_beneficiary_use_case import GetDiaryByBeneficiaryUseCase
+from core.use_case.update_diary_use_case import UpdateDiaryUseCase
+from core.use_case.delete_diary_use_case import DeleteDiaryUseCase
+from core.use_case.generate_diary_embedding_use_case import GenerateDiaryEmbeddingUseCase
+from core.use_case.query_diary_rag_use_case import QueryDiaryRAGUseCase
+from core.use_case.analyze_behavior_patterns_use_case import AnalyzeBehaviorPatternsUseCase
 from infrastructure.database_context.database import Database
 from infrastructure.repositories.beneficiary_repository import BeneficiaryRepository
+from infrastructure.repositories.diary_repository import DiaryRepository
 from infrastructure.repositories.clinic_repository import ClinicRepository
 from infrastructure.repositories.professional_repository import ProfessionalRepository
 from infrastructure.repositories.diary_embedding_gemini_repository import DiaryEmbeddingGeminiRepository
@@ -173,6 +183,10 @@ class Container(containers.DeclarativeContainer):
 
     therapeutic_sessions_repository = providers.Factory(
         TherapeuticSessionsRepository, database=database
+    )
+
+    diary_repository = providers.Factory(
+        DiaryRepository, database=database
     )
 
     # Use cases
@@ -537,4 +551,67 @@ class Container(containers.DeclarativeContainer):
     delete_therapeutic_sessions_use_case=providers.Factory(
         DeleteTherapeuticSessionsUseCase,
         therapeutic_sessions_repository=therapeutic_sessions_repository
+    )
+
+    generate_diary_embedding_use_case=providers.Factory(
+        GenerateDiaryEmbeddingUseCase,
+        diary_repository=diary_repository,
+        diary_embedding_gemini_repository=diary_embedding_gemini_repository,
+        llm_service=llm_service
+    )
+
+    # Diary use cases
+    create_diary_use_case=providers.Factory(
+        CreateDiaryUseCase,
+        diary_repository=diary_repository,
+        beneficiary_repository=beneficiary_repository,
+        generate_embedding_use_case=generate_diary_embedding_use_case
+    )
+
+    list_diary_use_case=providers.Factory(
+        ListDiaryUseCase,
+        diary_repository=diary_repository
+    )
+
+    get_diary_by_id_use_case=providers.Factory(
+        GetDiaryByIdUseCase,
+        diary_repository=diary_repository
+    )
+
+    get_diary_by_beneficiary_use_case=providers.Factory(
+        GetDiaryByBeneficiaryUseCase,
+        diary_repository=diary_repository,
+        beneficiary_repository=beneficiary_repository
+    )
+
+    update_diary_use_case=providers.Factory(
+        UpdateDiaryUseCase,
+        diary_repository=diary_repository
+    )
+
+    delete_diary_use_case=providers.Factory(
+        DeleteDiaryUseCase,
+        diary_repository=diary_repository
+    )
+
+    # RAG and AI Analysis use cases
+    generate_diary_embedding_use_case=providers.Factory(
+        GenerateDiaryEmbeddingUseCase,
+        diary_repository=diary_repository,
+        diary_embedding_gemini_repository=diary_embedding_gemini_repository,
+        llm_service=llm_service
+    )
+
+    query_diary_rag_use_case=providers.Factory(
+        QueryDiaryRAGUseCase,
+        diary_embedding_gemini_repository=diary_embedding_gemini_repository,
+        beneficiary_repository=beneficiary_repository,
+        llm_service=llm_service
+    )
+
+    analyze_behavior_patterns_use_case=providers.Factory(
+        AnalyzeBehaviorPatternsUseCase,
+        diary_repository=diary_repository,
+        beneficiary_repository=beneficiary_repository,
+        llm_service=llm_service
     )

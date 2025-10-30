@@ -1,11 +1,180 @@
 from pydantic import BaseModel, EmailStr
-from datetime import date
+from datetime import date, datetime
+from typing import Optional
 
 
-class DiaryRequest(BaseModel):
+class DiaryEmbeddingRequest(BaseModel):
+    """Schema antigo para geração de embeddings"""
     diary: str
     model: str
     beneficiary_id: int
+
+
+class DiaryQueryRAGRequest(BaseModel):
+    """Schema para consultas RAG sobre diários"""
+    beneficiary_id: int
+    query: str
+    limit: Optional[int] = 10
+
+
+class BehaviorAnalysisRequest(BaseModel):
+    """Schema para análise de padrões comportamentais"""
+    beneficiary_id: int
+    days: Optional[int] = 30
+    analysis_type: Optional[str] = "comprehensive"  # comprehensive, crisis, progress
+
+
+class GenerateEmbeddingRequest(BaseModel):
+    """Schema para gerar embeddings de um diário específico"""
+    diary_id: int
+
+
+class DiaryCreateRequest(BaseModel):
+    """Schema para criação de registro diário completo"""
+    beneficiary_id: int
+    diary_date: date
+
+    # Comportamento
+    behavior_description: Optional[str] = None
+    behavior_rating: Optional[int] = None  # 1-5
+
+    # Atividades
+    activity_performance: Optional[str] = None
+    activity_engagement: Optional[int] = None  # 1-5
+    completed_activities: Optional[str] = None
+
+    # Socialização
+    socialization_description: Optional[str] = None
+    peer_interaction: Optional[int] = None  # 1-5
+    adult_interaction: Optional[int] = None  # 1-5
+
+    # Crise
+    crisis_occurred: bool = False
+    crisis_description: Optional[str] = None
+    crisis_trigger: Optional[str] = None
+    crisis_intervention: Optional[str] = None
+    crisis_duration_minutes: Optional[int] = None
+
+    # Estado emocional
+    emotional_state: Optional[str] = None
+    mood_rating: Optional[int] = None  # 1-5
+
+    # Comunicação
+    communication_description: Optional[str] = None
+    verbal_communication: Optional[int] = None  # 1-5
+    non_verbal_communication: Optional[int] = None  # 1-5
+
+    # Autonomia
+    autonomy_description: Optional[str] = None
+    self_care_skills: Optional[int] = None  # 1-5
+    task_independence: Optional[int] = None  # 1-5
+
+    # Observações
+    general_observations: Optional[str] = None
+    teacher_suggestions: Optional[str] = None
+    adaptations_needed: Optional[str] = None
+    achievements: Optional[str] = None
+
+
+class DiaryUpdateRequest(BaseModel):
+    """Schema para atualização de registro diário"""
+    diary_date: Optional[date] = None
+
+    # Comportamento
+    behavior_description: Optional[str] = None
+    behavior_rating: Optional[int] = None
+
+    # Atividades
+    activity_performance: Optional[str] = None
+    activity_engagement: Optional[int] = None
+    completed_activities: Optional[str] = None
+
+    # Socialização
+    socialization_description: Optional[str] = None
+    peer_interaction: Optional[int] = None
+    adult_interaction: Optional[int] = None
+
+    # Crise
+    crisis_occurred: Optional[bool] = None
+    crisis_description: Optional[str] = None
+    crisis_trigger: Optional[str] = None
+    crisis_intervention: Optional[str] = None
+    crisis_duration_minutes: Optional[int] = None
+
+    # Estado emocional
+    emotional_state: Optional[str] = None
+    mood_rating: Optional[int] = None
+
+    # Comunicação
+    communication_description: Optional[str] = None
+    verbal_communication: Optional[int] = None
+    non_verbal_communication: Optional[int] = None
+
+    # Autonomia
+    autonomy_description: Optional[str] = None
+    self_care_skills: Optional[int] = None
+    task_independence: Optional[int] = None
+
+    # Observações
+    general_observations: Optional[str] = None
+    teacher_suggestions: Optional[str] = None
+    adaptations_needed: Optional[str] = None
+    achievements: Optional[str] = None
+
+
+class DiaryResponse(BaseModel):
+    """Schema de resposta com dados do diário"""
+    id: int
+    beneficiary_id: int
+    user_id: int
+    diary_date: str
+
+    # Comportamento
+    behavior_description: Optional[str] = None
+    behavior_rating: Optional[int] = None
+
+    # Atividades
+    activity_performance: Optional[str] = None
+    activity_engagement: Optional[int] = None
+    completed_activities: Optional[str] = None
+
+    # Socialização
+    socialization_description: Optional[str] = None
+    peer_interaction: Optional[int] = None
+    adult_interaction: Optional[int] = None
+
+    # Crise
+    crisis_occurred: bool
+    crisis_description: Optional[str] = None
+    crisis_trigger: Optional[str] = None
+    crisis_intervention: Optional[str] = None
+    crisis_duration_minutes: Optional[int] = None
+
+    # Estado emocional
+    emotional_state: Optional[str] = None
+    mood_rating: Optional[int] = None
+
+    # Comunicação
+    communication_description: Optional[str] = None
+    verbal_communication: Optional[int] = None
+    non_verbal_communication: Optional[int] = None
+
+    # Autonomia
+    autonomy_description: Optional[str] = None
+    self_care_skills: Optional[int] = None
+    task_independence: Optional[int] = None
+
+    # Observações
+    general_observations: Optional[str] = None
+    teacher_suggestions: Optional[str] = None
+    adaptations_needed: Optional[str] = None
+    achievements: Optional[str] = None
+
+    created_at: str
+    updated_at: str
+
+    class Config:
+        from_attributes = True
 
 class UserRegister(BaseModel):
     name:str
