@@ -15,6 +15,7 @@ from api.school_feedback_routes import router as school_feedback_router
 from api.supervisor_routes import router as supervisor_router
 from api.therapeutic_plan_routes import router as therapeutic_plan_router
 from api.therapeutic_sessions_routes import router as therapeutic_sessions_router
+from api.storage_routes import router as storage_router
 from core.kernel.container import Container
 
 container = Container()
@@ -43,6 +44,7 @@ app.include_router(school_feedback_router)
 app.include_router(supervisor_router)
 app.include_router(therapeutic_plan_router)
 app.include_router(therapeutic_sessions_router)
+app.include_router(storage_router)
 
 
 @app.get("/health", tags=["Health"])

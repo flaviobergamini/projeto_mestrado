@@ -408,3 +408,15 @@ class TherapeuticSessionsResponse(BaseModel):
     session_date: str
     description: str
     observation: str
+
+class FileUploadResponse(BaseModel):
+    """Schema para resposta de upload de arquivo"""
+    file_path: str
+    public_url: str
+    filename: str
+    uploaded_at: str
+    user_id: str
+
+class FileDeleteRequest(BaseModel):
+    """Schema para requisição de remoção de arquivo"""
+    file_path: str

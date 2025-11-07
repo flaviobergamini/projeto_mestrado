@@ -17,4 +17,9 @@ class Settings:
     GROQ_MODEL = os.getenv("GROQ_MODEL")
     JWT_SECRET = os.getenv("JWT_SECRET")
 
+    # Supabase Storage
+    SUPABASE_URL = os.getenv("SUPABASE_URL")
+    SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+    SUPABASE_BUCKET = os.getenv("SUPABASE_BUCKET", "agents-buket")
+
 settings = Settings()

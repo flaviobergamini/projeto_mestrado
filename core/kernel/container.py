@@ -2,6 +2,7 @@ from dependency_injector import containers, providers
 from dependency_injector.wiring import Provide, inject
 
 from core.services.jwt_service import JwtService
+from infrastructure.services.storage_service import StorageService
 from core.use_case.create_beneficiary_use_case import CreateBeneficiaryUseCase
 from core.use_case.create_health_plan_use_case import CreateHealthPlanUseCase
 from core.use_case.create_school_use_case import CreateSchoolUseCase
@@ -104,7 +105,7 @@ from infrastructure.services.llm_service import LLMService
 
 class Container(containers.DeclarativeContainer):
     wiring_config = containers.WiringConfiguration(
-        modules=["api.diary_routes", "api.auth_routes", "api.beneficiary_routes", "api.health_plan_routes", "api.school_routes", "api.clinic_routes", "api.professional_routes", "api.beneficiary_clinic_routes", "api.autismia_routes", "api.evaluation_routes", "api.family_reunion_routes", "api.school_feedback_routes", "api.supervisor_routes", "api.therapeutic_plan_routes", "api.therapeutic_sessions_routes"],
+        modules=["api.diary_routes", "api.auth_routes", "api.beneficiary_routes", "api.health_plan_routes", "api.school_routes", "api.clinic_routes", "api.professional_routes", "api.beneficiary_clinic_routes", "api.autismia_routes", "api.evaluation_routes", "api.family_reunion_routes", "api.school_feedback_routes", "api.supervisor_routes", "api.therapeutic_plan_routes", "api.therapeutic_sessions_routes", "api.storage_routes"],
     )
 
     config = providers.Configuration()
@@ -115,6 +116,8 @@ class Container(containers.DeclarativeContainer):
     llm_service = providers.Factory(LLMService)
 
     jwt_service = providers.Factory(JwtService)
+
+    storage_service = providers.Factory(StorageService)
 
     # Repositories
     diary_embedding_repository=providers.Factory(
