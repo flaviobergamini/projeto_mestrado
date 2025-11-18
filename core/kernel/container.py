@@ -90,6 +90,7 @@ from infrastructure.repositories.professional_repository import ProfessionalRepo
 from infrastructure.repositories.diary_embedding_gemini_repository import DiaryEmbeddingGeminiRepository
 from infrastructure.repositories.diary_embedding_groq_repository import DiaryEmbeddingGroqRepository
 from infrastructure.repositories.diary_embedding_repository import DiaryEmbeddingRepository
+from infrastructure.repositories.study_case_embedding_gemini_repository import StudyCaseEmbeddingGeminiRepository
 from infrastructure.repositories.health_plan_repository import HealthPlanRepository
 from infrastructure.repositories.school_repository import SchoolRepository
 from infrastructure.repositories.user_repository import UserRepository
@@ -147,6 +148,10 @@ class Container(containers.DeclarativeContainer):
 
     diary_embedding_gemini_repository = providers.Factory(
         DiaryEmbeddingGeminiRepository, database=database
+    )
+
+    study_case_embedding_gemini_repository = providers.Factory(
+        StudyCaseEmbeddingGeminiRepository, database=database
     )
 
     clinic_repository = providers.Factory(
@@ -623,5 +628,6 @@ class Container(containers.DeclarativeContainer):
     study_case_use_case=providers.Factory(
         StudyCaseUseCase,
         llm_service=llm_service,
-        beneficiary_repository=beneficiary_repository
+        beneficiary_repository=beneficiary_repository,
+        study_case_embedding_gemini_repository=study_case_embedding_gemini_repository
     )
