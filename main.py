@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from api import auth_routes, diary_routes, school_routes, health_plan_routes, beneficiary_routes, clinic_routes, professional_routes, beneficiary_clinic_routes, autismia_routes, evaluation_routes, family_reunion_routes, school_feedback_routes, supervisor_routes, therapeutic_plan_routes, therapeutic_sessions_routes
+from api import auth_routes, diary_routes, school_routes, health_plan_routes, beneficiary_routes, clinic_routes, professional_routes, beneficiary_clinic_routes, autismia_routes, evaluation_routes, family_reunion_routes, school_feedback_routes, supervisor_routes, therapeutic_plan_routes, therapeutic_sessions_routes, case_study_routes
 from api.diary_routes import router as diary_router
 from api.auth_routes import router as auth_router
 from api.school_routes import router as school_router
@@ -16,11 +16,12 @@ from api.supervisor_routes import router as supervisor_router
 from api.therapeutic_plan_routes import router as therapeutic_plan_router
 from api.therapeutic_sessions_routes import router as therapeutic_sessions_router
 from api.storage_routes import router as storage_router
+from api.case_study_routes import router as case_study_router
 from core.kernel.container import Container
 
 container = Container()
 container.config.database.url.from_env("DATABASE_URL")
-container.wire(modules=[diary_routes, auth_routes, school_routes, health_plan_routes, beneficiary_routes, clinic_routes, professional_routes, beneficiary_clinic_routes, autismia_routes, evaluation_routes, family_reunion_routes, school_feedback_routes, supervisor_routes, therapeutic_plan_routes, therapeutic_sessions_routes])
+container.wire(modules=[diary_routes, auth_routes, school_routes, health_plan_routes, beneficiary_routes, clinic_routes, professional_routes, beneficiary_clinic_routes, autismia_routes, evaluation_routes, family_reunion_routes, school_feedback_routes, supervisor_routes, therapeutic_plan_routes, therapeutic_sessions_routes, case_study_routes])
 
 app = FastAPI(
     title="Agente IA TEA",
@@ -45,6 +46,7 @@ app.include_router(supervisor_router)
 app.include_router(therapeutic_plan_router)
 app.include_router(therapeutic_sessions_router)
 app.include_router(storage_router)
+app.include_router(case_study_router)
 
 
 @app.get("/health", tags=["Health"])

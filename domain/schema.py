@@ -420,3 +420,147 @@ class FileUploadResponse(BaseModel):
 class FileDeleteRequest(BaseModel):
     """Schema para requisição de remoção de arquivo"""
     file_path: str
+
+class StudyCaseRequest(BaseModel):
+    beneficiary_id: int
+
+    # Informações gerais do aluno
+    student_difficulties: str | None
+    student_likes_school: bool | None
+    observation_question_above: str | None
+    student_has_friends: bool | None
+    which_friends: str | None
+    student_has_favorite_classmate: bool | None
+    which_favorite_classmate: str | None
+    students_favorite_activities: str | None
+    students_difficult_tasks_and_reasons: str | None
+    students_express_needs_in_what_way: str | None
+    student_asks_teachers_for_help_why: str | None
+    # Novas perguntas — seção de percepções e apoios
+    student_opinion_about_teachers: str | None
+    student_opinion_about_school_importance: str | None
+    student_school_supports: str | None
+    student_satisfied_with_supports: str | None
+    student_wants_other_supports: str | None
+    student_special_interest: str | None
+    student_participation_in_activities: str | None
+    student_easy_and_difficult_activities: str | None
+    student_participation_level: str | None
+    student_specific_needs_and_barriers: str | None
+    student_clinical_or_educational_services: str | None
+    teachers_opinion_about_student_expectations: str | None
+    teachers_evaluation_about_student_performance: str | None
+    teachers_concerns_and_suggested_supports: str | None
+    school_community_perception_about_interaction: str | None
+    teachers_expectations_about_student: str | None
+    student_skills_and_potential: str | None
+    reason_for_requesting_aee_services: str | None
+    school_accessibility_resources: str | None
+    school_resources_evaluation: str | None
+    student_affective_and_social_involvement: str | None
+    school_opinion_about_student_development: str | None
+    # Família
+    family_opinion_about_school_life: str | None
+    family_involvement_with_school: str | None
+    family_awareness_of_inclusive_rights: str | None
+    family_identified_skills_and_difficulties: str | None
+    family_expectations_about_development: str | None
+    # Aspectos socioemocionais e comportamentais
+    interacts_without_constant_mediation: bool | None
+    initiates_social_interactions_spontaneously: bool | None
+    participates_with_stimuli: bool | None
+    waits_turn_and_handles_frustration: bool | None
+    shares_experiences_or_limited_interactions: bool | None
+    expresses_basic_emotions_clearly: bool | None
+    reacts_positively_to_praise: bool | None
+    seeks_emotional_support: bool | None
+    emotionally_dysregulated_with_routine_changes: bool | None
+    calms_down_with_minimal_help: bool | None
+    interested_in_learning_new_things: bool | None
+    follows_simple_instructions: bool | None
+    maintains_attention_appropriately: bool | None
+    solves_simple_problems_independently: bool | None
+    learns_better_with_visual_support: bool | None
+    # Aspectos motores e de autocuidado
+    fine_motor_coordination: bool | None
+    gross_motor_coordination: bool | None
+    performs_self_care_independently: bool | None
+    participates_in_physical_activities_without_fatigue: bool | None
+    shows_repetitive_motor_behaviors: bool | None
+    # Alimentação
+    limited_food_repertoire: str | None
+    needs_physical_assistance_to_eat: str | None
+    discomfort_with_food_touching: str | None
+    eats_better_in_quiet_environment: str | None
+    challenging_behavior_during_meals: str | None
+    # Comunicação escola-família
+    frequent_school_family_communication: bool | None
+    family_provides_emotional_support: bool | None
+    family_collaboration_in_therapeutic_resources: bool | None
+    family_open_to_new_approaches: bool | None
+    family_participates_in_events: bool | None
+    # Contatos e informações adicionais
+    family_email: str | None
+    pedagogical_adaptations: str | None
+    pedagogical_development: str | None
+    additional_personal_information: str | None
+    # Identificação
+    mother_name: str | None
+    father_name: str | None
+    school_name: str | None
+    main_teacher_name: str | None
+    assistant_teacher_name: str | None
+
+class InstitutionStudyCaseRequest(BaseModel):
+    institution_name: str
+    institution_cnpj: str | None
+    institution_type: str | None
+    operating_hours: str | None
+    full_address: str | None
+    contact_phone: str | None
+    institutional_email: str | None
+    website: str | None
+    education_levels_offered: str | None
+    total_students: str | None
+    total_students_with_tea: str | None
+    max_capacity_students_with_tea: str | None
+    total_classrooms: str | None
+    has_multifunctional_resource_rooms: str | None
+    has_sensory_or_relaxation_rooms: str | None
+    physical_accessibility_adaptations: str | None
+    total_teachers: str | None
+    teachers_with_special_education_training: str | None
+    teachers_with_tea_training: str | None
+    has_multidisciplinary_team: str | None
+    tea_training_frequency: str | None
+    tea_training_methodologies: str | None
+    mediators_or_support_teachers_count: str | None
+    student_mediator_ratio: str | None
+    curriculum_adaptation_practices: str | None
+    teaching_methods_for_tea_students: str | None
+    individualized_education_plan_creation: str | None
+    evaluation_process_for_tea_students: str | None
+    alternative_communication_resources: str | None
+    visual_resources_for_routine_and_organization: str | None
+    neurotypical_and_tea_students_integration: str | None
+    sensory_stimulus_control: str | None
+    adapted_materials_available: str | None
+    has_spaces_for_crisis_or_sensory_overload: str | None
+    provides_recess_or_break_adaptations: str | None
+    technological_resources_for_tea_support: str | None
+    provides_weighted_materials_for_sensory_regulation: str | None
+    daily_communication_with_families: str | None
+    meetings_with_parents_frequency: str | None
+    provides_home_continuity_guidance: str | None
+    has_support_group_for_families: str | None
+    promotes_family_inclusive_events: str | None
+    allows_external_therapists: str | None
+    partnerships_with_specialized_clinics: str | None
+    pedagogical_and_therapeutic_integration: str | None
+    participates_in_inclusion_support_networks: str | None
+    medication_administration_protocol: str | None
+    has_certification_for_tea_service: str | None
+    required_documents_for_enrollment: str | None
+    issues_periodic_development_reports: str | None
+    has_public_agency_agreements: str | None
+    student_progress_tracking_method: str | None
