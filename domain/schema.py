@@ -512,6 +512,7 @@ class StudyCaseRequest(BaseModel):
     assistant_teacher_name: str | None
 
 class InstitutionStudyCaseRequest(BaseModel):
+    beneficiary_id: int
     institution_name: str
     institution_cnpj: str | None
     institution_type: str | None
