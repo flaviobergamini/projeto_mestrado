@@ -91,6 +91,17 @@ class StorageService:
             raise Exception(f"Erro ao obter URL pública: {str(e)}")
 
     # ------------------------
+    # Download de arquivo
+    # ------------------------
+    def download_file(self, file_path: str) -> bytes:
+        """Faz download de um arquivo do storage"""
+        try:
+            response = self.client.storage.from_(self.bucket_name).download(file_path)
+            return response
+        except Exception as e:
+            raise Exception(f"Erro ao fazer download do arquivo: {str(e)}")
+
+    # ------------------------
     # Excluir arquivo
     # ------------------------
     async def delete_file(self, file_path: str) -> bool:

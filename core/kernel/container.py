@@ -4,6 +4,7 @@ from dependency_injector.wiring import Provide, inject
 from core.services.jwt_service import JwtService
 from core.use_case.study_case_use_case import StudyCaseUseCase
 from core.use_case.institution_use_case import InstitutionUseCase
+from core.use_case.generate_pei_use_case import GeneratePEIUseCase
 from infrastructure.services.storage_service import StorageService
 from core.use_case.create_beneficiary_use_case import CreateBeneficiaryUseCase
 from core.use_case.create_health_plan_use_case import CreateHealthPlanUseCase
@@ -109,7 +110,7 @@ from infrastructure.services.llm_service import LLMService
 
 class Container(containers.DeclarativeContainer):
     wiring_config = containers.WiringConfiguration(
-        modules=["api.diary_routes", "api.auth_routes", "api.beneficiary_routes", "api.health_plan_routes", "api.school_routes", "api.clinic_routes", "api.professional_routes", "api.beneficiary_clinic_routes", "api.autismia_routes", "api.evaluation_routes", "api.family_reunion_routes", "api.school_feedback_routes", "api.supervisor_routes", "api.therapeutic_plan_routes", "api.therapeutic_sessions_routes", "api.storage_routes", "api.case_study_routes", "api.institution_routes"],
+        modules=["api.diary_routes", "api.auth_routes", "api.beneficiary_routes", "api.health_plan_routes", "api.school_routes", "api.clinic_routes", "api.professional_routes", "api.beneficiary_clinic_routes", "api.autismia_routes", "api.evaluation_routes", "api.family_reunion_routes", "api.school_feedback_routes", "api.supervisor_routes", "api.therapeutic_plan_routes", "api.therapeutic_sessions_routes", "api.storage_routes", "api.case_study_routes", "api.institution_routes", "api.pei_routes"],
     )
 
     config = providers.Configuration()
@@ -643,4 +644,13 @@ class Container(containers.DeclarativeContainer):
         llm_service=llm_service,
         beneficiary_repository=beneficiary_repository,
         institution_embedding_gemini_repository=institution_embedding_gemini_repository
+    )
+
+    generate_pei_use_case=providers.Factory(
+        GeneratePEIUseCase,
+        beneficiary_repository=beneficiary_repository,
+        study_case_embedding_gemini_repository=study_case_embedding_gemini_repository,
+        institution_embedding_gemini_repository=institution_embedding_gemini_repository,
+        llm_service=llm_service,
+        storage_service=storage_service
     )

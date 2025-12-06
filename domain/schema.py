@@ -511,6 +511,15 @@ class StudyCaseRequest(BaseModel):
     main_teacher_name: str | None
     assistant_teacher_name: str | None
 
+class GeneratePEIRequest(BaseModel):
+    beneficiary_id: int
+
+class GeneratePEIResponse(BaseModel):
+    pdf_path: str
+    pdf_url: str
+    beneficiary_id: int
+    generated_at: str
+
 class InstitutionStudyCaseRequest(BaseModel):
     beneficiary_id: int
     institution_name: str
