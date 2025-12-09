@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response
 from fastapi.responses import JSONResponse
 
 from api.dependencies import get_current_user
@@ -11,11 +11,10 @@ from dependency_injector.wiring import inject, Provide
 router = APIRouter(prefix="/pei", tags=["PEI"])
 
 
-@router.post("/generate")
+@router.post("/generate", response_class=Response)
 @inject
 async def generate_pei(
     request: GeneratePEIRequest,
-    #prompt_file_path: str,
     use_case: GeneratePEIUseCase = Depends(
         Provide[Container.generate_pei_use_case],
     ),
@@ -33,10 +32,12 @@ async def generate_pei(
     """
     try:
         prompt_file_path = "prompts/PEI_prompt.txt"
+
         response = await use_case.execute(
             beneficiary_id=request.beneficiary_id,
             user_id=user_id,
-            prompt_file_path=prompt_file_path
+            prompt_file_path=prompt_file_path,
+            return_pdf_buffer=True
         )
 
         if response.is_not_found:
@@ -50,8 +51,19 @@ async def generate_pei(
                 status_code=HTTP_500_INTERNAL_SERVER_ERROR,
                 content={"error": response.error}
             )
+    
+        pdf_content = response.value['pdf_content']
+        filename = response.value['filename'] 
 
-        return JSONResponse(status_code=HTTP_201_CREATED, content=response.value)
+        return Response(
+            content=pdf_content,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f"attachment; filename=\"{filename}\"" 
+            },
+            status_code=HTTP_201_CREATED
+        )
+    
     except Exception as e:
         print(e)
         return JSONResponse(content={"error": f"Internal server error: {str(e)}"}, status_code=500)
