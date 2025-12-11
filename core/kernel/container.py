@@ -651,6 +651,7 @@ class Container(containers.DeclarativeContainer):
         beneficiary_repository=beneficiary_repository,
         study_case_embedding_gemini_repository=study_case_embedding_gemini_repository,
         institution_embedding_gemini_repository=institution_embedding_gemini_repository,
+        school_repository=school_repository,
         llm_service=llm_service,
         storage_service=storage_service
     )
