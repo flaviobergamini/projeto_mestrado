@@ -5,6 +5,7 @@ from core.services.jwt_service import JwtService
 from core.use_case.study_case_use_case import StudyCaseUseCase
 from core.use_case.institution_use_case import InstitutionUseCase
 from core.use_case.generate_pei_use_case import GeneratePEIUseCase
+from core.use_case.generate_pei_pdf_use_case import GeneratePEIPDFUseCase
 from infrastructure.services.storage_service import StorageService
 from core.use_case.create_beneficiary_use_case import CreateBeneficiaryUseCase
 from core.use_case.create_health_plan_use_case import CreateHealthPlanUseCase
@@ -94,6 +95,8 @@ from infrastructure.repositories.diary_embedding_groq_repository import DiaryEmb
 from infrastructure.repositories.diary_embedding_repository import DiaryEmbeddingRepository
 from infrastructure.repositories.study_case_embedding_gemini_repository import StudyCaseEmbeddingGeminiRepository
 from infrastructure.repositories.institution_embedding_gemini_repository import InstitutionEmbeddingGeminiRepository
+from infrastructure.repositories.pei_repository import PEIRepository
+from infrastructure.repositories.pei_embedding_gemini_repository import PEIEmbeddingGeminiRepository
 from infrastructure.repositories.health_plan_repository import HealthPlanRepository
 from infrastructure.repositories.school_repository import SchoolRepository
 from infrastructure.repositories.user_repository import UserRepository
@@ -159,6 +162,14 @@ class Container(containers.DeclarativeContainer):
 
     institution_embedding_gemini_repository = providers.Factory(
         InstitutionEmbeddingGeminiRepository, database=database
+    )
+
+    pei_repository = providers.Factory(
+        PEIRepository, database=database
+    )
+
+    pei_embedding_gemini_repository = providers.Factory(
+        PEIEmbeddingGeminiRepository, database=database
     )
 
     clinic_repository = providers.Factory(
@@ -651,6 +662,18 @@ class Container(containers.DeclarativeContainer):
         beneficiary_repository=beneficiary_repository,
         study_case_embedding_gemini_repository=study_case_embedding_gemini_repository,
         institution_embedding_gemini_repository=institution_embedding_gemini_repository,
+        school_repository=school_repository,
+        pei_repository=pei_repository,
+        pei_embedding_gemini_repository=pei_embedding_gemini_repository,
+        llm_service=llm_service,
+        storage_service=storage_service
+    )
+
+    generate_pei_pdf_use_case=providers.Factory(
+        GeneratePEIPDFUseCase,
+        beneficiary_repository=beneficiary_repository,
+        pei_repository=pei_repository,
+        pei_embedding_gemini_repository=pei_embedding_gemini_repository,
         school_repository=school_repository,
         llm_service=llm_service,
         storage_service=storage_service
