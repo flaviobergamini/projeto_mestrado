@@ -36,7 +36,7 @@ class GeneratePEIPDFUseCase:
         self.llm_service = llm_service
         self.storage_service = storage_service
 
-    async def execute(self, pei_id: int, user_id: str, return_pdf_buffer: bool = False):
+    async def execute(self, pei_id: int, user_id: str, prompt_file_path: str, return_pdf_buffer: bool = False):
         """
         Gera um PDF do PEI a partir do JSON salvo no banco de dados.
         Usa RAG para buscar informações relevantes dos embeddings do PEI.
@@ -70,10 +70,6 @@ class GeneratePEIPDFUseCase:
             # Usar RAG para buscar informações relevantes do PEI
             self.llm_service.configure("gemini")
 
-            # Criar uma query para buscar informações do PEI
-            search_query = f"Informações do Plano Educacional Individualizado do aluno {beneficiary.name}"
-            query_embedding = await self.llm_service.generate_embeddings(search_query)
-
             # Buscar embeddings similares
             pei_embeddings = await self.pei_embedding_gemini_repository.get_by_pei_id(pei_id)
 
@@ -90,31 +86,19 @@ class GeneratePEIPDFUseCase:
             # Converter o JSON do PEI para uma representação legível
             pei_json_str = json.dumps(pei.pei_data, indent=2, ensure_ascii=False)
 
+            # Ler o prompt do arquivo no storage
+            prompt_bytes = self.storage_service.download_file(prompt_file_path)
+            prompt_template = prompt_bytes.decode('utf-8')
+
             # Gerar texto bonito em Markdown através da LLM
-            markdown_prompt = f"""Você é um especialista em educação especial e deve gerar um documento em Markdown formatado e bonito para um Plano Educacional Individualizado (PEI).
-
-DADOS DO PEI EM JSON:
-{pei_json_str}
-
-CONTEXTO ADICIONAL (use para enriquecer o documento):
-{pei_context}
+            # Adicionar informações do aluno ao prompt do arquivo
+            markdown_prompt = f"""{prompt_template}
 
 INFORMAÇÕES DO ALUNO:
 Nome: {beneficiary.name or 'Não informado'}
 Idade: {age}
 Diagnóstico: {beneficiary.diagnosis or 'Não informado'}
-Escola: {school_name}
-
-INSTRUÇÕES:
-1. Crie um documento em Markdown bem estruturado e formatado
-2. Organize as informações de forma lógica e profissional
-3. Use títulos (##), subtítulos (###), listas e formatação adequada
-4. Inclua todas as informações relevantes do JSON
-5. Torne o texto claro, objetivo e profissional
-6. NÃO inclua a seção "Identificação do Estudante" pois ela será adicionada automaticamente no cabeçalho do PDF
-7. Retorne APENAS o conteúdo em Markdown, sem explicações adicionais
-
-Por favor, gere o documento em Markdown:"""
+Escola: {school_name}"""
 
             markdown_content = await self.llm_service.chat(markdown_prompt)
 

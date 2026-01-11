@@ -82,10 +82,13 @@ async def generate_pei_pdf(
         Arquivo PDF para download
     """
     try:
+        prompt_file_path = "prompts/PEI_prompt_pdf.txt"
+
         response = await use_case.execute(
             pei_id=request.pei_id,
             user_id=user_id,
-            return_pdf_buffer=True
+            prompt_file_path=prompt_file_path,
+            return_pdf_buffer=True,
         )
 
         if response.is_not_found:
