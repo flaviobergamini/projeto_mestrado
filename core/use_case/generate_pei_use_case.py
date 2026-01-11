@@ -1,23 +1,17 @@
 from datetime import datetime
-import io
+import json
 import re
-from html.parser import HTMLParser
-import markdown
-from reportlab.lib.pagesizes import letter, A4
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.units import inch
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak, Table, TableStyle
-from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_LEFT
-from reportlab.lib import colors
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
 
 from infrastructure.repositories.beneficiary_repository import BeneficiaryRepository
 from infrastructure.repositories.study_case_embedding_gemini_repository import StudyCaseEmbeddingGeminiRepository
 from infrastructure.repositories.institution_embedding_gemini_repository import InstitutionEmbeddingGeminiRepository
 from infrastructure.repositories.school_repository import SchoolRepository
+from infrastructure.repositories.pei_repository import PEIRepository
+from infrastructure.repositories.pei_embedding_gemini_repository import PEIEmbeddingGeminiRepository
 from infrastructure.services.llm_service import LLMService
 from infrastructure.services.storage_service import StorageService
+from infrastructure.models.pei import PEI
+from infrastructure.models.pei_embedding_gemini import PEIEmbeddingGemini
 from core.kernel.result import Result
 
 
@@ -28,6 +22,8 @@ class GeneratePEIUseCase:
         study_case_embedding_gemini_repository: StudyCaseEmbeddingGeminiRepository,
         institution_embedding_gemini_repository: InstitutionEmbeddingGeminiRepository,
         school_repository: SchoolRepository,
+        pei_repository: PEIRepository,
+        pei_embedding_gemini_repository: PEIEmbeddingGeminiRepository,
         llm_service: LLMService,
         storage_service: StorageService
     ):
@@ -35,10 +31,16 @@ class GeneratePEIUseCase:
         self.study_case_embedding_gemini_repository = study_case_embedding_gemini_repository
         self.institution_embedding_gemini_repository = institution_embedding_gemini_repository
         self.school_repository = school_repository
+        self.pei_repository = pei_repository
+        self.pei_embedding_gemini_repository = pei_embedding_gemini_repository
         self.llm_service = llm_service
         self.storage_service = storage_service
 
-    async def execute(self, beneficiary_id: int, user_id: str, prompt_file_path: str, return_pdf_buffer: bool = False):
+    async def execute(self, beneficiary_id: int, user_id: str, prompt_file_path: str):
+        """
+        Gera o JSON do PEI e salva no banco de dados com embeddings para RAG.
+        Não gera mais o PDF diretamente - isso será feito através de outra rota.
+        """
         try:
             beneficiary = await self.beneficiary_repository.get_by_id(beneficiary_id)
             if not beneficiary:
@@ -114,8 +116,10 @@ CONTEXTO COM INFORMAÇÕES DO ALUNO E INSTITUIÇÃO:
 {context}
 
 INSTRUÇÕES IMPORTANTES:
-1. UTILIZE AS INFORMAÇÕES ESTRUTURADAS DO BENEFICIÁRIO fornecidas acima (Nome Completo, Idade, Diagnóstico, Escola)
-2. Procure no ESTUDO DE CASO as seguintes informações adicionais:
+1. RETORNE APENAS UM JSON VÁLIDO sem nenhum texto adicional antes ou depois
+2. O JSON deve conter todos os dados estruturados do PEI
+3. UTILIZE AS INFORMAÇÕES ESTRUTURADAS DO BENEFICIÁRIO fornecidas acima (Nome Completo, Idade, Diagnóstico, Escola)
+4. Procure no ESTUDO DE CASO as seguintes informações adicionais:
    - Ano ou série do aluno
    - CID (pode estar junto com o diagnóstico)
    - Nome do(a) Professor(a) principal
@@ -123,261 +127,119 @@ INSTRUÇÕES IMPORTANTES:
    - Nome da mãe e do pai
    - Justificativa para o nível de suporte
    - Nome de especialistas envolvidos
-3. Inclua TODAS essas informações na seção "Identificação do Estudante" do PEI
-4. Se alguma informação não estiver disponível, indique como "Não informado"
+5. Se alguma informação não estiver disponível, indique como "Não informado"
 
-Por favor, gere um Plano Educacional Individualizado (PEI) completo e detalhado baseado nas informações acima."""
+Por favor, gere um JSON estruturado e completo com todos os dados do Plano Educacional Individualizado (PEI) baseado nas informações acima."""
 
-            pei_content = await self.llm_service.chat(full_prompt)
+            pei_json_content = await self.llm_service.chat(full_prompt)
+            pei_json_content = pei_json_content.strip()
 
-            pdf_buffer = self._generate_pdf(
-                pei_content=pei_content,
-                beneficiary_name=beneficiary.name or "Não informado",
+            pei_json_content = re.sub(r"```json", "", pei_json_content, flags=re.IGNORECASE)
+            pei_json_content = re.sub(r"```", "", pei_json_content)
+
+            # 2. Remove quebras de linha e tabs excessivos
+            pei_json_content = pei_json_content.replace("\n", "").replace("\t", "").strip()
+
+            # 3. Extrai SOMENTE o JSON (do primeiro { ao último })
+            match = re.search(r"\{.*\}", pei_json_content)
+            if not match:
+                raise ValueError("Nenhum JSON válido encontrado no conteúdo")
+
+            pei_json_content = match.group(0)
+
+            # Tentar fazer parse do JSON para validar
+            try:
+                pei_data = json.loads(pei_json_content)
+            except json.JSONDecodeError as e:
+                return Result.error(f"Erro ao parsear JSON do PEI: {str(e)}")
+
+            # Salvar PEI no banco de dados
+            pei = PEI(
                 beneficiary_id=beneficiary_id,
-                age=age,
-                diagnosis=beneficiary.diagnosis or "Não informado",
-                school_name=school_name
-            )
-
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"PEI_{beneficiary.name.replace(' ', '_')}_{timestamp}.pdf"
-            pdf_content_bytes = pdf_buffer.getvalue()
-
-            pdf_path, pdf_url = self.storage_service.upload_file(
-                file_content=pdf_content_bytes,
-                filename=filename,
                 user_id=user_id,
-                content_type="application/pdf"
+                pei_data=pei_data,
+                meta_data={
+                    "prompt_file": prompt_file_path,
+                    "model": "gemini",
+                    "generated_at": datetime.now().isoformat()
+                }
             )
 
-            result_data = {
-                "pdf_path": pdf_path,
-                "pdf_url": pdf_url,
+            saved_pei = await self.pei_repository.add(pei)
+
+            # Criar embeddings do PEI para RAG
+            await self._create_pei_embeddings(
+                pei_id=saved_pei.id,
+                beneficiary_id=beneficiary_id,
+                pei_data=pei_data
+            )
+
+            return Result.ok({
+                "pei_id": saved_pei.id,
                 "beneficiary_id": beneficiary_id,
-                "generated_at": datetime.now().isoformat(),
-            }
-
-            if return_pdf_buffer:
-                result_data['pdf_content'] = pdf_content_bytes
-                result_data['filename'] = filename
-
-            return Result.ok(result_data)
+                "generated_at": saved_pei.created_at.isoformat(),
+                "message": "PEI gerado e salvo com sucesso. Use a rota /pei/generate-pdf para gerar o PDF."
+            })
 
         except Exception as e:
             return Result.error(f"Erro ao gerar PEI: {str(e)}")
 
-    def _clean_html_for_reportlab(self, html_text: str) -> str:
+    async def _create_pei_embeddings(self, pei_id: int, beneficiary_id: int, pei_data: dict):
         """
-        Limpa e converte HTML para um formato aceito pelo ReportLab.
-        Remove tags complexas e mantém apenas formatação básica suportada.
+        Cria embeddings do PEI dividindo o conteúdo em chunks.
+        Cada seção do JSON será transformada em um chunk com embedding.
         """
-        # Remover tags de tabela complexas que podem causar problemas
-        html_text = re.sub(r'<table[^>]*>.*?</table>', '', html_text, flags=re.DOTALL)
+        try:
+            self.llm_service.configure("gemini")
 
-        # Garantir que tags estejam corretamente fechadas
-        # Substituir tags não suportadas por suportadas
-        html_text = html_text.replace('<strong>', '<b>').replace('</strong>', '</b>')
-        html_text = html_text.replace('<em>', '<i>').replace('</em>', '</i>')
+            # Função recursiva para extrair texto do JSON
+            def extract_text_chunks(data, parent_key=''):
+                chunks = []
 
-        # Remover tags HTML não suportadas pelo ReportLab, mantendo o conteúdo
-        html_text = re.sub(r'<h[1-6][^>]*>', '<b>', html_text)
-        html_text = re.sub(r'</h[1-6]>', '</b>', html_text)
+                if isinstance(data, dict):
+                    for key, value in data.items():
+                        current_key = f"{parent_key}.{key}" if parent_key else key
 
-        # Remover outras tags não suportadas mantendo o conteúdo
-        html_text = re.sub(r'</?div[^>]*>', '', html_text)
-        html_text = re.sub(r'</?span[^>]*>', '', html_text)
-        html_text = re.sub(r'</?section[^>]*>', '', html_text)
-        html_text = re.sub(r'</?article[^>]*>', '', html_text)
+                        if isinstance(value, (dict, list)):
+                            chunks.extend(extract_text_chunks(value, current_key))
+                        elif isinstance(value, str) and value and value != "Não informado":
+                            chunk_text = f"{current_key}: {value}"
+                            chunks.append({
+                                "text": chunk_text,
+                                "section": current_key
+                            })
 
-        # Converter quebras de linha
-        html_text = html_text.replace('<br>', '<br/>')
-        html_text = html_text.replace('<br/><br/>', '<br/>')
+                elif isinstance(data, list):
+                    for idx, item in enumerate(data):
+                        current_key = f"{parent_key}[{idx}]"
+                        if isinstance(item, (dict, list)):
+                            chunks.extend(extract_text_chunks(item, current_key))
+                        elif isinstance(item, str) and item and item != "Não informado":
+                            chunk_text = f"{current_key}: {item}"
+                            chunks.append({
+                                "text": chunk_text,
+                                "section": current_key
+                            })
 
-        return html_text
+                return chunks
 
-    def _markdown_to_story_elements(self, md_content: str, styles: dict):
-        """
-        Converte conteúdo Markdown em elementos do ReportLab (Paragraph, Spacer, etc)
-        """
-        story = []
+            # Extrair chunks de texto do JSON
+            text_chunks = extract_text_chunks(pei_data)
 
-        # Processar linha por linha para melhor controle
-        lines = md_content.split('\n')
-        i = 0
-        in_list = False
+            # Criar embeddings para cada chunk
+            for chunk in text_chunks:
+                embedding = await self.llm_service.generate_embeddings(chunk["text"])
 
-        while i < len(lines):
-            line = lines[i].rstrip()
+                pei_embedding = PEIEmbeddingGemini(
+                    pei_id=pei_id,
+                    beneficiary_id=beneficiary_id,
+                    content=chunk["text"],
+                    meta_data={"section": chunk["section"]},
+                    embedding=embedding
+                )
 
-            # Linha vazia
-            if not line:
-                if in_list:
-                    story.append(Spacer(1, 0.05 * inch))
-                    in_list = False
-                else:
-                    story.append(Spacer(1, 0.1 * inch))
-                i += 1
-                continue
+                await self.pei_embedding_gemini_repository.add(pei_embedding)
 
-            # Headers (##)
-            if line.startswith('##'):
-                level = len(line) - len(line.lstrip('#'))
-                text = line.lstrip('#').strip()
-
-                if level == 2:
-                    story.append(Spacer(1, 0.2 * inch))
-                    story.append(Paragraph(text, styles['heading2']))
-                    story.append(Spacer(1, 0.1 * inch))
-                elif level == 3:
-                    story.append(Spacer(1, 0.15 * inch))
-                    story.append(Paragraph(text, styles['heading3']))
-                elif level == 4:
-                    story.append(Paragraph(f"<b>{text}</b>", styles['normal']))
-                else:
-                    story.append(Paragraph(text, styles['heading2']))
-
-                in_list = False
-                i += 1
-                continue
-
-            # Lista com * ou -
-            if line.lstrip().startswith(('* ', '- ', '• ')):
-                # Determinar nível de indentação
-                indent_level = (len(line) - len(line.lstrip())) // 4
-                text = line.lstrip('*- •').strip()
-
-                # Processar formatação inline (negrito e itálico)
-                text = self._process_inline_formatting(text)
-
-                # Adicionar bullet point
-                bullet = '•' if indent_level == 0 else '◦'
-                indent = '    ' * indent_level
-
-                story.append(Paragraph(f"{indent}{bullet} {text}", styles['list']))
-                in_list = True
-                i += 1
-                continue
-
-            # Texto normal (pode conter formatação inline)
-            if line.strip():
-                # Processar formatação inline
-                text = self._process_inline_formatting(line)
-                story.append(Paragraph(text, styles['normal']))
-                in_list = False
-
-            i += 1
-
-        return story
-
-    def _process_inline_formatting(self, text: str) -> str:
-        """
-        Processa formatação inline do Markdown (negrito e itálico) de forma segura
-        """
-        # Escapar caracteres especiais do XML/HTML
-        text = text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
-
-        # Processar negrito (**texto**)
-        # Usar regex para encontrar pares de **
-        text = re.sub(r'\*\*([^*]+?)\*\*', r'<b>\1</b>', text)
-
-        # Processar itálico (*texto* ou _texto_)
-        # Importante: fazer isso DEPOIS do negrito para evitar conflitos
-        text = re.sub(r'(?<!\*)\*(?!\*)([^*]+?)\*(?!\*)', r'<i>\1</i>', text)
-        text = re.sub(r'_([^_]+?)_', r'<i>\1</i>', text)
-
-        return text
-
-    def _generate_pdf(self, pei_content: str, beneficiary_name: str, beneficiary_id: int, age: str, diagnosis: str, school_name: str) -> io.BytesIO:
-        """Gera um PDF formatado com o conteúdo do PEI"""
-        buffer = io.BytesIO()
-
-        # Criar documento
-        doc = SimpleDocTemplate(
-            buffer,
-            pagesize=A4,
-            rightMargin=72,
-            leftMargin=72,
-            topMargin=72,
-            bottomMargin=36,
-        )
-
-        # Estilos
-        base_styles = getSampleStyleSheet()
-
-        styles = {
-            'title': ParagraphStyle(
-                'CustomTitle',
-                parent=base_styles['Heading1'],
-                fontSize=20,
-                textColor=colors.HexColor('#2c3e50'),
-                spaceAfter=20,
-                alignment=TA_CENTER,
-                fontName='Helvetica-Bold'
-            ),
-            'heading2': ParagraphStyle(
-                'CustomHeading2',
-                parent=base_styles['Heading2'],
-                fontSize=14,
-                textColor=colors.HexColor('#34495e'),
-                spaceAfter=10,
-                spaceBefore=15,
-                fontName='Helvetica-Bold',
-                leftIndent=0
-            ),
-            'heading3': ParagraphStyle(
-                'CustomHeading3',
-                parent=base_styles['Heading3'],
-                fontSize=12,
-                textColor=colors.HexColor('#34495e'),
-                spaceAfter=8,
-                spaceBefore=10,
-                fontName='Helvetica-Bold',
-                leftIndent=0
-            ),
-            'normal': ParagraphStyle(
-                'CustomNormal',
-                parent=base_styles['Normal'],
-                fontSize=10,
-                alignment=TA_JUSTIFY,
-                spaceAfter=6,
-                leading=14,
-                fontName='Helvetica',
-                leftIndent=0
-            ),
-            'list': ParagraphStyle(
-                'CustomList',
-                parent=base_styles['Normal'],
-                fontSize=10,
-                alignment=TA_LEFT,
-                spaceAfter=4,
-                leading=13,
-                fontName='Helvetica',
-                leftIndent=20,
-                firstLineIndent=0
-            )
-        }
-
-        # Conteúdo do PDF
-        story = []
-
-        # Título
-        story.append(Paragraph("PLANO EDUCACIONAL INDIVIDUALIZADO (PEI)", styles['title']))
-        story.append(Spacer(1, 0.2 * inch))
-
-        # Informações do aluno no cabeçalho
-        story.append(Paragraph(f"<b>Nome Completo:</b> {beneficiary_name}", styles['normal']))
-        story.append(Paragraph(f"<b>Idade:</b> {age}", styles['normal']))
-        story.append(Paragraph(f"<b>Diagnóstico:</b> {diagnosis}", styles['normal']))
-        story.append(Paragraph(f"<b>Escola:</b> {school_name}", styles['normal']))
-        story.append(Paragraph(f"<b>Data de Geração:</b> {datetime.now().strftime('%d/%m/%Y %H:%M')}", styles['normal']))
-        story.append(Spacer(1, 0.3 * inch))
-
-        # Processar conteúdo Markdown do PEI
-        pei_elements = self._markdown_to_story_elements(pei_content, styles)
-        story.extend(pei_elements)
-
-        # Gerar PDF
-        doc.build(story)
-        buffer.seek(0)
-
-        return buffer
+        except Exception as e:
+            # Log do erro mas não falha a criação do PEI
+            print(f"Erro ao criar embeddings do PEI: {str(e)}")
