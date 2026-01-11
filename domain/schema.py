@@ -515,8 +515,18 @@ class GeneratePEIRequest(BaseModel):
     beneficiary_id: int
 
 class GeneratePEIResponse(BaseModel):
+    pei_id: int
+    beneficiary_id: int
+    generated_at: str
+    message: str
+
+class GeneratePEIPDFRequest(BaseModel):
+    pei_id: int
+
+class GeneratePEIPDFResponse(BaseModel):
     pdf_path: str
     pdf_url: str
+    pei_id: int
     beneficiary_id: int
     generated_at: str
 
