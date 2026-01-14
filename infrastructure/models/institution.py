@@ -1,9 +1,11 @@
 from pydantic import BaseModel
+from typing import Optional
 
 
 class Institution(BaseModel):
     beneficiary_id: int
-    institution_name: str
+    custom_questions: Optional[dict] = None
+    '''institution_name: str
     institution_cnpj: str | None
     institution_type: str | None
     operating_hours: str | None
@@ -129,4 +131,4 @@ class Institution(BaseModel):
         info += f"Possui Convênios com Órgãos Públicos: {self.has_public_agency_agreements}\n"
         info += f"Método de Acompanhamento do Progresso do Aluno: {self.student_progress_tracking_method}\n"
 
-        return info
+        return info '''

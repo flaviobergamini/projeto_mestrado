@@ -4,9 +4,11 @@ from fastapi.responses import JSONResponse
 from api.dependencies import get_current_user
 from core.kernel.container import Container
 from core.use_case.study_case_use_case import StudyCaseUseCase
+from infrastructure.services.storage_service import StorageService
 from domain.schema import StudyCaseRequest
-from starlette.status import HTTP_404_NOT_FOUND, HTTP_201_CREATED, HTTP_500_INTERNAL_SERVER_ERROR
+from starlette.status import HTTP_404_NOT_FOUND, HTTP_201_CREATED, HTTP_500_INTERNAL_SERVER_ERROR, HTTP_200_OK
 from dependency_injector.wiring import inject, Provide
+import json
 
 from infrastructure.models.study_case import StudyCase
 
@@ -43,3 +45,33 @@ async def create_case_study(
     except Exception as e:
         print(e)
         return JSONResponse(content={"error": "Internal server error"}, status_code=500)
+
+
+@router.get("/questions")
+@inject
+async def get_case_study_questions(
+    storage_service: StorageService = Depends(Provide[Container.storage_service])
+):
+    """
+    Retorna o JSON com as perguntas padrão para estudo de caso.
+    O usuário pode usar esse template e customizá-lo conforme necessário.
+    O template é buscado do Supabase Storage.
+    """
+    try:
+        # Caminho padrão do template no storage
+        template_path = "templates/case_study_questions.json"
+
+        # Buscar arquivo do storage
+        file_content = storage_service.download_file(template_path)
+        questions_template = json.loads(file_content.decode('utf-8'))
+
+        return JSONResponse(
+            status_code=HTTP_200_OK,
+            content=questions_template
+        )
+    except Exception as e:
+        print(f"Erro ao buscar template: {str(e)}")
+        return JSONResponse(
+            status_code=HTTP_404_NOT_FOUND,
+            content={"error": "Template de perguntas não encontrado no storage"}
+        )

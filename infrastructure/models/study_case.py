@@ -1,10 +1,12 @@
 from pydantic import BaseModel
+from typing import Optional
 
 
-class StudyCase(BaseModel):    
+class StudyCase(BaseModel):
     beneficiary_id: int
+    custom_questions: Optional[dict] = None
 
-    # Informações gerais do aluno
+    '''# Informações gerais do aluno
     student_difficulties: str | None
     student_likes_school: bool | None
     observation_question_above: str | None
@@ -171,4 +173,4 @@ class StudyCase(BaseModel):
         info += f"Professor(a) principal: {self.main_teacher_name}\n"
         info += f"Professor(a) auxiliar: {self.assistant_teacher_name}\n"
 
-        return info
+        return info'''

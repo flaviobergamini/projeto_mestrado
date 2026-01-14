@@ -423,8 +423,9 @@ class FileDeleteRequest(BaseModel):
 
 class StudyCaseRequest(BaseModel):
     beneficiary_id: int
+    custom_questions: Optional[dict] = None
 
-    # Informações gerais do aluno
+    '''# Informações gerais do aluno
     student_difficulties: str | None
     student_likes_school: bool | None
     observation_question_above: str | None
@@ -509,7 +510,7 @@ class StudyCaseRequest(BaseModel):
     father_name: str | None
     school_name: str | None
     main_teacher_name: str | None
-    assistant_teacher_name: str | None
+    assistant_teacher_name: str | None'''
 
 class GeneratePEIRequest(BaseModel):
     beneficiary_id: int
@@ -532,7 +533,8 @@ class GeneratePEIPDFResponse(BaseModel):
 
 class InstitutionStudyCaseRequest(BaseModel):
     beneficiary_id: int
-    institution_name: str
+    custom_questions: Optional[dict] = None
+    '''institution_name: str
     institution_cnpj: str | None
     institution_type: str | None
     operating_hours: str | None
@@ -583,4 +585,4 @@ class InstitutionStudyCaseRequest(BaseModel):
     required_documents_for_enrollment: str | None
     issues_periodic_development_reports: str | None
     has_public_agency_agreements: str | None
-    student_progress_tracking_method: str | None
+    student_progress_tracking_method: str | None'''

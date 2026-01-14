@@ -30,7 +30,7 @@ class StudyCaseUseCase:
             self.llm_service.configure("gemini")
             provider = self.llm_service.getProvider()
 
-            chunks = self.llm_service.split_text(study_case.get_info_to_string())
+            chunks = self.llm_service.split_text(f'{study_case.custom_questions}')
 
             for chunk in chunks:
                 embedding = await self.llm_service.generate_embeddings(chunk)
@@ -40,10 +40,17 @@ class StudyCaseUseCase:
                         if isinstance(embedding, list):
                             embedding = np.array(embedding)
 
+                        meta_data = {
+                            "type": "study_case",
+                            "created_by": user_id
+                        }
+                        if study_case.custom_questions:
+                            meta_data["custom_questions"] = study_case.custom_questions
+
                         study_case_embedding = StudyCaseEmbeddingGemini(
                             beneficiary_id=study_case.beneficiary_id,
                             content=chunk,
-                            meta_data={"type": "study_case", "created_by": user_id},
+                            meta_data=meta_data,
                             embedding=embedding,
                             created_at=datetime.utcnow(),
                             updated_at=datetime.utcnow()

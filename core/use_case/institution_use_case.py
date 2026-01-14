@@ -30,7 +30,7 @@ class InstitutionUseCase:
             self.llm_service.configure("gemini")
             provider = self.llm_service.getProvider()
 
-            chunks = self.llm_service.split_text(institution.get_info_to_string())
+            chunks = self.llm_service.split_text(f'{institution.custom_questions}')
 
             for chunk in chunks:
                 embedding = await self.llm_service.generate_embeddings(chunk)
@@ -40,10 +40,17 @@ class InstitutionUseCase:
                         if isinstance(embedding, list):
                             embedding = np.array(embedding)
 
+                        meta_data = {
+                            "type": "institution",
+                            "created_by": user_id
+                        }
+                        if institution.custom_questions:
+                            meta_data["custom_questions"] = institution.custom_questions
+
                         institution_embedding = InstitutionEmbeddingGemini(
                             beneficiary_id=institution.beneficiary_id,
                             content=chunk,
-                            meta_data={"type": "institution", "created_by": user_id},
+                            meta_data=meta_data,
                             embedding=embedding,
                             created_at=datetime.utcnow(),
                             updated_at=datetime.utcnow()
