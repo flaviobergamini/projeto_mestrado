@@ -5,6 +5,7 @@ import re
 from infrastructure.repositories.beneficiary_repository import BeneficiaryRepository
 from infrastructure.repositories.study_case_embedding_gemini_repository import StudyCaseEmbeddingGeminiRepository
 from infrastructure.repositories.institution_embedding_gemini_repository import InstitutionEmbeddingGeminiRepository
+from infrastructure.repositories.diary_embedding_gemini_repository import DiaryEmbeddingGeminiRepository
 from infrastructure.repositories.school_repository import SchoolRepository
 from infrastructure.repositories.pei_repository import PEIRepository
 from infrastructure.repositories.pei_embedding_gemini_repository import PEIEmbeddingGeminiRepository
@@ -21,6 +22,7 @@ class GeneratePEIUseCase:
         beneficiary_repository: BeneficiaryRepository,
         study_case_embedding_gemini_repository: StudyCaseEmbeddingGeminiRepository,
         institution_embedding_gemini_repository: InstitutionEmbeddingGeminiRepository,
+        diary_embedding_gemini_repository: DiaryEmbeddingGeminiRepository,
         school_repository: SchoolRepository,
         pei_repository: PEIRepository,
         pei_embedding_gemini_repository: PEIEmbeddingGeminiRepository,
@@ -30,6 +32,7 @@ class GeneratePEIUseCase:
         self.beneficiary_repository = beneficiary_repository
         self.study_case_embedding_gemini_repository = study_case_embedding_gemini_repository
         self.institution_embedding_gemini_repository = institution_embedding_gemini_repository
+        self.diary_embedding_gemini_repository = diary_embedding_gemini_repository
         self.school_repository = school_repository
         self.pei_repository = pei_repository
         self.pei_embedding_gemini_repository = pei_embedding_gemini_repository
@@ -83,6 +86,13 @@ class GeneratePEIUseCase:
                 limit=20
             )
 
+            # Buscar embeddings dos diários (se existirem)
+            diary_embeddings = await self.diary_embedding_gemini_repository.search_similar_by_beneficiary(
+                query_embedding=prompt_embedding,
+                beneficiary_id=beneficiary_id,
+                limit=20
+            )
+
             # Construir informações estruturadas do beneficiário
             beneficiary_info = f"""=== INFORMAÇÕES DO BENEFICIÁRIO ===
 Nome Completo: {beneficiary.name or 'Não informado'}
@@ -102,6 +112,12 @@ Escola: {school_name}
             if institution_embeddings:
                 context_parts.append("\n=== INFORMAÇÕES DA INSTITUIÇÃO ===\n")
                 for emb in institution_embeddings:
+                    context_parts.append(emb.content)
+                    context_parts.append("\n")
+
+            if diary_embeddings:
+                context_parts.append("\n=== INFORMAÇÕES DOS DIÁRIOS ===\n")
+                for emb in diary_embeddings:
                     context_parts.append(emb.content)
                     context_parts.append("\n")
 

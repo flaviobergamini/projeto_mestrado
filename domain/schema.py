@@ -75,6 +75,10 @@ class DiaryCreateRequest(BaseModel):
     adaptations_needed: Optional[str] = None
     achievements: Optional[str] = None
 
+    # Mídia (fotos e vídeos)
+    photos: Optional[dict] = None  # Lista de URLs/paths de fotos
+    videos: Optional[dict] = None  # Lista de URLs/paths de vídeos
+
 
 class DiaryUpdateRequest(BaseModel):
     """Schema para atualização de registro diário"""
@@ -120,6 +124,10 @@ class DiaryUpdateRequest(BaseModel):
     teacher_suggestions: Optional[str] = None
     adaptations_needed: Optional[str] = None
     achievements: Optional[str] = None
+
+    # Mídia (fotos e vídeos)
+    photos: Optional[dict] = None  # Lista de URLs/paths de fotos
+    videos: Optional[dict] = None  # Lista de URLs/paths de vídeos
 
 
 class DiaryResponse(BaseModel):
@@ -169,6 +177,10 @@ class DiaryResponse(BaseModel):
     teacher_suggestions: Optional[str] = None
     adaptations_needed: Optional[str] = None
     achievements: Optional[str] = None
+
+    # Mídia (fotos e vídeos)
+    photos: Optional[dict] = None  # Lista de URLs/paths de fotos
+    videos: Optional[dict] = None  # Lista de URLs/paths de vídeos
 
     created_at: str
     updated_at: str
@@ -586,3 +598,9 @@ class InstitutionStudyCaseRequest(BaseModel):
     issues_periodic_development_reports: str | None
     has_public_agency_agreements: str | None
     student_progress_tracking_method: str | None'''
+
+
+class DiaryConceptualRequest(BaseModel):
+    """Schema para criação de registro diário conceitual (texto único)"""
+    beneficiary_id: int
+    custom_questions: Optional[dict] = None

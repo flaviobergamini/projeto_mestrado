@@ -4,6 +4,7 @@ from dependency_injector.wiring import Provide, inject
 from core.services.jwt_service import JwtService
 from core.use_case.study_case_use_case import StudyCaseUseCase
 from core.use_case.institution_use_case import InstitutionUseCase
+from core.use_case.diary_conceptual_use_case import DiaryConceptualUseCase
 from core.use_case.generate_pei_use_case import GeneratePEIUseCase
 from core.use_case.generate_pei_pdf_use_case import GeneratePEIPDFUseCase
 from infrastructure.services.storage_service import StorageService
@@ -657,11 +658,19 @@ class Container(containers.DeclarativeContainer):
         institution_embedding_gemini_repository=institution_embedding_gemini_repository
     )
 
+    diary_conceptual_use_case=providers.Factory(
+        DiaryConceptualUseCase,
+        llm_service=llm_service,
+        beneficiary_repository=beneficiary_repository,
+        diary_embedding_gemini_repository=diary_embedding_gemini_repository
+    )
+
     generate_pei_use_case=providers.Factory(
         GeneratePEIUseCase,
         beneficiary_repository=beneficiary_repository,
         study_case_embedding_gemini_repository=study_case_embedding_gemini_repository,
         institution_embedding_gemini_repository=institution_embedding_gemini_repository,
+        diary_embedding_gemini_repository=diary_embedding_gemini_repository,
         school_repository=school_repository,
         pei_repository=pei_repository,
         pei_embedding_gemini_repository=pei_embedding_gemini_repository,

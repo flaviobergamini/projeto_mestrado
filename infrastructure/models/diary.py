@@ -1,4 +1,4 @@
-from sqlalchemy import ForeignKey, Integer, DateTime, String, Text, Date
+from sqlalchemy import ForeignKey, Integer, DateTime, String, Text, Date, JSON
 from sqlalchemy.sql import func
 from infrastructure.database_context.database import Base
 from sqlalchemy.orm import Mapped, relationship, mapped_column
@@ -75,6 +75,10 @@ class Diary(Base):
 
     # Conquistas e progressos
     achievements: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # Mídia (fotos e vídeos)
+    photos: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)  # Lista de URLs/paths de fotos
+    videos: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)  # Lista de URLs/paths de vídeos
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
