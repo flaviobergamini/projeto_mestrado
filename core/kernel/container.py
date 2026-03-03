@@ -2,6 +2,12 @@ from dependency_injector import containers, providers
 from dependency_injector.wiring import Provide, inject
 
 from core.services.jwt_service import JwtService
+from core.use_case.study_case_use_case import StudyCaseUseCase
+from core.use_case.institution_use_case import InstitutionUseCase
+from core.use_case.diary_conceptual_use_case import DiaryConceptualUseCase
+from core.use_case.generate_pei_use_case import GeneratePEIUseCase
+from core.use_case.generate_pei_pdf_use_case import GeneratePEIPDFUseCase
+from infrastructure.services.storage_service import StorageService
 from core.use_case.create_beneficiary_use_case import CreateBeneficiaryUseCase
 from core.use_case.create_health_plan_use_case import CreateHealthPlanUseCase
 from core.use_case.create_school_use_case import CreateSchoolUseCase
@@ -71,13 +77,27 @@ from core.use_case.list_therapeutic_sessions_use_case import ListTherapeuticSess
 from core.use_case.get_therapeutic_sessions_by_id_use_case import GetTherapeuticSessionsByIdUseCase
 from core.use_case.update_therapeutic_sessions_use_case import UpdateTherapeuticSessionsUseCase
 from core.use_case.delete_therapeutic_sessions_use_case import DeleteTherapeuticSessionsUseCase
+from core.use_case.create_diary_use_case import CreateDiaryUseCase
+from core.use_case.list_diary_use_case import ListDiaryUseCase
+from core.use_case.get_diary_by_id_use_case import GetDiaryByIdUseCase
+from core.use_case.get_diary_by_beneficiary_use_case import GetDiaryByBeneficiaryUseCase
+from core.use_case.update_diary_use_case import UpdateDiaryUseCase
+from core.use_case.delete_diary_use_case import DeleteDiaryUseCase
+from core.use_case.generate_diary_embedding_use_case import GenerateDiaryEmbeddingUseCase
+from core.use_case.query_diary_rag_use_case import QueryDiaryRAGUseCase
+from core.use_case.analyze_behavior_patterns_use_case import AnalyzeBehaviorPatternsUseCase
 from infrastructure.database_context.database import Database
 from infrastructure.repositories.beneficiary_repository import BeneficiaryRepository
+from infrastructure.repositories.diary_repository import DiaryRepository
 from infrastructure.repositories.clinic_repository import ClinicRepository
 from infrastructure.repositories.professional_repository import ProfessionalRepository
 from infrastructure.repositories.diary_embedding_gemini_repository import DiaryEmbeddingGeminiRepository
 from infrastructure.repositories.diary_embedding_groq_repository import DiaryEmbeddingGroqRepository
 from infrastructure.repositories.diary_embedding_repository import DiaryEmbeddingRepository
+from infrastructure.repositories.study_case_embedding_gemini_repository import StudyCaseEmbeddingGeminiRepository
+from infrastructure.repositories.institution_embedding_gemini_repository import InstitutionEmbeddingGeminiRepository
+from infrastructure.repositories.pei_repository import PEIRepository
+from infrastructure.repositories.pei_embedding_gemini_repository import PEIEmbeddingGeminiRepository
 from infrastructure.repositories.health_plan_repository import HealthPlanRepository
 from infrastructure.repositories.school_repository import SchoolRepository
 from infrastructure.repositories.user_repository import UserRepository
@@ -94,7 +114,7 @@ from infrastructure.services.llm_service import LLMService
 
 class Container(containers.DeclarativeContainer):
     wiring_config = containers.WiringConfiguration(
-        modules=["api.diary_routes", "api.auth_routes", "api.beneficiary_routes", "api.health_plan_routes", "api.school_routes", "api.clinic_routes", "api.professional_routes", "api.beneficiary_clinic_routes", "api.autismia_routes", "api.evaluation_routes", "api.family_reunion_routes", "api.school_feedback_routes", "api.supervisor_routes", "api.therapeutic_plan_routes", "api.therapeutic_sessions_routes"],
+        modules=["api.diary_routes", "api.auth_routes", "api.beneficiary_routes", "api.health_plan_routes", "api.school_routes", "api.clinic_routes", "api.professional_routes", "api.beneficiary_clinic_routes", "api.autismia_routes", "api.evaluation_routes", "api.family_reunion_routes", "api.school_feedback_routes", "api.supervisor_routes", "api.therapeutic_plan_routes", "api.therapeutic_sessions_routes", "api.storage_routes", "api.case_study_routes", "api.institution_routes", "api.pei_routes"],
     )
 
     config = providers.Configuration()
@@ -105,6 +125,8 @@ class Container(containers.DeclarativeContainer):
     llm_service = providers.Factory(LLMService)
 
     jwt_service = providers.Factory(JwtService)
+
+    storage_service = providers.Factory(StorageService)
 
     # Repositories
     diary_embedding_repository=providers.Factory(
@@ -133,6 +155,22 @@ class Container(containers.DeclarativeContainer):
 
     diary_embedding_gemini_repository = providers.Factory(
         DiaryEmbeddingGeminiRepository, database=database
+    )
+
+    study_case_embedding_gemini_repository = providers.Factory(
+        StudyCaseEmbeddingGeminiRepository, database=database
+    )
+
+    institution_embedding_gemini_repository = providers.Factory(
+        InstitutionEmbeddingGeminiRepository, database=database
+    )
+
+    pei_repository = providers.Factory(
+        PEIRepository, database=database
+    )
+
+    pei_embedding_gemini_repository = providers.Factory(
+        PEIEmbeddingGeminiRepository, database=database
     )
 
     clinic_repository = providers.Factory(
@@ -173,6 +211,10 @@ class Container(containers.DeclarativeContainer):
 
     therapeutic_sessions_repository = providers.Factory(
         TherapeuticSessionsRepository, database=database
+    )
+
+    diary_repository = providers.Factory(
+        DiaryRepository, database=database
     )
 
     # Use cases
@@ -537,4 +579,111 @@ class Container(containers.DeclarativeContainer):
     delete_therapeutic_sessions_use_case=providers.Factory(
         DeleteTherapeuticSessionsUseCase,
         therapeutic_sessions_repository=therapeutic_sessions_repository
+    )
+
+    generate_diary_embedding_use_case=providers.Factory(
+        GenerateDiaryEmbeddingUseCase,
+        diary_repository=diary_repository,
+        diary_embedding_gemini_repository=diary_embedding_gemini_repository,
+        llm_service=llm_service
+    )
+
+    # Diary use cases
+    create_diary_use_case=providers.Factory(
+        CreateDiaryUseCase,
+        diary_repository=diary_repository,
+        beneficiary_repository=beneficiary_repository,
+        generate_embedding_use_case=generate_diary_embedding_use_case
+    )
+
+    list_diary_use_case=providers.Factory(
+        ListDiaryUseCase,
+        diary_repository=diary_repository
+    )
+
+    get_diary_by_id_use_case=providers.Factory(
+        GetDiaryByIdUseCase,
+        diary_repository=diary_repository
+    )
+
+    get_diary_by_beneficiary_use_case=providers.Factory(
+        GetDiaryByBeneficiaryUseCase,
+        diary_repository=diary_repository,
+        beneficiary_repository=beneficiary_repository
+    )
+
+    update_diary_use_case=providers.Factory(
+        UpdateDiaryUseCase,
+        diary_repository=diary_repository
+    )
+
+    delete_diary_use_case=providers.Factory(
+        DeleteDiaryUseCase,
+        diary_repository=diary_repository
+    )
+
+    # RAG and AI Analysis use cases
+    generate_diary_embedding_use_case=providers.Factory(
+        GenerateDiaryEmbeddingUseCase,
+        diary_repository=diary_repository,
+        diary_embedding_gemini_repository=diary_embedding_gemini_repository,
+        llm_service=llm_service
+    )
+
+    query_diary_rag_use_case=providers.Factory(
+        QueryDiaryRAGUseCase,
+        diary_embedding_gemini_repository=diary_embedding_gemini_repository,
+        beneficiary_repository=beneficiary_repository,
+        llm_service=llm_service
+    )
+
+    analyze_behavior_patterns_use_case=providers.Factory(
+        AnalyzeBehaviorPatternsUseCase,
+        diary_repository=diary_repository,
+        beneficiary_repository=beneficiary_repository,
+        llm_service=llm_service
+    )
+
+    study_case_use_case=providers.Factory(
+        StudyCaseUseCase,
+        llm_service=llm_service,
+        beneficiary_repository=beneficiary_repository,
+        study_case_embedding_gemini_repository=study_case_embedding_gemini_repository
+    )
+
+    institution_use_case=providers.Factory(
+        InstitutionUseCase,
+        llm_service=llm_service,
+        beneficiary_repository=beneficiary_repository,
+        institution_embedding_gemini_repository=institution_embedding_gemini_repository
+    )
+
+    diary_conceptual_use_case=providers.Factory(
+        DiaryConceptualUseCase,
+        llm_service=llm_service,
+        beneficiary_repository=beneficiary_repository,
+        diary_embedding_gemini_repository=diary_embedding_gemini_repository
+    )
+
+    generate_pei_use_case=providers.Factory(
+        GeneratePEIUseCase,
+        beneficiary_repository=beneficiary_repository,
+        study_case_embedding_gemini_repository=study_case_embedding_gemini_repository,
+        institution_embedding_gemini_repository=institution_embedding_gemini_repository,
+        diary_embedding_gemini_repository=diary_embedding_gemini_repository,
+        school_repository=school_repository,
+        pei_repository=pei_repository,
+        pei_embedding_gemini_repository=pei_embedding_gemini_repository,
+        llm_service=llm_service,
+        storage_service=storage_service
+    )
+
+    generate_pei_pdf_use_case=providers.Factory(
+        GeneratePEIPDFUseCase,
+        beneficiary_repository=beneficiary_repository,
+        pei_repository=pei_repository,
+        pei_embedding_gemini_repository=pei_embedding_gemini_repository,
+        school_repository=school_repository,
+        llm_service=llm_service,
+        storage_service=storage_service
     )

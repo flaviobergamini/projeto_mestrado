@@ -30,3 +30,11 @@ langchain-text-splitters==0.3.9
 
 # Machine Learning & Embeddings
 numpy>=2.2.0,<2.4.0
+
+# Storage
+supabase==2.23.2
+python-multipart==0.0.18
+
+# PDF Generation
+reportlab==4.2.5
+markdown==3.10

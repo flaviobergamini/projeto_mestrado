@@ -25,4 +25,4 @@ class LoginUserUseCase:
             return Result.ok({"access_token": token})
 
         except Exception as e:
-            return Result.error(f"Erro ao cadastrar usuário")
+            return Result.error(f"Erro ao buscar usuário: {e}")

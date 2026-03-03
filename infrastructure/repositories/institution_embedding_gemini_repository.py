@@ -1,28 +1,29 @@
 import numpy as np
 from sqlalchemy import select
 from infrastructure.database_context.database import Database
-from infrastructure.models.diary_embedding_gemini import DiaryEmbeddingGemini
+from infrastructure.models.institution_embedding_gemini import InstitutionEmbeddingGemini
 
 
-class DiaryEmbeddingGeminiRepository:
+class InstitutionEmbeddingGeminiRepository:
     def __init__(self, database: Database) -> None:
         self.database = database
 
-    async def add(self, diary_embedding: DiaryEmbeddingGemini) -> DiaryEmbeddingGemini:
+    async def add(self, institution_embedding: InstitutionEmbeddingGemini) -> InstitutionEmbeddingGemini:
         async with self.database.session() as session:
-            session.add(diary_embedding)
+            session.add(institution_embedding)
             await session.commit()
-            await session.refresh(diary_embedding)
+            await session.refresh(institution_embedding)
 
-            return diary_embedding
+            return institution_embedding
 
     async def search_similar_embeddings(self, query_embedding: list[float], limit: int = 5):
+        """Busca embeddings similares em todas as instituições"""
         embedding = np.array(query_embedding)
 
         async with self.database.session() as session:
             result = await session.execute(
-                select(DiaryEmbeddingGemini)
-                .order_by(DiaryEmbeddingGemini.embedding.cosine_distance(embedding))
+                select(InstitutionEmbeddingGemini)
+                .order_by(InstitutionEmbeddingGemini.embedding.cosine_distance(embedding))
                 .limit(limit)
             )
 
@@ -36,9 +37,9 @@ class DiaryEmbeddingGeminiRepository:
 
         async with self.database.session() as session:
             result = await session.execute(
-                select(DiaryEmbeddingGemini)
+                select(InstitutionEmbeddingGemini)
                 .filter_by(beneficiary_id=beneficiary_id)
-                .order_by(DiaryEmbeddingGemini.embedding.cosine_distance(embedding))
+                .order_by(InstitutionEmbeddingGemini.embedding.cosine_distance(embedding))
                 .limit(limit)
             )
 
@@ -48,16 +49,16 @@ class DiaryEmbeddingGeminiRepository:
         """Retorna todos os embeddings de um beneficiário"""
         async with self.database.session() as session:
             result = await session.execute(
-                select(DiaryEmbeddingGemini).filter_by(beneficiary_id=beneficiary_id)
+                select(InstitutionEmbeddingGemini).filter_by(beneficiary_id=beneficiary_id)
             )
             return result.scalars().all()
 
-    async def delete_by_diary_id(self, diary_id: int) -> bool:
-        """Remove embeddings vinculados a um diário específico"""
+    async def delete_by_beneficiary(self, beneficiary_id: int) -> bool:
+        """Remove todos os embeddings de um beneficiário específico"""
         try:
             async with self.database.session() as session:
                 result = await session.execute(
-                    select(DiaryEmbeddingGemini).filter_by(diary_id=diary_id)
+                    select(InstitutionEmbeddingGemini).filter_by(beneficiary_id=beneficiary_id)
                 )
                 embeddings = result.scalars().all()
 

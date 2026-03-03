@@ -26,6 +26,7 @@ class Beneficiary(Base):
     audits = relationship("Audit", back_populates="beneficiary", cascade="all, delete-orphan")
     clinics = relationship("BeneficiaryClinic", back_populates="beneficiary", cascade="all, delete-orphan")
     evaluations = relationship("Evaluation", back_populates="beneficiary", cascade="all, delete-orphan")
-    family_reunions = relationship("FamilyReunion", back_populates="beneficiary", cascade="all, delete-orphan") 
+    family_reunions = relationship("FamilyReunion", back_populates="beneficiary", cascade="all, delete-orphan")
     school_feedbacks = relationship("SchoolFeedback", back_populates="beneficiary", cascade="all, delete-orphan")
     therapeutic_plans = relationship("TherapeuticPlan", back_populates="beneficiary", cascade="all, delete-orphan")
+    diaries = relationship("Diary", back_populates="beneficiary", cascade="all, delete-orphan")
