@@ -204,6 +204,12 @@ class ResetPassword(BaseModel):
     token: str
     new_password: str
 
+class VerifyEmail(BaseModel):
+    token: str
+
+class RefreshToken(BaseModel):
+    refresh_token: str
+
 class SchoolRequest(BaseModel):
     name: str
     address: str

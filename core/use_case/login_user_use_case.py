@@ -17,12 +17,18 @@ class LoginUserUseCase:
                 return Result.not_found("Usuário não encontrado")
             
             check_password = self.jwt_service.verify_password(password, user.password)
-            
+
             if not check_password:
                 return Result.unauthorized("Senha inválida")
-            
+
             token = self.jwt_service.create_access_token({"sub": str(user.id)})
-            return Result.ok({"access_token": token})
+            refresh_token = self.jwt_service.create_refresh_token({"sub": str(user.id)})
+
+            return Result.ok({
+                "access_token": token,
+                "refresh_token": refresh_token,
+                "email_verified": user.email_verified
+            })
 
         except Exception as e:
             return Result.error(f"Erro ao buscar usuário: {e}")

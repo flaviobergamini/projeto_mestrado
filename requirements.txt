@@ -38,3 +38,6 @@ python-multipart==0.0.18
 # PDF Generation
 reportlab==4.2.5
 markdown==3.10
+
+# Email
+mailersend==2.0.0
