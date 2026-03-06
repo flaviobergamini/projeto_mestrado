@@ -25,6 +25,7 @@ from core.use_case.get_beneficiary_use_case import GetBeneficiaryByIdUseCase
 from core.use_case.get_health_plan_by_id_use_case import GetHealthPlanByIdUseCase
 from core.use_case.get_school_by_id_use_case import GetSchoolByIdUseCase
 from core.use_case.list_beneficiary_use_case import ListBeneficiaryUseCase
+from core.use_case.list_beneficiaries_by_user_use_case import ListBeneficiariesByUserUseCase
 from core.use_case.list_health_plan_use_case import ListHealthPlanUseCase
 from core.use_case.list_school_use_case import ListSchoolUseCase
 from core.use_case.login_user_use_case import LoginUserUseCase
@@ -107,6 +108,7 @@ from infrastructure.repositories.health_plan_repository import HealthPlanReposit
 from infrastructure.repositories.school_repository import SchoolRepository
 from infrastructure.repositories.user_repository import UserRepository
 from infrastructure.repositories.beneficiary_clinic_repository import BeneficiaryClinicRepository
+from infrastructure.repositories.user_beneficiary_repository import UserBeneficiaryRepository
 from infrastructure.repositories.autismia_repository import AutismiaRepository
 from infrastructure.repositories.evaluation_repository import EvaluationRepository
 from infrastructure.repositories.family_reunion_repository import FamilyReunionRepository
@@ -190,6 +192,10 @@ class Container(containers.DeclarativeContainer):
 
     beneficiary_clinic_repository = providers.Factory(
         BeneficiaryClinicRepository, database=database
+    )
+
+    user_beneficiary_repository = providers.Factory(
+        UserBeneficiaryRepository, database=database
     )
 
     autismia_repository = providers.Factory(
@@ -337,6 +343,11 @@ class Container(containers.DeclarativeContainer):
     list_beneficiary_use_case=providers.Factory(
         ListBeneficiaryUseCase,
         beneficiary_repository=beneficiary_repository
+    )
+
+    list_beneficiaries_by_user_use_case=providers.Factory(
+        ListBeneficiariesByUserUseCase,
+        user_beneficiary_repository=user_beneficiary_repository
     )
 
     get_beneficiary_use_case=providers.Factory(

@@ -20,3 +20,4 @@ class User(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 
     diaries = relationship("Diary", back_populates="user", cascade="all, delete-orphan")
+    beneficiaries = relationship("UserBeneficiary", back_populates="user", cascade="all, delete-orphan")

@@ -18,6 +18,7 @@ from .therapeutic_plan import TherapeuticPlan
 from .therapeutic_sessions import TherapeuticSessions
 from .diary_embedding_groq import DiaryEmbeddingGroq
 from .diary_embedding_gemini import DiaryEmbeddingGemini
+from .user_beneficiary import UserBeneficiary
 
 __all__ = [
     "User",
@@ -40,4 +41,5 @@ __all__ = [
     "TherapeuticSessions",
     "DiaryEmbeddingGroq",
     "DiaryEmbeddingGemini",
+    "UserBeneficiary",
 ]

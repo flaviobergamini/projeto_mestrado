@@ -30,3 +30,4 @@ class Beneficiary(Base):
     school_feedbacks = relationship("SchoolFeedback", back_populates="beneficiary", cascade="all, delete-orphan")
     therapeutic_plans = relationship("TherapeuticPlan", back_populates="beneficiary", cascade="all, delete-orphan")
     diaries = relationship("Diary", back_populates="beneficiary", cascade="all, delete-orphan")
+    users = relationship("UserBeneficiary", back_populates="beneficiary", cascade="all, delete-orphan")
