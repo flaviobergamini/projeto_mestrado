@@ -22,10 +22,6 @@ class Settings:
     SUPABASE_KEY = os.getenv("SUPABASE_KEY")
     SUPABASE_BUCKET = os.getenv("SUPABASE_BUCKET", "agents-buket")
 
-    # Email
-    MAILERSEND_API_KEY = os.getenv("MAILERSEND_API_KEY")
-    MAILERSEND_FROM_EMAIL = os.getenv("MAILERSEND_FROM_EMAIL")
-    MAILERSEND_FROM_NAME = os.getenv("MAILERSEND_FROM_NAME", "Agents")
     FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
 
 settings = Settings()

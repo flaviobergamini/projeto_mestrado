@@ -1,34 +1,49 @@
 from core.kernel.result import Result
 from core.services.jwt_service import JwtService
-from infrastructure.models.users import User
 from infrastructure.repositories.user_repository import UserRepository
+from infrastructure.services.supabase_auth_service import SupabaseAuthService
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class LoginUserUseCase:
-    def __init__(self, user_repository: UserRepository, jwt_service: JwtService):
+    def __init__(self, user_repository: UserRepository, jwt_service: JwtService, supabase_auth_service: SupabaseAuthService):
         self.user_repository = user_repository
         self.jwt_service = jwt_service
+        self.supabase_auth_service = supabase_auth_service
 
     async def execute(self, email: str, password: str):
         try:
-            user = await self.user_repository.get_by_email(email)
+            try:
+                response = self.supabase_auth_service.sign_in(email, password)
+            except Exception as e:
+                error_msg = str(e).lower()
+                if "invalid login credentials" in error_msg or "invalid credentials" in error_msg:
+                    return Result.unauthorized("Email ou senha inválidos")
+                if "email not confirmed" in error_msg:
+                    return Result.unauthorized("Email não confirmado. Verifique sua caixa de entrada.")
+                logger.error(f"Erro ao autenticar no Supabase: {str(e)}")
+                return Result.error("Erro ao autenticar usuário")
 
+            if not response.user:
+                return Result.unauthorized("Email ou senha inválidos")
+
+            user = await self.user_repository.get_by_email(email)
             if not user:
                 return Result.not_found("Usuário não encontrado")
-            
-            check_password = self.jwt_service.verify_password(password, user.password)
-
-            if not check_password:
-                return Result.unauthorized("Senha inválida")
 
             token = self.jwt_service.create_access_token({"sub": str(user.id)})
             refresh_token = self.jwt_service.create_refresh_token({"sub": str(user.id)})
 
+            email_verified = response.user.email_confirmed_at is not None
+
             return Result.ok({
                 "access_token": token,
                 "refresh_token": refresh_token,
-                "email_verified": user.email_verified
+                "email_verified": email_verified
             })
 
         except Exception as e:
-            return Result.error(f"Erro ao buscar usuário: {e}")
+            logger.error(f"Erro ao fazer login: {str(e)}")
+            return Result.error("Erro ao autenticar usuário")

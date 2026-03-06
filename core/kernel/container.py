@@ -12,7 +12,7 @@ from core.use_case.diary_conceptual_use_case import DiaryConceptualUseCase
 from core.use_case.generate_pei_use_case import GeneratePEIUseCase
 from core.use_case.generate_pei_pdf_use_case import GeneratePEIPDFUseCase
 from infrastructure.services.storage_service import StorageService
-from infrastructure.services.email_service import EmailService
+from infrastructure.services.supabase_auth_service import SupabaseAuthService
 from core.use_case.create_beneficiary_use_case import CreateBeneficiaryUseCase
 from core.use_case.create_health_plan_use_case import CreateHealthPlanUseCase
 from core.use_case.create_school_use_case import CreateSchoolUseCase
@@ -135,7 +135,7 @@ class Container(containers.DeclarativeContainer):
 
     storage_service = providers.Factory(StorageService)
 
-    email_service = providers.Factory(EmailService)
+    supabase_auth_service = providers.Factory(SupabaseAuthService)
 
     # Repositories
     diary_embedding_repository=providers.Factory(
@@ -251,32 +251,28 @@ class Container(containers.DeclarativeContainer):
         CreateUserUseCase,
         user_repository=user_repository,
         jwt_service=jwt_service,
-        email_service=email_service
+        supabase_auth_service=supabase_auth_service
     )
 
     login_user_use_case=providers.Factory(
         LoginUserUseCase,
         user_repository=user_repository,
-        jwt_service=jwt_service
+        jwt_service=jwt_service,
+        supabase_auth_service=supabase_auth_service
     )
 
     verify_email_use_case=providers.Factory(
         VerifyEmailUseCase,
-        user_repository=user_repository,
-        jwt_service=jwt_service
     )
 
     forgot_password_use_case=providers.Factory(
         ForgotPasswordUseCase,
-        user_repository=user_repository,
-        jwt_service=jwt_service,
-        email_service=email_service
+        supabase_auth_service=supabase_auth_service
     )
 
     reset_password_use_case=providers.Factory(
         ResetPasswordUseCase,
-        user_repository=user_repository,
-        jwt_service=jwt_service
+        supabase_auth_service=supabase_auth_service
     )
 
     refresh_token_use_case=providers.Factory(

@@ -201,7 +201,8 @@ class ForgotPassword(BaseModel):
     email: EmailStr
 
 class ResetPassword(BaseModel):
-    token: str
+    access_token: str
+    refresh_token: str
     new_password: str
 
 class VerifyEmail(BaseModel):

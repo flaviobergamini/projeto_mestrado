@@ -135,7 +135,7 @@ async def reset_password(
     use_case: ResetPasswordUseCase = Depends(Provide[Container.reset_password_use_case])
 ):
     try:
-        response = await use_case.execute(request.token, request.new_password)
+        response = await use_case.execute(request.access_token, request.refresh_token, request.new_password)
 
         if response.is_bad_request:
             return JSONResponse(
