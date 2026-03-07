@@ -159,6 +159,25 @@ async def reset_password(
     except:
         return JSONResponse(content={"error": "Internal server error"}, status_code=HTTP_500_INTERNAL_SERVER_ERROR)
 
+_NAVBAR = """
+  <header style="background:linear-gradient(135deg,#1a237e 0%,#1565c0 55%,#0288d1 100%);padding:0 24px;">
+    <div style="display:flex;align-items:center;padding:14px 0;min-height:64px;">
+      <svg style="width:28px;height:28px;flex-shrink:0;margin-right:12px;opacity:.92;" viewBox="0 0 24 24" fill="white">
+        <path d="M20.5 11H19V7c0-1.1-.9-2-2-2h-4V3.5C13 2.12 11.88 1 10.5 1S8 2.12 8 3.5V5H4c-1.1 0-1.99.9-1.99 2v3.8H3.5c1.49 0 2.7 1.21 2.7 2.7s-1.21 2.7-2.7 2.7H2V20c0 1.1.9 2 2 2h3.8v-1.5c0-1.49 1.21-2.7 2.7-2.7s2.7 1.21 2.7 2.7V22H17c1.1 0 2-.9 2-2v-4h1.5c1.38 0 2.5-1.12 2.5-2.5S21.88 11 20.5 11z"/>
+      </svg>
+      <div>
+        <div style="color:#fff;font-size:17px;font-weight:700;line-height:1.2;letter-spacing:.2px;">
+          Sistema de Apoio — Educação Inclusiva
+        </div>
+        <div style="color:rgba(255,255,255,.72);font-size:10px;letter-spacing:1.2px;text-transform:uppercase;margin-top:2px;">
+          Apoio ao Desenvolvimento de Crianças Autistas
+        </div>
+      </div>
+    </div>
+    <div style="height:4px;background:linear-gradient(90deg,#e53935 0%,#f57c00 20%,#fdd835 40%,#43a047 60%,#1e88e5 80%,#8e24aa 100%);margin:0 -24px;"></div>
+  </header>
+"""
+
 @router.get("/confirm-email", response_class=HTMLResponse)
 async def confirm_email(request: Request):
     has_error = "error" in request.query_params or "error_description" in request.query_params
@@ -170,71 +189,70 @@ async def confirm_email(request: Request):
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Erro na confirmação — Agente IA TEA</title>
+  <title>Erro na confirmação — Sistema de Apoio</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <style>
-    body {{ background: #F0F4FF; min-height: 100vh; display: flex; align-items: center; justify-content: center; font-family: 'Segoe UI', sans-serif; }}
-    .card {{ border: none; border-radius: 16px; box-shadow: 0 8px 32px rgba(79,70,229,.12); max-width: 480px; width: 100%; }}
-    .card-header {{ background: linear-gradient(135deg,#4F46E5,#7C3AED); border-radius: 16px 16px 0 0; padding: 2rem; text-align: center; }}
-    .icon-circle {{ width: 72px; height: 72px; border-radius: 50%; background: rgba(255,255,255,.15); display: flex; align-items: center; justify-content: center; margin: 0 auto 1rem; }}
-    .icon-circle svg {{ width: 36px; height: 36px; }}
+    body {{ margin:0; background:#f5f5f5; min-height:100vh; font-family:Arial,Helvetica,sans-serif; }}
+    .page-content {{ display:flex; align-items:center; justify-content:center; min-height:calc(100vh - 72px); padding:32px 16px; }}
+    .card {{ border:none; border-radius:12px; box-shadow:0 4px 20px rgba(0,0,0,.10); max-width:460px; width:100%; overflow:hidden; }}
+    .card-icon {{ width:64px; height:64px; border-radius:50%; background:#ffebee; display:flex; align-items:center; justify-content:center; margin:0 auto 16px; }}
   </style>
 </head>
 <body>
-  <div class="card">
-    <div class="card-header">
-      <div class="icon-circle">
-        <svg fill="none" viewBox="0 0 24 24" stroke="white" stroke-width="2">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
-        </svg>
+  {_NAVBAR}
+  <div class="page-content">
+    <div class="card">
+      <div class="card-body p-4 text-center">
+        <div class="card-icon">
+          <svg width="32" height="32" fill="none" viewBox="0 0 24 24" stroke="#d32f2f" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </div>
+        <h5 class="fw-bold mb-2" style="color:#c62828;">Erro na confirmação</h5>
+        <p class="text-secondary mb-3">{error_desc}</p>
+        <div class="alert" style="background:#fff8e1;border-left:4px solid #f57c00;border-radius:6px;text-align:left;font-size:13px;color:#e65100;">
+          Solicite um novo link de confirmação ou entre em contato com o suporte.
+        </div>
       </div>
-      <h4 class="text-white fw-bold mb-1">Erro na confirmação</h4>
-      <p class="text-white opacity-75 mb-0 small">Agente IA TEA</p>
-    </div>
-    <div class="card-body p-4 text-center">
-      <p class="text-secondary mb-4">{error_desc}</p>
-      <p class="text-muted small">Solicite um novo link de confirmação ou entre em contato com o suporte.</p>
     </div>
   </div>
 </body>
 </html>"""
         return HTMLResponse(content=html, status_code=400)
 
-    html = """<!DOCTYPE html>
+    html = f"""<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Email confirmado — Agente IA TEA</title>
+  <title>Email confirmado — Sistema de Apoio</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <style>
-    body { background: #F0F4FF; min-height: 100vh; display: flex; align-items: center; justify-content: center; font-family: 'Segoe UI', sans-serif; }
-    .card { border: none; border-radius: 16px; box-shadow: 0 8px 32px rgba(79,70,229,.12); max-width: 480px; width: 100%; }
-    .card-header { background: linear-gradient(135deg,#4F46E5,#7C3AED); border-radius: 16px 16px 0 0; padding: 2rem; text-align: center; }
-    .icon-circle { width: 72px; height: 72px; border-radius: 50%; background: rgba(255,255,255,.15); display: flex; align-items: center; justify-content: center; margin: 0 auto 1rem; }
-    .icon-circle svg { width: 36px; height: 36px; }
-    .badge-pill { background: #EEF2FF; color: #4F46E5; border-radius: 999px; padding: .35rem .9rem; font-size: .8rem; font-weight: 600; }
+    body {{ margin:0; background:#f5f5f5; min-height:100vh; font-family:Arial,Helvetica,sans-serif; }}
+    .page-content {{ display:flex; align-items:center; justify-content:center; min-height:calc(100vh - 72px); padding:32px 16px; }}
+    .card {{ border:none; border-radius:12px; box-shadow:0 4px 20px rgba(0,0,0,.10); max-width:460px; width:100%; overflow:hidden; }}
+    .card-icon {{ width:64px; height:64px; border-radius:50%; background:#e8f5e9; display:flex; align-items:center; justify-content:center; margin:0 auto 16px; }}
+    .badge-status {{ background:#e3f2fd; color:#1565c0; border-radius:999px; padding:5px 16px; font-size:13px; font-weight:600; display:inline-block; margin-bottom:16px; }}
   </style>
 </head>
 <body>
-  <div class="card">
-    <div class="card-header">
-      <div class="icon-circle">
-        <svg fill="none" viewBox="0 0 24 24" stroke="white" stroke-width="2.5">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
-        </svg>
-      </div>
-      <h4 class="text-white fw-bold mb-1">Email confirmado!</h4>
-      <p class="text-white opacity-75 mb-0 small">Agente IA TEA</p>
-    </div>
-    <div class="card-body p-4 text-center">
-      <span class="badge-pill d-inline-block mb-3">Conta ativada com sucesso</span>
-      <p class="text-secondary mb-4">
-        Seu email foi verificado e sua conta está pronta para uso.<br>
-        Volte ao aplicativo e faça login para continuar.
-      </p>
-      <div class="border-top pt-3">
-        <p class="text-muted small mb-0">Duvidas? Entre em contato com o suporte.</p>
+  {_NAVBAR}
+  <div class="page-content">
+    <div class="card">
+      <div class="card-body p-4 text-center">
+        <div class="card-icon">
+          <svg width="32" height="32" fill="none" viewBox="0 0 24 24" stroke="#2e7d32" stroke-width="2.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+          </svg>
+        </div>
+        <span class="badge-status">Conta ativada com sucesso</span>
+        <h5 class="fw-bold mb-2" style="color:#1565c0;">Email confirmado!</h5>
+        <p class="text-secondary mb-3">
+          Seu email foi verificado e sua conta está pronta para uso.<br>
+          Volte ao aplicativo e faça login para continuar.
+        </p>
+        <hr class="my-3">
+        <p class="text-muted small mb-0">Dúvidas? Entre em contato com o suporte.</p>
       </div>
     </div>
   </div>
