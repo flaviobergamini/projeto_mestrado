@@ -2,6 +2,7 @@ from supabase import create_client, Client
 from core.config import settings
 import logging
 
+
 logger = logging.getLogger(__name__)
 
 
@@ -17,7 +18,10 @@ class SupabaseAuthService:
         return self._client().auth.sign_up({
             "email": email,
             "password": password,
-            "options": {"data": {"name": name}}
+            "options": {
+                "data": {"name": name},
+                "email_redirect_to": f"{settings.API_URL}/auth/confirm-email"
+            }
         })
 
     def sign_in(self, email: str, password: str):

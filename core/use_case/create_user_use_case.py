@@ -26,7 +26,12 @@ class CreateUserUseCase:
             try:
                 response = self.supabase_auth_service.sign_up(user.email, user.password, user.name)
             except Exception as e:
+                error_msg = str(e).lower()
                 logger.error(f"Erro ao cadastrar usuário no Supabase: {str(e)}")
+                if "invalid" in error_msg or "validation" in error_msg:
+                    return Result.bad_request("E-mail inválido")
+                if "already registered" in error_msg or "already exists" in error_msg:
+                    return Result.bad_request("E-mail já cadastrado")
                 return Result.error("Erro ao cadastrar usuário")
 
             if not response.user:
