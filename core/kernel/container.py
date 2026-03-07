@@ -712,6 +712,7 @@ class Container(containers.DeclarativeContainer):
         institution_embedding_gemini_repository=institution_embedding_gemini_repository,
         diary_embedding_gemini_repository=diary_embedding_gemini_repository,
         school_repository=school_repository,
+        health_plan_repository=health_plan_repository,
         pei_repository=pei_repository,
         pei_embedding_gemini_repository=pei_embedding_gemini_repository,
         llm_service=llm_service,

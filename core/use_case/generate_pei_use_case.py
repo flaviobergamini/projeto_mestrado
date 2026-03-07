@@ -7,6 +7,7 @@ from infrastructure.repositories.study_case_embedding_gemini_repository import S
 from infrastructure.repositories.institution_embedding_gemini_repository import InstitutionEmbeddingGeminiRepository
 from infrastructure.repositories.diary_embedding_gemini_repository import DiaryEmbeddingGeminiRepository
 from infrastructure.repositories.school_repository import SchoolRepository
+from infrastructure.repositories.health_plan_repository import HealthPlanRepository
 from infrastructure.repositories.pei_repository import PEIRepository
 from infrastructure.repositories.pei_embedding_gemini_repository import PEIEmbeddingGeminiRepository
 from infrastructure.services.llm_service import LLMService
@@ -24,6 +25,7 @@ class GeneratePEIUseCase:
         institution_embedding_gemini_repository: InstitutionEmbeddingGeminiRepository,
         diary_embedding_gemini_repository: DiaryEmbeddingGeminiRepository,
         school_repository: SchoolRepository,
+        health_plan_repository: HealthPlanRepository,
         pei_repository: PEIRepository,
         pei_embedding_gemini_repository: PEIEmbeddingGeminiRepository,
         llm_service: LLMService,
@@ -34,6 +36,7 @@ class GeneratePEIUseCase:
         self.institution_embedding_gemini_repository = institution_embedding_gemini_repository
         self.diary_embedding_gemini_repository = diary_embedding_gemini_repository
         self.school_repository = school_repository
+        self.health_plan_repository = health_plan_repository
         self.pei_repository = pei_repository
         self.pei_embedding_gemini_repository = pei_embedding_gemini_repository
         self.llm_service = llm_service
@@ -50,12 +53,18 @@ class GeneratePEIUseCase:
                 return Result.not_found("Beneficiário não encontrado")
 
             # Buscar informações da escola
-            school = None
             school_name = "Não informado"
             if beneficiary.school_id:
                 school = await self.school_repository.get_by_id(beneficiary.school_id)
                 if school and school.name:
                     school_name = school.name
+
+            # Buscar informações do plano de saúde
+            health_plan_name = "Não informado"
+            if beneficiary.healthplan_id:
+                health_plan = await self.health_plan_repository.get_by_id(beneficiary.healthplan_id)
+                if health_plan and health_plan.name:
+                    health_plan_name = health_plan.name
 
             # Calcular idade a partir da data de nascimento
             age = "Não informado"
@@ -96,9 +105,16 @@ class GeneratePEIUseCase:
             # Construir informações estruturadas do beneficiário
             beneficiary_info = f"""=== INFORMAÇÕES DO BENEFICIÁRIO ===
 Nome Completo: {beneficiary.name or 'Não informado'}
+Data de Nascimento: {beneficiary.date_of_birth or 'Não informado'}
 Idade: {age}
 Diagnóstico: {beneficiary.diagnosis or 'Não informado'}
+Responsável Principal: {beneficiary.main_responsible or 'Não informado'}
+Contato do Responsável: {beneficiary.responsible_contact or 'Não informado'}
+Status: {beneficiary.status or 'Não informado'}
+Data de Entrada: {beneficiary.entry_date or 'Não informado'}
+Data de Saída: {beneficiary.exit_date or 'Não informado'}
 Escola: {school_name}
+Plano de Saúde: {health_plan_name}
 """
 
             context_parts = [beneficiary_info]
