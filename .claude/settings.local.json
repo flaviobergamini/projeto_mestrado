@@ -4,7 +4,9 @@
       "Bash(pip install:*)",
       "Bash(ls:*)",
       "Bash(python:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(source:*)",
+      "Bash(where python:*)"
     ]
   }
 }
