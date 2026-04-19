@@ -54,6 +54,12 @@ class JwtService:
             return None
         return payload.get("sub")
 
+    def get_role_from_token(self, token: str) -> str | None:
+        payload = self.decode_token(token)
+        if not payload:
+            return None
+        return payload.get("role")
+
     def get_token_type(self, token: str) -> str | None:
         payload = self.decode_token(token)
         if not payload:

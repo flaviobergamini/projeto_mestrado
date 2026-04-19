@@ -41,3 +41,8 @@ class UserRepository:
         async with self.database.session() as session:
             result = await session.execute(select(User).where(User.reset_token == token))
             return result.scalars().first()
+
+    async def get_all(self) -> list[User]:
+        async with self.database.session() as session:
+            result = await session.execute(select(User).order_by(User.name))
+            return list(result.scalars().all())

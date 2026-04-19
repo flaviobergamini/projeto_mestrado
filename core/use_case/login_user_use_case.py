@@ -33,15 +33,19 @@ class LoginUserUseCase:
             if not user:
                 return Result.not_found("Usuário não encontrado")
 
-            token = self.jwt_service.create_access_token({"sub": str(user.id)})
-            refresh_token = self.jwt_service.create_refresh_token({"sub": str(user.id)})
+            role = user.role.value if user.role else "teacher"
+            token = self.jwt_service.create_access_token({"sub": str(user.id), "role": role})
+            refresh_token = self.jwt_service.create_refresh_token({"sub": str(user.id), "role": role})
 
             email_verified = response.user.email_confirmed_at is not None
 
             return Result.ok({
                 "access_token": token,
                 "refresh_token": refresh_token,
-                "email_verified": email_verified
+                "email_verified": email_verified,
+                "role": role,
+                "name": user.name,
+                "user_id": user.id,
             })
 
         except Exception as e:

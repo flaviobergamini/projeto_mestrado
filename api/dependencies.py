@@ -19,5 +19,27 @@ def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token inválido ou expirado",
         )
-    
+
     return user_id
+
+def require_roles(*roles: str):
+    @inject
+    def check_role(
+        credentials: HTTPAuthorizationCredentials = Depends(security),
+        jwt_service: JwtService = Depends(Provide[Container.jwt_service]),
+    ) -> str:
+        token = credentials.credentials
+        user_id = jwt_service.get_user_id_from_token(token)
+        if not user_id:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token inválido ou expirado",
+            )
+        role = jwt_service.get_role_from_token(token)
+        if role not in roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Acesso negado",
+            )
+        return user_id
+    return check_role

@@ -1,6 +1,7 @@
 from pydantic import BaseModel, EmailStr
 from datetime import date, datetime
 from typing import Optional
+from enum import Enum
 
 
 class DiaryEmbeddingRequest(BaseModel):
@@ -188,14 +189,36 @@ class DiaryResponse(BaseModel):
     class Config:
         from_attributes = True
 
+class UserRole(str, Enum):
+    admin = "admin"
+    secretary = "secretary"
+    school_admin = "school_admin"
+    teacher = "teacher"
+    therapist = "therapist"
+    parent = "parent"
+
 class UserRegister(BaseModel):
-    name:str
+    name: str
     email: EmailStr
     password: str
+    role: UserRole = UserRole.teacher
 
 class UserLogin(BaseModel):
     email: EmailStr
     password: str
+
+class UserResponse(BaseModel):
+    id: int
+    name: str
+    email: str
+    role: str
+    email_verified: bool
+
+    class Config:
+        from_attributes = True
+
+class UpdateRoleRequest(BaseModel):
+    role: UserRole
 
 class ForgotPassword(BaseModel):
     email: EmailStr

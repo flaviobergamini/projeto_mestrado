@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Request, Header
 from fastapi.responses import JSONResponse, HTMLResponse
 from core.kernel.container import Container
 from core.use_case.create_user_use_case import CreateUserUseCase
@@ -7,25 +7,108 @@ from core.use_case.verify_email_use_case import VerifyEmailUseCase
 from core.use_case.forgot_password_use_case import ForgotPasswordUseCase
 from core.use_case.reset_password_use_case import ResetPasswordUseCase
 from core.use_case.refresh_token_use_case import RefreshTokenUseCase
-from domain.schema import UserLogin, UserRegister, VerifyEmail, ForgotPassword, ResetPassword, RefreshToken
+from domain.schema import UserLogin, UserRegister, VerifyEmail, ForgotPassword, ResetPassword, RefreshToken, UpdateRoleRequest
 from dependency_injector.wiring import inject, Provide
-from starlette.status import HTTP_400_BAD_REQUEST, HTTP_200_OK, HTTP_404_NOT_FOUND, HTTP_201_CREATED, HTTP_500_INTERNAL_SERVER_ERROR, HTTP_401_UNAUTHORIZED
+from starlette.status import HTTP_400_BAD_REQUEST, HTTP_200_OK, HTTP_404_NOT_FOUND, HTTP_201_CREATED, HTTP_500_INTERNAL_SERVER_ERROR, HTTP_401_UNAUTHORIZED, HTTP_403_FORBIDDEN
+from core.services.jwt_service import JwtService
+from infrastructure.repositories.user_repository import UserRepository
 
-from infrastructure.models.users import User
+from infrastructure.models.users import User, UserRole
+from api.dependencies import require_roles
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
+
+async def _get_admin_user(
+    authorization: str | None,
+    jwt_service: JwtService,
+    user_repository: UserRepository,
+):
+
+    if not authorization or not authorization.startswith("Bearer "):
+        return None
+    
+    token = authorization.split(" ", 1)[1]
+
+    role = jwt_service.get_role_from_token(token)
+
+    if role != "admin":
+        return None
+    
+    user_id = jwt_service.get_user_id_from_token(token)
+
+    if not user_id:
+        return None
+    
+    return await user_repository.get_by_id(int(user_id))
+
+
+@router.get("/users")
+@inject
+async def list_users(
+    authorization: str | None = Header(default=None),
+    jwt_service: JwtService = Depends(Provide[Container.jwt_service]),
+    user_repository: UserRepository = Depends(Provide[Container.user_repository]),
+):
+    try:
+        admin = await _get_admin_user(authorization, jwt_service, user_repository)
+
+        if not admin:
+            return JSONResponse(status_code=HTTP_403_FORBIDDEN, content={"error": "Acesso negado"})
+
+        users = await user_repository.get_all()
+
+        return JSONResponse(status_code=HTTP_200_OK, content=[
+            {"id": u.id, "name": u.name, "email": u.email, "role": u.role.value, "email_verified": u.email_verified}
+            for u in users
+        ])
+    
+    except Exception:
+        return JSONResponse(content={"error": "Internal server error"}, status_code=HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@router.patch("/users/{user_id}/role")
+@inject
+async def update_user_role(
+    user_id: int,
+    request: UpdateRoleRequest,
+    authorization: str | None = Header(default=None),
+    jwt_service: JwtService = Depends(Provide[Container.jwt_service]),
+    user_repository: UserRepository = Depends(Provide[Container.user_repository]),
+):
+    try:
+        admin = await _get_admin_user(authorization, jwt_service, user_repository)
+
+        if not admin:
+            return JSONResponse(status_code=HTTP_403_FORBIDDEN, content={"error": "Acesso negado"})
+
+        user = await user_repository.get_by_id(user_id)
+
+        if not user:
+            return JSONResponse(status_code=HTTP_404_NOT_FOUND, content={"error": "Usuário não encontrado"})
+
+        user.role = UserRole(request.role)
+        updated = await user_repository.update(user)
+
+        return JSONResponse(status_code=HTTP_200_OK, content={
+            "id": updated.id, "name": updated.name, "email": updated.email, "role": updated.role.value
+        })
+    
+    except Exception:
+        return JSONResponse(content={"error": "Internal server error"}, status_code=HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 @router.post("/register")
 @inject
 async def create_user(
-    request: UserRegister, 
+    request: UserRegister,
     use_case: CreateUserUseCase = Depends (Provide[Container.create_user_use_case])
     ):
     try:
         user = User(
             name = request.name,
             email = request.email,
-            password = request.password
+            password = request.password,
+            role = UserRole(request.role),
         )
 
         response = await use_case.execute(user)
