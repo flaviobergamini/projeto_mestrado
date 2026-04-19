@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
-from api.dependencies import get_current_user
+from api.dependencies import get_current_user, require_roles
 from core.kernel.container import Container
 from core.use_case.create_clinic_use_case import CreateClinicUseCase
 from core.use_case.delete_clinic_use_case import DeleteClinicUseCase
@@ -13,7 +13,7 @@ from starlette.status import HTTP_404_NOT_FOUND, HTTP_201_CREATED, HTTP_500_INTE
 
 from infrastructure.models.clinic import Clinic
 
-router = APIRouter(prefix="/clinic", tags=["Clinic"])
+router = APIRouter(prefix="/clinic", tags=["Clinic"], dependencies=[Depends(require_roles("admin"))])
 
 
 @router.post("/create")

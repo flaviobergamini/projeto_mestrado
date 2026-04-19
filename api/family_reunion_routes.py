@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
-from api.dependencies import get_current_user
+from api.dependencies import get_current_user, require_roles
 from core.kernel.container import Container
 from core.use_case.create_family_reunion_use_case import CreateFamilyReunionUseCase
 from core.use_case.delete_family_reunion_use_case import DeleteFamilyReunionUseCase
@@ -13,7 +13,7 @@ from starlette.status import HTTP_404_NOT_FOUND, HTTP_201_CREATED, HTTP_500_INTE
 
 from infrastructure.models.family_reunion import FamilyReunion
 
-router = APIRouter(prefix="/family-reunion", tags=["FamilyReunion"])
+router = APIRouter(prefix="/family-reunion", tags=["FamilyReunion"], dependencies=[Depends(require_roles("admin", "school_admin"))])
 
 
 @router.post("/create")

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 
-from api.dependencies import get_current_user
+from api.dependencies import get_current_user, require_roles
 from core.kernel.container import Container
 from core.use_case.study_case_use_case import StudyCaseUseCase
 from infrastructure.services.storage_service import StorageService
@@ -12,7 +12,7 @@ import json
 
 from infrastructure.models.study_case import StudyCase
 
-router = APIRouter(prefix="/case-study", tags=["CaseStudy"])
+router = APIRouter(prefix="/case-study", tags=["CaseStudy"], dependencies=[Depends(require_roles("admin", "school_admin", "teacher"))])
 
 
 @router.post("/create")

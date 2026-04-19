@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
-from api.dependencies import get_current_user
+from api.dependencies import get_current_user, require_roles
 from core.kernel.container import Container
 from core.use_case.create_therapeutic_sessions_use_case import CreateTherapeuticSessionsUseCase
 from core.use_case.delete_therapeutic_sessions_use_case import DeleteTherapeuticSessionsUseCase
@@ -13,7 +13,7 @@ from starlette.status import HTTP_404_NOT_FOUND, HTTP_201_CREATED, HTTP_500_INTE
 
 from infrastructure.models.therapeutic_sessions import TherapeuticSessions
 
-router = APIRouter(prefix="/therapeutic-sessions", tags=["TherapeuticSessions"])
+router = APIRouter(prefix="/therapeutic-sessions", tags=["TherapeuticSessions"], dependencies=[Depends(require_roles("admin"))])
 
 
 @router.post("/create")

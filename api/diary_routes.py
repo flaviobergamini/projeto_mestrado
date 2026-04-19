@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 
-from api.dependencies import get_current_user
+from api.dependencies import get_current_user, require_roles
 from core.kernel.container import Container
 from core.use_case.diary_conceptual_use_case import DiaryConceptualUseCase
 from core.use_case.generate_diary_embedding_use_case import GenerateDiaryEmbeddingUseCase
@@ -19,7 +19,7 @@ import json
 
 from infrastructure.models.diary_conceptual import DiaryConceptual
 
-router = APIRouter(prefix="/diary", tags=["Diary"])
+router = APIRouter(prefix="/diary", tags=["Diary"], dependencies=[Depends(require_roles("admin", "school_admin", "teacher"))])
 
 
 # ==================== ROTA DE CRIAÇÃO DO DIÁRIO ====================

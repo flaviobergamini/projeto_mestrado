@@ -4,10 +4,10 @@ from datetime import datetime
 
 from core.kernel.container import Container
 from infrastructure.services.storage_service import StorageService
-from api.dependencies import get_current_user
+from api.dependencies import get_current_user, require_roles
 from domain.schema import FileUploadResponse, FileDeleteRequest
 
-router = APIRouter(prefix="/storage", tags=["Storage"])
+router = APIRouter(prefix="/storage", tags=["Storage"], dependencies=[Depends(require_roles("admin", "secretary", "school_admin", "teacher"))])
 
 
 @router.post("/upload", response_model=FileUploadResponse)

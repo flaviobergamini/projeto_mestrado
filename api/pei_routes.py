@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, Response
 from fastapi.responses import JSONResponse
 
-from api.dependencies import get_current_user
+from api.dependencies import get_current_user, require_roles
 from core.kernel.container import Container
 from core.use_case.generate_pei_use_case import GeneratePEIUseCase
 from core.use_case.generate_pei_pdf_use_case import GeneratePEIPDFUseCase
@@ -9,7 +9,7 @@ from domain.schema import GeneratePEIRequest, GeneratePEIPDFRequest
 from starlette.status import HTTP_404_NOT_FOUND, HTTP_201_CREATED, HTTP_500_INTERNAL_SERVER_ERROR, HTTP_200_OK
 from dependency_injector.wiring import inject, Provide
 
-router = APIRouter(prefix="/pei", tags=["PEI"])
+router = APIRouter(prefix="/pei", tags=["PEI"], dependencies=[Depends(require_roles("admin", "secretary", "school_admin", "teacher"))])
 
 
 @router.post("/generate", response_class=JSONResponse)

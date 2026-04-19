@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
-from api.dependencies import get_current_user
+from api.dependencies import get_current_user, require_roles
 from core.kernel.container import Container
 from core.use_case.create_school_use_case import CreateSchoolUseCase
 from core.use_case.delete_school_use_case import DeleteSchoolUseCase
@@ -13,7 +13,7 @@ from starlette.status import HTTP_404_NOT_FOUND, HTTP_201_CREATED, HTTP_500_INTE
 
 from infrastructure.models.school import School
 
-router = APIRouter(prefix="/school", tags=["School"])
+router = APIRouter(prefix="/school", tags=["School"], dependencies=[Depends(require_roles("admin", "secretary", "school_admin"))])
 
 
 @router.post("/create")

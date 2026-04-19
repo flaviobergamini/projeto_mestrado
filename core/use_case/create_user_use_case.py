@@ -44,13 +44,17 @@ class CreateUserUseCase:
 
             new_user = await self.user_repository.add(user)
 
-            token = self.jwt_service.create_access_token({"sub": str(new_user.id)})
-            refresh_token = self.jwt_service.create_refresh_token({"sub": str(new_user.id)})
+            role = new_user.role.value if new_user.role else "teacher"
+            token = self.jwt_service.create_access_token({"sub": str(new_user.id), "role": role})
+            refresh_token = self.jwt_service.create_refresh_token({"sub": str(new_user.id), "role": role})
 
             return Result.ok({
                 "access_token": token,
                 "refresh_token": refresh_token,
                 "email_verified": False,
+                "role": role,
+                "name": new_user.name,
+                "user_id": new_user.id,
                 "message": "Usuário criado com sucesso. Verifique seu email para ativar sua conta."
             })
 
