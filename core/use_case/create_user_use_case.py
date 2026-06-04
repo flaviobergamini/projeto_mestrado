@@ -1,63 +1,65 @@
-from datetime import datetime
+import uuid
+import logging
 from core.kernel.result import Result
 from core.services.jwt_service import JwtService
-from infrastructure.models.users import User
+from infrastructure.models.user_profile import UserProfile
 from infrastructure.repositories.user_repository import UserRepository
-from infrastructure.services.supabase_auth_service import SupabaseAuthService
-import logging
 
 logger = logging.getLogger(__name__)
 
-SUPABASE_MANAGED = "SUPABASE_MANAGED"
-
 
 class CreateUserUseCase:
-    def __init__(self, user_repository: UserRepository, jwt_service: JwtService, supabase_auth_service: SupabaseAuthService):
+    def __init__(self, user_repository: UserRepository, jwt_service: JwtService):
         self.user_repository = user_repository
         self.jwt_service = jwt_service
-        self.supabase_auth_service = supabase_auth_service
 
-    async def execute(self, user: User):
+    async def execute(
+        self,
+        username: str,
+        password: str,
+        full_name: str | None,
+        role: str,
+        municipality_id: str | None = None,
+        school_id: str | None = None,
+        teacher_id: str | None = None,
+    ):
         try:
-            check_user = await self.user_repository.get_by_email(user.email)
-            if check_user:
-                return Result.bad_request("E-mail já cadastrado")
+            existing = await self.user_repository.get_by_username(username)
+            if existing:
+                return Result.bad_request("Nome de usuário já cadastrado")
 
-            try:
-                response = self.supabase_auth_service.sign_up(user.email, user.password, user.name)
-            except Exception as e:
-                error_msg = str(e).lower()
-                logger.error(f"Erro ao cadastrar usuário no Supabase: {str(e)}")
-                if "invalid" in error_msg or "validation" in error_msg:
-                    return Result.bad_request("E-mail inválido")
-                if "already registered" in error_msg or "already exists" in error_msg:
-                    return Result.bad_request("E-mail já cadastrado")
-                return Result.error("Erro ao cadastrar usuário")
+            password_hash = self.jwt_service.hash_password(password)
 
-            if not response.user:
-                return Result.error("Erro ao cadastrar usuário")
-
-            user.password = SUPABASE_MANAGED
-            user.created_at = datetime.utcnow()
-            user.updated_at = datetime.utcnow()
-            user.email_verified = False
+            user = UserProfile(
+                id=str(uuid.uuid4()),
+                username=username,
+                password_hash=password_hash,
+                full_name=full_name,
+                role=role,
+                municipality_id=municipality_id,
+                school_id=school_id,
+                teacher_id=teacher_id,
+                is_active=True,
+            )
 
             new_user = await self.user_repository.add(user)
 
-            role = new_user.role.value if new_user.role else "teacher"
-            token = self.jwt_service.create_access_token({"sub": str(new_user.id), "role": role})
-            refresh_token = self.jwt_service.create_refresh_token({"sub": str(new_user.id), "role": role})
+            access_token = self.jwt_service.create_access_token(
+                {"sub": new_user.id, "role": new_user.role, "username": new_user.username}
+            )
+            refresh_token = self.jwt_service.create_refresh_token(
+                {"sub": new_user.id, "role": new_user.role, "username": new_user.username}
+            )
 
             return Result.ok({
-                "access_token": token,
+                "access_token": access_token,
                 "refresh_token": refresh_token,
-                "email_verified": False,
-                "role": role,
-                "name": new_user.name,
                 "user_id": new_user.id,
-                "message": "Usuário criado com sucesso. Verifique seu email para ativar sua conta."
+                "username": new_user.username,
+                "full_name": new_user.full_name,
+                "role": new_user.role,
             })
 
         except Exception as e:
-            logger.error(f"Erro ao cadastrar usuário: {str(e)}")
+            logger.error(f"Erro ao cadastrar usuário: {e}")
             return Result.error("Erro ao cadastrar usuário")

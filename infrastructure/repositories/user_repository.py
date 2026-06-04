@@ -1,48 +1,43 @@
 from sqlalchemy import select
 from infrastructure.database_context.database import Database
-from infrastructure.models.users import User
+from infrastructure.models.user_profile import UserProfile
+
 
 class UserRepository:
     def __init__(self, database: Database) -> None:
         self.database = database
 
-    async def add(self, user: User) -> User:
+    async def add(self, user: UserProfile) -> UserProfile:
         async with self.database.session() as session:
             session.add(user)
             await session.commit()
             await session.refresh(user)
-
             return user
 
-    async def update(self, user: User) -> User:
+    async def update(self, user: UserProfile) -> UserProfile:
         async with self.database.session() as session:
             session.add(user)
             await session.commit()
             await session.refresh(user)
-
             return user
 
-    async def get_by_email(self, email: str) -> User | None:
+    async def get_by_username(self, username: str) -> UserProfile | None:
         async with self.database.session() as session:
-            result = await session.execute(select(User).where(User.email == email))
+            result = await session.execute(
+                select(UserProfile).where(UserProfile.username == username)
+            )
             return result.scalars().first()
 
-    async def get_by_id(self, user_id: int) -> User | None:
+    async def get_by_id(self, user_id: str) -> UserProfile | None:
         async with self.database.session() as session:
-            result = await session.execute(select(User).where(User.id == user_id))
+            result = await session.execute(
+                select(UserProfile).where(UserProfile.id == user_id)
+            )
             return result.scalars().first()
 
-    async def get_by_verification_token(self, token: str) -> User | None:
+    async def get_all(self) -> list[UserProfile]:
         async with self.database.session() as session:
-            result = await session.execute(select(User).where(User.verification_token == token))
-            return result.scalars().first()
-
-    async def get_by_reset_token(self, token: str) -> User | None:
-        async with self.database.session() as session:
-            result = await session.execute(select(User).where(User.reset_token == token))
-            return result.scalars().first()
-
-    async def get_all(self) -> list[User]:
-        async with self.database.session() as session:
-            result = await session.execute(select(User).order_by(User.name))
+            result = await session.execute(
+                select(UserProfile).order_by(UserProfile.username)
+            )
             return list(result.scalars().all())
