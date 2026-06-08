@@ -1,42 +1,41 @@
 import logging
 from core.kernel.result import Result
-from core.services.jwt_service import JwtService
-from infrastructure.repositories.user_repository import UserRepository
+from core.interfaces.i_user_repository import IUserRepository
+from core.interfaces.i_auth_service import IAuthService
+from core.exceptions.auth_exceptions import AuthException, UserNotConfirmedError, InvalidCredentialsError
 
 logger = logging.getLogger(__name__)
 
 
 class LoginUserUseCase:
-    def __init__(self, user_repository: UserRepository, jwt_service: JwtService):
+    def __init__(self, user_repository: IUserRepository, auth_service: IAuthService):
         self.user_repository = user_repository
-        self.jwt_service = jwt_service
+        self.auth_service = auth_service
 
     async def execute(self, username: str, password: str):
         try:
+            try:
+                tokens = self.auth_service.sign_in(username, password)
+            except UserNotConfirmedError as e:
+                return Result.unauthorized(e.message)
+            except InvalidCredentialsError as e:
+                return Result.unauthorized(e.message)
+            except AuthException as e:
+                return Result.unauthorized(e.message)
+
             user = await self.user_repository.get_by_username(username)
             if not user:
-                return Result.unauthorized("Usuário ou senha inválidos")
+                return Result.not_found("Perfil de usuário não encontrado")
 
-            if not user.is_active:
+            if not user["is_active"]:
                 return Result.unauthorized("Usuário inativo")
 
-            if not self.jwt_service.verify_password(password, user.password_hash):
-                return Result.unauthorized("Usuário ou senha inválidos")
-
-            access_token = self.jwt_service.create_access_token(
-                {"sub": user.id, "role": user.role, "username": user.username}
-            )
-            refresh_token = self.jwt_service.create_refresh_token(
-                {"sub": user.id, "role": user.role, "username": user.username}
-            )
-
             return Result.ok({
-                "access_token": access_token,
-                "refresh_token": refresh_token,
-                "user_id": user.id,
-                "username": user.username,
-                "full_name": user.full_name,
-                "role": user.role,
+                **tokens,
+                "user_id": user["id"],
+                "username": user["username"],
+                "full_name": user["full_name"],
+                "role": user["role"],
             })
 
         except Exception as e:

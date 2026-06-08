@@ -1,9 +1,9 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 from typing import Optional
 
 
 class UserRegister(BaseModel):
-    username: str
+    email: EmailStr
     password: str
     full_name: Optional[str] = None
     role: str = "professor"
@@ -13,24 +13,33 @@ class UserRegister(BaseModel):
 
 
 class UserLogin(BaseModel):
-    username: str
+    email: EmailStr
     password: str
 
 
-class UserResponse(BaseModel):
-    id: str
-    username: str
-    full_name: Optional[str]
-    role: str
-    is_active: bool
-    municipality_id: Optional[str]
-    school_id: Optional[str]
-    teacher_id: Optional[str]
+class ConfirmEmail(BaseModel):
+    email: EmailStr
+    code: str
+
+
+class ResendConfirmation(BaseModel):
+    email: EmailStr
+
+
+class ForgotPassword(BaseModel):
+    email: EmailStr
+
+
+class ConfirmResetPassword(BaseModel):
+    email: EmailStr
+    code: str
+    new_password: str
+
+
+class RefreshToken(BaseModel):
+    email: EmailStr
+    refresh_token: str
 
 
 class UpdateRoleRequest(BaseModel):
     role: str
-
-
-class RefreshToken(BaseModel):
-    refresh_token: str

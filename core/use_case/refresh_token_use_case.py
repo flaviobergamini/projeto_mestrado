@@ -1,46 +1,33 @@
 import logging
 from core.kernel.result import Result
-from core.services.jwt_service import JwtService
-from infrastructure.repositories.user_repository import UserRepository
+from core.interfaces.i_user_repository import IUserRepository
+from core.interfaces.i_auth_service import IAuthService
+from core.exceptions.auth_exceptions import AuthException
 
 logger = logging.getLogger(__name__)
 
 
 class RefreshTokenUseCase:
-    def __init__(self, user_repository: UserRepository, jwt_service: JwtService):
+    def __init__(self, user_repository: IUserRepository, auth_service: IAuthService):
         self.user_repository = user_repository
-        self.jwt_service = jwt_service
+        self.auth_service = auth_service
 
-    async def execute(self, refresh_token: str):
+    async def execute(self, username: str, refresh_token: str):
         try:
-            payload = self.jwt_service.decode_token(refresh_token)
-            if not payload:
-                return Result.unauthorized("Refresh token inválido ou expirado")
+            try:
+                tokens = self.auth_service.refresh_token(username, refresh_token)
+            except AuthException as e:
+                return Result.unauthorized(e.message)
 
-            if payload.get("type") != "refresh":
-                return Result.unauthorized("Token inválido")
-
-            user_id = payload.get("sub")
-            if not user_id:
-                return Result.unauthorized("Token inválido")
-
-            user = await self.user_repository.get_by_id(user_id)
+            user = await self.user_repository.get_by_username(username)
             if not user:
                 return Result.not_found("Usuário não encontrado")
 
-            if not user.is_active:
-                return Result.unauthorized("Usuário inativo")
-
-            access_token = self.jwt_service.create_access_token(
-                {"sub": user.id, "role": user.role, "username": user.username}
-            )
-            new_refresh_token = self.jwt_service.create_refresh_token(
-                {"sub": user.id, "role": user.role, "username": user.username}
-            )
-
             return Result.ok({
-                "access_token": access_token,
-                "refresh_token": new_refresh_token,
+                **tokens,
+                "user_id": user["id"],
+                "username": user["username"],
+                "role": user["role"],
             })
 
         except Exception as e:
