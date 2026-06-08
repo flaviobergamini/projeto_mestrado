@@ -4,6 +4,7 @@ from core.kernel.result import Result
 from core.interfaces.i_user_repository import IUserRepository
 from core.interfaces.i_auth_service import IAuthService
 from core.exceptions.auth_exceptions import AuthException, UserAlreadyExistsError
+from core.permissions.roles import CAN_CREATE_USER, ALL_ROLES
 
 logger = logging.getLogger(__name__)
 
@@ -15,6 +16,7 @@ class CreateUserUseCase:
 
     async def execute(
         self,
+        requester_role: str,
         username: str,
         email: str,
         password: str,
@@ -25,6 +27,12 @@ class CreateUserUseCase:
         teacher_id: Optional[str] = None,
     ):
         try:
+            if requester_role not in CAN_CREATE_USER:
+                return Result.unauthorized("Apenas administradores podem cadastrar usuários")
+
+            if role not in ALL_ROLES:
+                return Result.bad_request(f"Role inválido. Valores aceitos: {', '.join(ALL_ROLES)}")
+
             existing = await self.user_repository.get_by_username(username)
             if existing:
                 return Result.bad_request("Nome de usuário já cadastrado")

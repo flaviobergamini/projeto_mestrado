@@ -16,7 +16,7 @@ from core.use_case.forgot_password_use_case import ForgotPasswordUseCase
 from core.use_case.confirm_reset_password_use_case import ConfirmResetPasswordUseCase
 from core.use_case.list_users_use_case import ListUsersUseCase
 from core.use_case.update_user_role_use_case import UpdateUserRoleUseCase
-from api.dependencies import require_roles
+from api.dependencies import require_roles, get_current_user
 from domain.schema import (
     UserRegister, UserLogin, ConfirmEmail, ResendConfirmation,
     ForgotPassword, ConfirmResetPassword, RefreshToken, UpdateRoleRequest,
@@ -29,10 +29,12 @@ router = APIRouter(prefix="/auth", tags=["Auth"])
 @inject
 async def register(
     request: UserRegister,
+    current_user: dict = Depends(get_current_user),
     use_case: CreateUserUseCase = Depends(Provide[Container.create_user_use_case]),
 ):
     try:
         result = await use_case.execute(
+            requester_role=current_user["role"],
             username=request.email,
             email=request.email,
             password=request.password,
@@ -181,7 +183,7 @@ async def update_user_role(
     use_case: UpdateUserRoleUseCase = Depends(Provide[Container.update_user_role_use_case]),
 ):
     try:
-        result = await use_case.execute(user_id, request.role)
+        result = await use_case.execute(current_user["role"], user_id, request.role)
         if result.is_not_found:
             return JSONResponse(status_code=HTTP_404_NOT_FOUND, content={"error": result.not_found_error})
         if result.is_err:
