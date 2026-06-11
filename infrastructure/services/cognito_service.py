@@ -161,8 +161,20 @@ class CognitoService(IAuthService):
             raise _to_domain_exception(e)
 
     def get_username_from_token(self, access_token: str) -> str:
+        """
+        Retorna o 'sub' (UUID estável) do usuário Cognito a partir do access token.
+        Usamos 'sub' em vez de 'Username' porque, quando o User Pool está configurado
+        com email como alias de login, o campo Username pode retornar o UUID interno
+        em vez do email — tornando a busca por username inconsistente.
+        O 'sub' é sempre o UUID do usuário e corresponde ao campo 'id' em user_profiles.
+        """
         try:
             response = self.client.get_user(AccessToken=access_token)
-            return response["Username"]
+            attrs = {a["Name"]: a["Value"] for a in response.get("UserAttributes", [])}
+            sub = attrs.get("sub")
+            if not sub:
+                # fallback: usa Username se sub não estiver nos atributos
+                sub = response["Username"]
+            return sub
         except ClientError as e:
             raise _to_domain_exception(e)

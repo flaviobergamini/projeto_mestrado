@@ -23,11 +23,13 @@ class ValidateTokenUseCase:
 
     async def execute(self, access_token: str):
         try:
-            username = self.auth_service.get_username_from_token(access_token)
+            # get_username_from_token retorna o 'sub' (UUID estável do Cognito)
+            # que corresponde ao campo 'id' em user_profiles
+            cognito_sub = self.auth_service.get_username_from_token(access_token)
         except AuthException as e:
             return Result.unauthorized(e.message)
 
-        user = await self.user_repository.get_by_username(username)
+        user = await self.user_repository.get_by_id(cognito_sub)
         if not user:
             return Result.not_found("Usuário não encontrado")
 
