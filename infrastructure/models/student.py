@@ -1,6 +1,6 @@
-from datetime import datetime
+from datetime import datetime, date
 from typing import Optional
-from sqlalchemy import String, Text, DateTime, ForeignKey, func
+from sqlalchemy import String, Text, DateTime, Date, ForeignKey, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from infrastructure.database_context.database import Base
 
@@ -13,10 +13,12 @@ class Student(Base):
         String(64), ForeignKey("schools.id", ondelete="CASCADE", onupdate="CASCADE"), nullable=True, index=True
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
+    birth_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     age: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
     grade: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     class_name: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     guardians: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    diagnosis: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())

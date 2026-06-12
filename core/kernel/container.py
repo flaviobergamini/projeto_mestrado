@@ -13,13 +13,14 @@ from core.use_case.list_users_use_case import ListUsersUseCase
 from core.use_case.update_user_role_use_case import UpdateUserRoleUseCase
 from infrastructure.database_context.database import Database
 from infrastructure.repositories.user_repository import UserRepository
+from infrastructure.repositories.student_repository import StudentRepository
 from infrastructure.services.cognito_service import CognitoService
 from infrastructure.services.gemini_service import GeminiService
 
 
 class Container(containers.DeclarativeContainer):
     wiring_config = containers.WiringConfiguration(
-        modules=["api.auth_routes", "api.dependencies"],
+        modules=["api.auth_routes", "api.dependencies", "api.student_routes"],
     )
 
     config = providers.Configuration()
@@ -33,6 +34,8 @@ class Container(containers.DeclarativeContainer):
     gemini_service = providers.Factory(GeminiService)
 
     user_repository = providers.Factory(UserRepository, database=database)
+
+    student_repository = providers.Factory(StudentRepository, database=database)
 
     create_user_use_case = providers.Factory(
         CreateUserUseCase,
