@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional
-from sqlalchemy import String, DateTime, JSON
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import String, DateTime, JSON, ForeignKey, func
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from infrastructure.database_context.database import Base
 
 
@@ -9,6 +9,12 @@ class CaseStudySubmission(Base):
     __tablename__ = "case_study_submissions"
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    student_id: Mapped[Optional[str]] = mapped_column(
+        String(64), ForeignKey("students.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    submitted_by: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     answers: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     metadata_: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True, name="metadata")
-    submitted_at: Mapped[datetime] = mapped_column(DateTime, server_default=None, nullable=False)
+    submitted_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
+
+    student: Mapped[Optional["Student"]] = relationship("Student")

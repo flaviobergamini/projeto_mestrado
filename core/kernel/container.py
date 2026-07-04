@@ -16,13 +16,22 @@ from infrastructure.repositories.user_repository import UserRepository
 from infrastructure.repositories.student_repository import StudentRepository
 from infrastructure.repositories.diary_repository import DiaryRepository
 from infrastructure.repositories.pdi_repository import PdiRepository as PdiRepo
+from infrastructure.repositories.school_repository import SchoolRepository
+from infrastructure.repositories.teacher_repository import TeacherRepository
+from infrastructure.repositories.case_study_repository import CaseStudyRepository
+from infrastructure.repositories.chat_repository import ChatRepository
 from infrastructure.services.cognito_service import CognitoService
 from infrastructure.services.gemini_service import GeminiService
 
 
 class Container(containers.DeclarativeContainer):
     wiring_config = containers.WiringConfiguration(
-        modules=["api.auth_routes", "api.dependencies", "api.student_routes", "api.diary_routes", "api.pdi_routes"],
+        modules=[
+            "api.auth_routes", "api.dependencies",
+            "api.student_routes", "api.diary_routes", "api.pdi_routes",
+            "api.school_routes", "api.teacher_routes", "api.case_study_routes",
+            "api.chat_routes",
+        ],
     )
 
     config = providers.Configuration()
@@ -42,6 +51,14 @@ class Container(containers.DeclarativeContainer):
     diary_repository = providers.Factory(DiaryRepository, database=database)
 
     pdi_repository = providers.Factory(PdiRepo, database=database)
+
+    school_repository = providers.Factory(SchoolRepository, database=database)
+
+    teacher_repository = providers.Factory(TeacherRepository, database=database)
+
+    case_study_repository = providers.Factory(CaseStudyRepository, database=database)
+
+    chat_repository = providers.Factory(ChatRepository, database=database)
 
     create_user_use_case = providers.Factory(
         CreateUserUseCase,
