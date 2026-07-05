@@ -14,6 +14,7 @@ class DiaryEntryCreate(BaseModel):
     student_id: str
     diary_date: str
     presence: Optional[str] = "Presente"
+    teacher_name: Optional[str] = None
     teacher_attention: Optional[str] = None
     followed_agreements: Optional[str] = None
     activity_interest: Optional[str] = None
@@ -22,11 +23,13 @@ class DiaryEntryCreate(BaseModel):
     completed_activities: Optional[str] = None
     bathroom_use: Optional[str] = None
     open_observation: Optional[str] = None
+    absence_reason: Optional[str] = None
 
 
 class DiaryEntryUpdate(BaseModel):
     diary_date: Optional[str] = None
     presence: Optional[str] = None
+    teacher_name: Optional[str] = None
     teacher_attention: Optional[str] = None
     followed_agreements: Optional[str] = None
     activity_interest: Optional[str] = None
@@ -35,6 +38,7 @@ class DiaryEntryUpdate(BaseModel):
     completed_activities: Optional[str] = None
     bathroom_use: Optional[str] = None
     open_observation: Optional[str] = None
+    absence_reason: Optional[str] = None
 
 
 @router.get("/students")
@@ -44,6 +48,17 @@ async def list_students_with_diary(
     repo: DiaryRepository = Depends(Provide[Container.diary_repository]),
 ):
     return await repo.list_students_with_diary()
+
+
+@router.get("/student/{student_id}/teachers")
+@inject
+async def get_linked_teachers(
+    student_id: str,
+    current_user: dict = Depends(get_current_user),
+    repo: DiaryRepository = Depends(Provide[Container.diary_repository]),
+):
+    """Returns teacher names linked to the student (for the diary form)."""
+    return await repo.get_linked_teachers(student_id)
 
 
 @router.get("/student/{student_id}")
@@ -56,6 +71,19 @@ async def list_entries(
     return await repo.list_by_student(student_id)
 
 
+@router.get("/{entry_id}")
+@inject
+async def get_entry(
+    entry_id: str,
+    current_user: dict = Depends(get_current_user),
+    repo: DiaryRepository = Depends(Provide[Container.diary_repository]),
+):
+    entry = await repo.get_by_id(entry_id)
+    if not entry:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Registro não encontrado")
+    return entry
+
+
 @router.post("", status_code=status.HTTP_201_CREATED)
 @inject
 async def create_entry(
@@ -64,7 +92,9 @@ async def create_entry(
     repo: DiaryRepository = Depends(Provide[Container.diary_repository]),
 ):
     data = body.model_dump()
-    data["teacher_name"] = current_user.get("full_name") or current_user.get("username", "")
+    # If teacher_name not provided by frontend, fall back to logged user
+    if not data.get("teacher_name"):
+        data["teacher_name"] = current_user.get("full_name") or current_user.get("username", "")
     return await repo.create(data)
 
 

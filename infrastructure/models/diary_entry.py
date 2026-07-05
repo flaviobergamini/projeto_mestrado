@@ -24,6 +24,7 @@ class DiaryEntry(Base):
     bathroom_use: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
 
     open_observation: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    absence_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     teacher_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     presence: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
     status: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)

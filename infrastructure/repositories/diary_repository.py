@@ -5,6 +5,8 @@ from sqlalchemy import select, func, delete
 from infrastructure.database_context.database import Database
 from infrastructure.models.diary_entry import DiaryEntry
 from infrastructure.models.student import Student
+from infrastructure.models.teacher_student_link import TeacherStudentLink
+from infrastructure.models.teacher import Teacher
 
 
 def _to_dict(e: DiaryEntry) -> dict:
@@ -20,6 +22,7 @@ def _to_dict(e: DiaryEntry) -> dict:
         "completed_activities": e.completed_activities,
         "bathroom_use": e.bathroom_use,
         "open_observation": e.open_observation,
+        "absence_reason": e.absence_reason,
         "teacher_name": e.teacher_name,
         "presence": e.presence,
         "status": e.status,
@@ -89,6 +92,7 @@ class DiaryRepository:
                 completed_activities=data.get("completed_activities"),
                 bathroom_use=data.get("bathroom_use"),
                 open_observation=data.get("open_observation"),
+                absence_reason=data.get("absence_reason"),
                 teacher_name=data.get("teacher_name"),
                 presence=data.get("presence", "Presente"),
                 status="active",
@@ -108,7 +112,7 @@ class DiaryRepository:
             for field in [
                 "diary_date", "teacher_attention", "followed_agreements", "activity_interest",
                 "had_lunch", "participated_in_play", "completed_activities", "bathroom_use",
-                "open_observation", "teacher_name", "presence",
+                "open_observation", "absence_reason", "teacher_name", "presence",
             ]:
                 if field in data:
                     value = data[field]
@@ -128,6 +132,18 @@ class DiaryRepository:
             await session.delete(entry)
             await session.commit()
             return True
+
+    async def get_linked_teachers(self, student_id: str) -> list[str]:
+        """Returns list of teacher names linked to the given student."""
+        async with self.database.session() as session:
+            stmt = (
+                select(Teacher.name)
+                .join(TeacherStudentLink, Teacher.id == TeacherStudentLink.teacher_id)
+                .where(TeacherStudentLink.student_id == student_id)
+                .order_by(Teacher.name)
+            )
+            result = await session.execute(stmt)
+            return [row[0] for row in result.all()]
 
     async def delete_all_for_student(self, student_id: str) -> int:
         async with self.database.session() as session:
