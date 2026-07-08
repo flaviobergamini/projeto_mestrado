@@ -1,4 +1,5 @@
 import uuid
+import asyncio
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from pydantic import BaseModel
 from typing import Optional
@@ -7,7 +8,9 @@ from dependency_injector.wiring import inject, Provide
 from api.dependencies import get_current_user, get_current_user_read_write
 from core.kernel.container import Container
 from infrastructure.repositories.diary_repository import DiaryRepository
+from infrastructure.repositories.student_repository import StudentRepository
 from infrastructure.services.storage_service import StorageService
+from infrastructure.services.rag_service import RagService
 
 router = APIRouter(prefix="/diary", tags=["Diary"])
 
@@ -88,19 +91,33 @@ async def get_entry(
     return entry
 
 
+async def _trigger_embedding(rag: RagService, student_repo: StudentRepository, entry: dict) -> None:
+    """Fire-and-forget: resolve student name then embed the diary entry."""
+    student_id = entry.get("student_id", "")
+    try:
+        student = await student_repo.get_by_id(student_id) if student_id else None
+        student_name = student.get("name", "") if student else ""
+        await rag.embed_diary_entry(entry, student_name)
+    except Exception:
+        pass  # never let embedding failure surface to the caller
+
+
 @router.post("", status_code=status.HTTP_201_CREATED)
 @inject
 async def create_entry(
     body: DiaryEntryCreate,
     current_user: dict = Depends(get_current_user_read_write),
     repo: DiaryRepository = Depends(Provide[Container.diary_repository]),
+    student_repo: StudentRepository = Depends(Provide[Container.student_repository]),
+    rag: RagService = Depends(Provide[Container.rag_service]),
 ):
     data = body.model_dump()
-    # If teacher_name not provided by frontend, fall back to logged user
     if not data.get("teacher_name"):
         data["teacher_name"] = current_user.get("full_name") or current_user.get("username", "")
 
-    return await repo.create(data)
+    entry = await repo.create(data)
+    asyncio.create_task(_trigger_embedding(rag, student_repo, entry))
+    return entry
 
 
 @router.put("/{entry_id}")
@@ -110,26 +127,16 @@ async def update_entry(
     body: DiaryEntryUpdate,
     current_user: dict = Depends(get_current_user_read_write),
     repo: DiaryRepository = Depends(Provide[Container.diary_repository]),
+    student_repo: StudentRepository = Depends(Provide[Container.student_repository]),
+    rag: RagService = Depends(Provide[Container.rag_service]),
 ):
     updated = await repo.update(entry_id, body.model_dump(exclude_none=True))
 
     if not updated:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Registro não encontrado")
-    
+
+    asyncio.create_task(_trigger_embedding(rag, student_repo, updated))
     return updated
-
-
-@router.delete("/{entry_id}", status_code=status.HTTP_204_NO_CONTENT)
-@inject
-async def delete_entry(
-    entry_id: str,
-    current_user: dict = Depends(get_current_user_read_write),
-    repo: DiaryRepository = Depends(Provide[Container.diary_repository]),
-):
-    deleted = await repo.delete(entry_id)
-
-    if not deleted:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Registro não encontrado")
 
 
 @router.delete("/student/{student_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -214,7 +221,19 @@ async def delete_image(
 
     if not record:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Imagem não encontrada")
-    
-    storage = StorageService()
 
+    storage = StorageService()
     storage.delete(record["object_key"])
+
+
+@router.delete("/{entry_id}", status_code=status.HTTP_204_NO_CONTENT)
+@inject
+async def delete_entry(
+    entry_id: str,
+    current_user: dict = Depends(get_current_user_read_write),
+    repo: DiaryRepository = Depends(Provide[Container.diary_repository]),
+):
+    deleted = await repo.delete(entry_id)
+
+    if not deleted:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Registro não encontrado")

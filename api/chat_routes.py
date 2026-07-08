@@ -7,6 +7,7 @@ from core.kernel.container import Container
 from api.dependencies import get_current_user
 from infrastructure.repositories.chat_repository import ChatRepository
 from infrastructure.services.gemini_service import GeminiService
+from infrastructure.services.rag_service import RagService
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
 
@@ -36,41 +37,49 @@ async def send_message(
     current_user: dict = Depends(get_current_user),
     chat_repo: ChatRepository = Depends(Provide[Container.chat_repository]),
     gemini: GeminiService = Depends(Provide[Container.gemini_service]),
+    rag: RagService = Depends(Provide[Container.rag_service]),
 ):
-    """Send a message and receive an AI response with student context."""
+    """Send a message and receive an AI response with RAG-retrieved student context."""
     user_id = current_user.get("user_id", "")
     username = current_user.get("full_name") or current_user.get("username", "")
     role = current_user.get("role", "")
 
     # Get or create session
     session_id = body.session_id
+    student_name = ""
     if session_id:
         session = await chat_repo.get_session(session_id)
         if not session:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sessão não encontrada")
+        student_name = session.get("student_name") or ""
     else:
-        # Build student_name for session
-        context = await chat_repo.get_student_context(body.student_id)
-        first_line = context.split("\n")[0] if context else ""
-        student_name = first_line.replace("ALUNO: ", "").strip() if first_line.startswith("ALUNO:") else None
+        # Use static context briefly just to extract the student name
+        static_ctx = await chat_repo.get_student_context(body.student_id)
+        first_line = static_ctx.split("\n")[0] if static_ctx else ""
+        student_name = first_line.replace("ALUNO: ", "").strip() if first_line.startswith("ALUNO:") else ""
         new_session = await chat_repo.create_session(
             user_id=user_id,
             username=username,
             role=role,
             student_id=body.student_id,
-            student_name=student_name,
+            student_name=student_name or None,
         )
         session_id = new_session["id"]
 
-    # Build prompt with student context
-    student_context = await chat_repo.get_student_context(body.student_id)
-    prompt = f"""Contexto do aluno:
-{student_context}
+    # RAG: retrieve semantically relevant chunks for the user's question
+    rag_context = await rag.build_rag_context(
+        query=body.message,
+        student_id=body.student_id,
+        student_name=student_name,
+        limit=5,
+    )
 
-Pergunta do usuário: {body.message}"""
+    prompt = f"""{rag_context}
+
+Pergunta: {body.message}"""
 
     # Save user message
-    user_msg = await chat_repo.add_message(
+    await chat_repo.add_message(
         session_id=session_id,
         role="user",
         content=body.message,
@@ -81,7 +90,7 @@ Pergunta do usuário: {body.message}"""
     # Generate AI response
     try:
         answer = gemini.generate_text(prompt=prompt, system_instruction=SYSTEM_INSTRUCTION)
-    except Exception as exc:
+    except Exception:
         answer = "Desculpe, ocorreu um erro ao processar sua pergunta. Tente novamente."
 
     # Save assistant message

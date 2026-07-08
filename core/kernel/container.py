@@ -22,6 +22,7 @@ from infrastructure.repositories.case_study_repository import CaseStudyRepositor
 from infrastructure.repositories.chat_repository import ChatRepository
 from infrastructure.services.cognito_service import CognitoService
 from infrastructure.services.gemini_service import GeminiService
+from infrastructure.services.rag_service import RagService
 
 
 class Container(containers.DeclarativeContainer):
@@ -33,6 +34,7 @@ class Container(containers.DeclarativeContainer):
             "api.chat_routes",
         ],
     )
+
 
     config = providers.Configuration()
 
@@ -59,6 +61,8 @@ class Container(containers.DeclarativeContainer):
     case_study_repository = providers.Factory(CaseStudyRepository, database=database)
 
     chat_repository = providers.Factory(ChatRepository, database=database)
+
+    rag_service = providers.Factory(RagService, database=database, gemini=gemini_service)
 
     create_user_use_case = providers.Factory(
         CreateUserUseCase,
