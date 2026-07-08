@@ -3,6 +3,7 @@ from typing import Optional
 from sqlalchemy import String, Integer, Text, DateTime, ForeignKey, JSON, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from infrastructure.database_context.database import Base
+from infrastructure.utils.encryption import EncryptedText
 
 
 class ChatMessage(Base):
@@ -14,11 +15,11 @@ class ChatMessage(Base):
     )
     message_index: Mapped[int] = mapped_column(Integer, nullable=False)
     role: Mapped[str] = mapped_column(String(32), nullable=False)
-    content: Mapped[str] = mapped_column(Text, nullable=False)
+    content: Mapped[str] = mapped_column(EncryptedText, nullable=False)
     user_id: Mapped[Optional[str]] = mapped_column(
         String(64), ForeignKey("user_profiles.id", ondelete="CASCADE", onupdate="CASCADE"), nullable=True
     )
-    username: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    username: Mapped[Optional[str]] = mapped_column(EncryptedText, nullable=True)
     sources: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
     extra: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())

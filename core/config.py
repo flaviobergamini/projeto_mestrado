@@ -27,5 +27,7 @@ class Settings:
     FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
     API_URL = os.getenv("API_URL", "http://localhost:8000")
 
+    ENCRYPTION_KEY = os.getenv("ENCRYPTION_KEY", "")
+
 
 settings = Settings()

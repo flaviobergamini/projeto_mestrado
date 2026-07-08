@@ -3,6 +3,7 @@ from typing import Optional
 from sqlalchemy import String, Text, Date, DateTime, ForeignKey, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from infrastructure.database_context.database import Base
+from infrastructure.utils.encryption import EncryptedText
 
 
 class DiaryEntry(Base):
@@ -14,18 +15,19 @@ class DiaryEntry(Base):
     )
     diary_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
 
-    # Structured diary answers (Yes / No / Partially)
-    teacher_attention: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
-    followed_agreements: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
-    activity_interest: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
-    had_lunch: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
-    participated_in_play: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
-    completed_activities: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
-    bathroom_use: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    # Structured diary answers — encrypted at rest
+    teacher_attention: Mapped[Optional[str]] = mapped_column(EncryptedText, nullable=True)
+    followed_agreements: Mapped[Optional[str]] = mapped_column(EncryptedText, nullable=True)
+    activity_interest: Mapped[Optional[str]] = mapped_column(EncryptedText, nullable=True)
+    had_lunch: Mapped[Optional[str]] = mapped_column(EncryptedText, nullable=True)
+    participated_in_play: Mapped[Optional[str]] = mapped_column(EncryptedText, nullable=True)
+    completed_activities: Mapped[Optional[str]] = mapped_column(EncryptedText, nullable=True)
+    bathroom_use: Mapped[Optional[str]] = mapped_column(EncryptedText, nullable=True)
 
-    open_observation: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    absence_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    teacher_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    open_observation: Mapped[Optional[str]] = mapped_column(EncryptedText, nullable=True)
+    absence_reason: Mapped[Optional[str]] = mapped_column(EncryptedText, nullable=True)
+    teacher_name: Mapped[Optional[str]] = mapped_column(EncryptedText, nullable=True)
+    # presence kept plaintext — used for filtering and RAG logic
     presence: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
     status: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     source: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)

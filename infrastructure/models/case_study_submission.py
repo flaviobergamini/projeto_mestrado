@@ -3,6 +3,7 @@ from typing import Optional
 from sqlalchemy import String, DateTime, JSON, ForeignKey, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from infrastructure.database_context.database import Base
+from infrastructure.utils.encryption import EncryptedText, EncryptedJSON
 
 
 class CaseStudySubmission(Base):
@@ -12,8 +13,8 @@ class CaseStudySubmission(Base):
     student_id: Mapped[Optional[str]] = mapped_column(
         String(64), ForeignKey("students.id", ondelete="SET NULL"), nullable=True, index=True
     )
-    submitted_by: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    answers: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    submitted_by: Mapped[Optional[str]] = mapped_column(EncryptedText, nullable=True)
+    answers: Mapped[Optional[dict]] = mapped_column(EncryptedJSON, nullable=True)
     metadata_: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True, name="metadata")
     submitted_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
 
