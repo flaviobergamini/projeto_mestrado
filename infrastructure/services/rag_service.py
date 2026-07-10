@@ -62,64 +62,107 @@ def build_case_study_json(case: dict, student_name: str) -> dict:
         "submetido_por": case.get("submitted_by") or "",
     }
 
-    # Nível de autismo e caracterização geral
+    # Informações cadastrais do aluno
     _pick(data, answers, {
-        "nivel_autismo": "nivelAutismo",
-        "comportamentos": "comportamentos",
-        "habilidades": "habilidades",
-        "necessidades": "necessidades",
-        "estrategias": "estrategias",
-        "dificuldades": "dificuldadesAluno",
+        "nome_aluno": "studentName",
+        "idade_aluno": "studentAge",
+        "escola": "schoolName",
+        "ano_escolar": "schoolYear",
+        "turma": "className",
+        "professor_regente": "mainTeacher",
+        "professor_apoio": "supportTeacher",
     })
 
-    # Aspectos socioemocionais (booleanos → textos legíveis)
+    # Informações pessoais (texto livre)
+    _pick(data, answers, {
+        "atividades_favoritas": "favoriteActivities",
+        "tarefas_dificeis": "difficultTasks",
+        "expressa_necessidades": "expressNeeds",
+        "interesses_especiais": "specialInterests",
+        "apoios_disponiveis": "schoolSupports",
+        "apoios_desejados": "desiredSupports",
+    })
+
+    # Aspectos social + afetivo + cognitivo (Sim/Não → texto)
     social: dict = {}
-    _pick_bool(social, answers, {
-        "interage_sem_mediacao": "interacts_without_constant_mediation",
-        "inicia_interacoes": "initiates_social_interactions_spontaneously",
-        "participa_com_estimulos": "participates_with_stimuli",
-        "espera_vez": "waits_turn_and_handles_frustration",
-        "expressa_emocoes": "expresses_basic_emotions_clearly",
-        "reage_elogios": "reacts_positively_to_praise",
-        "desregulado_rotina": "emotionally_dysregulated_with_routine_changes",
-        "interessa_aprender": "interested_in_learning_new_things",
-        "segue_instrucoes": "follows_simple_instructions",
-        "mantem_atencao": "maintains_attention_appropriately",
-        "resolve_problemas": "solves_simple_problems_independently",
-        "aprende_visual": "learns_better_with_visual_support",
+    _pick_simno(social, answers, {
+        "interage_sem_mediacao": "socialInteracts",
+        "inicia_interacoes": "socialInitiates",
+        "participa_atividades": "socialParticipates",
+        "espera_vez": "socialWaitsTurn",
+        "compartilha_experiencias": "socialShares",
+        "expressa_emocoes": "affectiveDemonstrates",
+        "reage_elogios": "affectiveReacts",
+        "busca_apoio": "affectiveSeeksSupport",
+        "desregulado_rotina": "affectiveRoutineChanges",
+        "consegue_se_acalmar": "affectiveCalmDown",
+        "interesse_aprender": "cognitiveInterest",
+        "segue_instrucoes": "cognitiveInstructions",
+        "mantem_atencao": "cognitiveAttention",
+        "resolve_problemas": "cognitiveProblems",
+        "aprende_visual": "cognitiveVisual",
     })
     if social:
         data["aspectos_socioemocionais"] = social
 
     # Aspectos motores
     motor: dict = {}
-    _pick_bool(motor, answers, {
-        "motora_fina": "fine_motor_coordination",
-        "motora_grossa": "gross_motor_coordination",
-        "autocuidado": "performs_self_care_independently",
-        "comportamentos_repetitivos": "shows_repetitive_motor_behaviors",
+    _pick_simno(motor, answers, {
+        "motora_fina": "motorFine",
+        "motora_grossa": "motorGross",
+        "autocuidado": "motorSelfCare",
+        "atividades_fisicas": "motorPhysical",
+        "comportamentos_repetitivos": "motorRepetitive",
     })
     if motor:
         data["aspectos_motores"] = motor
 
+    # Alimentação
+    alimentacao: dict = {}
+    _pick_simno(alimentacao, answers, {
+        "repertorio_restrito": "feedingRestricted",
+        "precisa_auxilio": "feedingNeedsHelp",
+        "incomodo_mistura": "feedingMixedFoods",
+        "prefere_silencio": "feedingQuietPlace",
+        "comportamentos_desafiadores": "feedingChallenging",
+    })
+    _pick(alimentacao, answers, {"observacoes": "feedingObs"})
+    if alimentacao:
+        data["alimentacao"] = alimentacao
+
     # Comunicação escola-família
     familia: dict = {}
-    _pick_bool(familia, answers, {
-        "comunicacao_frequente": "frequent_school_family_communication",
-        "apoio_emocional_familia": "family_provides_emotional_support",
-        "familia_colabora_terapia": "family_collaboration_in_therapeutic_resources",
-        "familia_aberta": "family_open_to_new_approaches",
+    _pick_simno(familia, answers, {
+        "familia_participa": "familyParticipates",
+        "comunicacao_frequente": "familyCommunication",
+        "apoio_emocional": "familySupport",
+        "colaboracao_terapia": "familyCollaboration",
+        "aberta_novas_abordagens": "familyOpenness",
     })
     _pick(familia, answers, {
-        "expectativas_familia": "family_expectations_about_development",
+        "expectativas_familia": "familyExpectations",
+        "envolvimento_familia": "familyInvolvement",
+        "consciencia_direitos": "familyAwareness",
     })
     if familia:
         data["comunicacao_familia_escola"] = familia
 
+    # Escola
+    escola: dict = {}
+    _pick(escola, answers, {
+        "necessidades_especificas": "specificNeeds",
+        "habilidades_potencialidades": "studentSkills",
+        "atendimentos_recebidos": "receivesSupport",
+        "recursos_acessibilidade": "accessibilityResources",
+        "avaliacao_desempenho": "performanceEvaluation",
+    })
+    if escola:
+        data["informacoes_escola"] = escola
+
     # Adaptações pedagógicas
     _pick(data, answers, {
-        "adaptacoes_pedagogicas": "pedagogical_adaptations",
-        "desenvolvimento_pedagogico": "pedagogical_development",
+        "adaptacoes_pedagogicas": "pedagogicalAdaptations",
+        "desenvolvimento_pedagogico": "pedagogicalDevelopment",
     })
 
     return data
@@ -170,19 +213,33 @@ def _case_study_to_text(d: dict) -> str:
         f"Estudo de caso de {d.get('aluno_nome', '')} ({d.get('data', '')}).",
         f"Submetido por: {d.get('submetido_por', 'não informado')}.",
     ]
-    if d.get("nivel_autismo"):
-        lines.append(f"Nível do autismo: {d['nivel_autismo']}.")
+    if d.get("nome_aluno"):
+        lines.append(f"Aluno: {d['nome_aluno']}, {d.get('idade_aluno', '')} anos.")
+    if d.get("escola"):
+        lines.append(f"Escola: {d['escola']}, {d.get('ano_escolar', '')} - Turma {d.get('turma', '')}.")
+    if d.get("professor_regente"):
+        lines.append(f"Professor regente: {d['professor_regente']}.")
+    if d.get("professor_apoio"):
+        lines.append(f"Professor de apoio: {d['professor_apoio']}.")
+
     for key, label in [
-        ("comportamentos", "Comportamentos"),
-        ("habilidades", "Habilidades"),
-        ("necessidades", "Necessidades"),
-        ("estrategias", "Estratégias"),
-        ("dificuldades", "Dificuldades"),
+        ("atividades_favoritas", "Atividades favoritas"),
+        ("tarefas_dificeis", "Tarefas difíceis"),
+        ("expressa_necessidades", "Expressão de necessidades"),
+        ("interesses_especiais", "Interesses especiais"),
+        ("apoios_disponiveis", "Apoios disponíveis"),
+        ("apoios_desejados", "Apoios desejados"),
+        ("necessidades_especificas", "Necessidades específicas"),
+        ("habilidades_potencialidades", "Habilidades e potencialidades"),
+        ("atendimentos_recebidos", "Atendimentos recebidos"),
+        ("recursos_acessibilidade", "Recursos de acessibilidade"),
+        ("avaliacao_desempenho", "Avaliação de desempenho"),
         ("adaptacoes_pedagogicas", "Adaptações pedagógicas"),
         ("desenvolvimento_pedagogico", "Desenvolvimento pedagógico"),
     ]:
         if d.get(key):
             lines.append(f"{label}: {d[key]}")
+
     social = d.get("aspectos_socioemocionais", {})
     if social:
         positivos = [k for k, v in social.items() if v is True]
@@ -190,10 +247,29 @@ def _case_study_to_text(d: dict) -> str:
         if positivos:
             lines.append(f"Pontos positivos socioemocionais: {', '.join(positivos)}.")
         if negativos:
-            lines.append(f"Aspectos socioemocionais a desenvolver: {', '.join(negativos)}.")
+            lines.append(f"Aspectos a desenvolver: {', '.join(negativos)}.")
+
+    motor = d.get("aspectos_motores", {})
+    if motor:
+        positivos = [k for k, v in motor.items() if v is True]
+        negativos = [k for k, v in motor.items() if v is False]
+        if positivos:
+            lines.append(f"Aspectos motores positivos: {', '.join(positivos)}.")
+        if negativos:
+            lines.append(f"Aspectos motores a desenvolver: {', '.join(negativos)}.")
+
+    alimentacao = d.get("alimentacao", {})
+    if alimentacao:
+        lines.append(f"Alimentação: {json.dumps(alimentacao, ensure_ascii=False)}")
+
     familia = d.get("comunicacao_familia_escola", {})
     if familia:
-        lines.append(f"Comunicação escola-família: {json.dumps(familia, ensure_ascii=False)}")
+        if "expectativas_familia" in familia:
+            lines.append(f"Expectativas da família: {familia['expectativas_familia']}")
+        bool_familia = {k: v for k, v in familia.items() if isinstance(v, bool)}
+        if bool_familia:
+            lines.append(f"Comunicação escola-família: {json.dumps(bool_familia, ensure_ascii=False)}")
+
     return "\n".join(lines)
 
 
@@ -211,6 +287,14 @@ def _pick_bool(target: dict, source: dict, mapping: dict) -> None:
         v = source.get(src)
         if v is not None:
             target[dest] = bool(v)
+
+
+def _pick_simno(target: dict, source: dict, mapping: dict) -> None:
+    """Maps 'Sim'/'Não' string answers to True/False booleans."""
+    for dest, src in mapping.items():
+        v = source.get(src)
+        if v in ("Sim", "Não"):
+            target[dest] = v == "Sim"
 
 
 # ── RagService ────────────────────────────────────────────────────────────────
