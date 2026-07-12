@@ -379,13 +379,43 @@ class RagService:
 
     # ── search ────────────────────────────────────────────────────────────────
 
+    VALID_SOURCES = {"diary", "case_study"}
+
+    async def get_sources_preview(self, student_id: str) -> dict:
+        """Return available source counts for a student."""
+        async with self._db.session() as session:
+            diary_result = await session.execute(
+                text("SELECT COUNT(*) FROM diary_embedding_gemini WHERE student_id = :sid"),
+                {"sid": student_id},
+            )
+            diary_count = int(diary_result.scalar() or 0)
+
+            case_result = await session.execute(
+                text("SELECT COUNT(*) FROM case_study_embedding_gemini WHERE student_id = :sid"),
+                {"sid": student_id},
+            )
+            case_count = int(case_result.scalar() or 0)
+
+        return {
+            "diary": {"available": diary_count > 0, "count": diary_count},
+            "case_study": {"available": case_count > 0, "count": case_count},
+        }
+
     async def search(
         self,
         query: str,
         student_id: str,
         limit: int = 5,
+        sources: Optional[list[str]] = None,
     ) -> list[dict]:
-        """Return the most semantically similar chunks for the given student."""
+        """Return the most semantically similar chunks for the given student.
+
+        sources: subset of ['diary', 'case_study']. Defaults to both when None or empty.
+        """
+        active = set(sources) & self.VALID_SOURCES if sources else self.VALID_SOURCES
+        if not active:
+            return []
+
         try:
             query_vector = self._gemini.generate_embedding(query)
         except Exception:
@@ -394,25 +424,27 @@ class RagService:
 
         vector_literal = f"[{','.join(str(x) for x in query_vector)}]"
 
+        parts = []
+        if "diary" in active:
+            parts.append(
+                "SELECT content, meta_data::text AS meta_json,"
+                " (embedding <=> CAST(:vec AS vector)) AS distance,"
+                " 'diario' AS source"
+                " FROM diary_embedding_gemini WHERE student_id = :sid"
+            )
+        if "case_study" in active:
+            parts.append(
+                "SELECT content, meta_data::text AS meta_json,"
+                " (embedding <=> CAST(:vec AS vector)) AS distance,"
+                " 'estudo_caso' AS source"
+                " FROM case_study_embedding_gemini WHERE student_id = :sid"
+            )
+
+        union_sql = " UNION ALL ".join(parts) + " ORDER BY distance ASC LIMIT :lim"
+
         async with self._db.session() as session:
-            # Cosine similarity search across both tables, union-ed
-            sql = text("""
-                SELECT content, meta_data::text AS meta_json,
-                       (embedding <=> CAST(:vec AS vector)) AS distance,
-                       'diario' AS source
-                FROM diary_embedding_gemini
-                WHERE student_id = :sid
-                UNION ALL
-                SELECT content, meta_data::text AS meta_json,
-                       (embedding <=> CAST(:vec AS vector)) AS distance,
-                       'estudo_caso' AS source
-                FROM case_study_embedding_gemini
-                WHERE student_id = :sid
-                ORDER BY distance ASC
-                LIMIT :lim
-            """)
             result = await session.execute(
-                sql,
+                text(union_sql),
                 {"vec": vector_literal, "sid": student_id, "lim": limit},
             )
             rows = result.fetchall()
@@ -438,9 +470,10 @@ class RagService:
         student_id: str,
         student_name: str,
         limit: int = 5,
+        sources: Optional[list[str]] = None,
     ) -> str:
         """Returns a ready-to-use context string for the LLM prompt."""
-        chunks = await self.search(query, student_id, limit=limit)
+        chunks = await self.search(query, student_id, limit=limit, sources=sources)
         if not chunks:
             return f"Não há registros vetorizados para {student_name} ainda."
 

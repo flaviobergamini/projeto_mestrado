@@ -21,6 +21,7 @@ from infrastructure.repositories.teacher_repository import TeacherRepository
 from infrastructure.repositories.case_study_repository import CaseStudyRepository
 from infrastructure.repositories.chat_repository import ChatRepository
 from infrastructure.repositories.prompt_repository import PromptRepository
+from infrastructure.repositories.generated_pei_repository import GeneratedPeiRepository
 from infrastructure.services.cognito_service import CognitoService
 from infrastructure.services.gemini_service import GeminiService
 from infrastructure.services.rag_service import RagService
@@ -64,6 +65,8 @@ class Container(containers.DeclarativeContainer):
     chat_repository = providers.Factory(ChatRepository, database=database)
 
     prompt_repository = providers.Factory(PromptRepository, database=database)
+
+    generated_pei_repository = providers.Factory(GeneratedPeiRepository, database=database)
 
     rag_service = providers.Factory(RagService, database=database, gemini=gemini_service)
 

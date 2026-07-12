@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from dependency_injector.wiring import inject, Provide
 from pydantic import BaseModel
 from typing import Optional
@@ -17,6 +17,7 @@ class SendMessageRequest(BaseModel):
     student_id: str
     session_id: Optional[str] = None
     message: str
+    sources: Optional[list[str]] = None  # e.g. ["diary", "case_study"]
 
 
 class SendMessageResponse(BaseModel):
@@ -68,6 +69,7 @@ async def send_message(
         student_id=body.student_id,
         student_name=student_name,
         limit=5,
+        sources=body.sources,
     )
 
     prompt = f"""{rag_context}
@@ -105,6 +107,17 @@ Pergunta: {body.message}"""
         answer=answer,
         message_index=assistant_msg["message_index"],
     )
+
+
+@router.get("/sources-preview")
+@inject
+async def get_sources_preview(
+    student_id: str = Query(...),
+    current_user: dict = Depends(get_current_user),
+    rag: RagService = Depends(Provide[Container.rag_service]),
+):
+    """Return the count of available RAG sources for a given student."""
+    return await rag.get_sources_preview(student_id)
 
 
 @router.get("/sessions")
