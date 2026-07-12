@@ -1,7 +1,9 @@
 from typing import Optional
-from sqlalchemy import select
+from sqlalchemy import select, delete, func
 from infrastructure.database_context.database import Database
 from infrastructure.models.user_profile import UserProfile
+from infrastructure.models.municipality import Municipality
+from infrastructure.models.school import School
 from core.interfaces.i_user_repository import IUserRepository
 
 
@@ -15,6 +17,7 @@ def _to_dict(u: UserProfile) -> dict:
         "municipality_id": u.municipality_id,
         "school_id": u.school_id,
         "teacher_id": u.teacher_id,
+        "created_at": u.created_at.isoformat() if u.created_at else None,
     }
 
 
@@ -60,6 +63,31 @@ class UserRepository(IUserRepository):
             await session.refresh(user)
             return _to_dict(user)
 
+    async def update(self, user_id: str, full_name: Optional[str] = None, role: Optional[str] = None, is_active: Optional[bool] = None) -> dict | None:
+        async with self.database.session() as session:
+            result = await session.execute(select(UserProfile).where(UserProfile.id == user_id))
+            user = result.scalars().first()
+            if not user:
+                return None
+            if full_name is not None:
+                user.full_name = full_name
+            if role is not None:
+                user.role = role
+            if is_active is not None:
+                user.is_active = is_active
+            await session.commit()
+            await session.refresh(user)
+            return _to_dict(user)
+
+    async def delete(self, user_id: str) -> bool:
+        async with self.database.session() as session:
+            result = await session.execute(select(UserProfile).where(UserProfile.id == user_id))
+            if not result.scalar_one_or_none():
+                return False
+            await session.execute(delete(UserProfile).where(UserProfile.id == user_id))
+            await session.commit()
+            return True
+
     async def get_by_username(self, username: str) -> Optional[dict]:
         async with self.database.session() as session:
             result = await session.execute(select(UserProfile).where(UserProfile.username == username))
@@ -76,3 +104,25 @@ class UserRepository(IUserRepository):
         async with self.database.session() as session:
             result = await session.execute(select(UserProfile).order_by(UserProfile.username))
             return [_to_dict(u) for u in result.scalars().all()]
+
+    async def list_paginated(self, page: int = 1, page_size: int = 20) -> dict:
+        offset = (page - 1) * page_size
+        async with self.database.session() as session:
+            total_result = await session.execute(select(func.count()).select_from(UserProfile))
+            total = total_result.scalar() or 0
+
+            result = await session.execute(
+                select(UserProfile)
+                .order_by(UserProfile.username)
+                .offset(offset)
+                .limit(page_size)
+            )
+            items = [_to_dict(u) for u in result.scalars().all()]
+
+        return {
+            "items": items,
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "pages": max(1, (total + page_size - 1) // page_size),
+        }

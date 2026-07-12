@@ -6,7 +6,7 @@ Hierarquia:
   secretaria   → pré-cadastro (escola, professor, aluno) por município — sem update
   coordenacao  → cadastra/edita escola; preenche estudo de caso; vê alunos da escola
   professor    → vê/edita apenas seus próprios alunos; preenche estudo de caso
-  pesquisador  → leitura global, sem escrita
+  viewer       → leitura global, sem escrita
 """
 
 # ------------------------------------------------------------------ #
@@ -16,15 +16,15 @@ ADMIN = "admin"
 SECRETARIA = "secretaria"
 COORDENACAO = "coordenacao"
 PROFESSOR = "professor"
-PESQUISADOR = "pesquisador"
+VIEWER = "viewer"
 
-ALL_ROLES = {ADMIN, SECRETARIA, COORDENACAO, PROFESSOR, PESQUISADOR}
+ALL_ROLES = {ADMIN, SECRETARIA, COORDENACAO, PROFESSOR, VIEWER}
 
 # Roles que podem escrever dados
 WRITE_ROLES = {ADMIN, SECRETARIA, COORDENACAO, PROFESSOR}
 
 # Roles somente leitura
-READ_ONLY_ROLES = {PESQUISADOR}
+READ_ONLY_ROLES = {VIEWER}
 
 # ------------------------------------------------------------------ #
 # Permissões por recurso                                              #
@@ -43,29 +43,28 @@ CAN_REGISTER_SCHOOL = {ADMIN, COORDENACAO}
 CAN_EDIT_SCHOOL = {ADMIN, COORDENACAO}
 
 # Quem pode ver escolas
-CAN_VIEW_SCHOOL = {ADMIN, SECRETARIA, COORDENACAO, PESQUISADOR}
-# professor não vê cadastro de escola
+CAN_VIEW_SCHOOL = {ADMIN, SECRETARIA, COORDENACAO, VIEWER}
 
 # Quem pode editar aluno
 CAN_EDIT_STUDENT = {ADMIN, PROFESSOR}
 
 # Quem pode ver alunos
-CAN_VIEW_STUDENT = {ADMIN, SECRETARIA, COORDENACAO, PROFESSOR, PESQUISADOR}
+CAN_VIEW_STUDENT = {ADMIN, SECRETARIA, COORDENACAO, PROFESSOR, VIEWER}
 
 # Quem pode editar professor/docente
 CAN_EDIT_TEACHER = {ADMIN}
 
 # Quem pode ver professores
-CAN_VIEW_TEACHER = {ADMIN, SECRETARIA, COORDENACAO, PESQUISADOR}
+CAN_VIEW_TEACHER = {ADMIN, SECRETARIA, COORDENACAO, VIEWER}
 
 # Quem pode preencher estudo de caso / PDI
 CAN_FILL_CASE_STUDY = {ADMIN, COORDENACAO, PROFESSOR}
 
 # Quem pode ver estudos de caso
-CAN_VIEW_CASE_STUDY = {ADMIN, SECRETARIA, COORDENACAO, PROFESSOR, PESQUISADOR}
+CAN_VIEW_CASE_STUDY = {ADMIN, SECRETARIA, COORDENACAO, PROFESSOR, VIEWER}
 
 # Quem pode usar o chat/RAG
-CAN_USE_CHAT = {ADMIN, SECRETARIA, COORDENACAO, PROFESSOR, PESQUISADOR}
+CAN_USE_CHAT = {ADMIN, SECRETARIA, COORDENACAO, PROFESSOR, VIEWER}
 
 
 # ------------------------------------------------------------------ #
