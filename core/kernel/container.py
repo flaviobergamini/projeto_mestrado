@@ -25,6 +25,7 @@ from infrastructure.repositories.generated_pei_repository import GeneratedPeiRep
 from infrastructure.repositories.municipality_repository import MunicipalityRepository
 from infrastructure.repositories.audit_repository import AuditRepository
 from infrastructure.repositories.ai_usage_repository import AiUsageRepository
+from infrastructure.repositories.vinculos_repository import VinculosRepository
 from infrastructure.services.cognito_service import CognitoService
 from infrastructure.services.gemini_service import GeminiService
 from infrastructure.services.rag_service import RagService
@@ -38,6 +39,7 @@ class Container(containers.DeclarativeContainer):
             "api.school_routes", "api.teacher_routes", "api.case_study_routes",
             "api.chat_routes", "api.prompt_routes", "api.pei_gen_routes",
             "api.municipality_routes", "api.admin_routes", "api.ai_usage_routes",
+            "api.vinculos_routes",
         ],
     )
 
@@ -77,6 +79,8 @@ class Container(containers.DeclarativeContainer):
     audit_repository = providers.Factory(AuditRepository, database=database)
 
     ai_usage_repository = providers.Factory(AiUsageRepository, database=database)
+
+    vinculos_repository = providers.Factory(VinculosRepository, database=database)
 
     rag_service = providers.Factory(RagService, database=database, gemini=gemini_service, usage_repo=ai_usage_repository)
 
