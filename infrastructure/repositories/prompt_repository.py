@@ -94,9 +94,10 @@ class PromptRepository:
         self._db = database
 
     async def get_active(self, scope: str) -> dict:
-        """Return the active custom prompt, or the hardcoded default."""
+        """Return the active prompt, or the most recently updated, or the hardcoded default."""
         try:
             async with self._db.session() as session:
+                # 1st priority: explicitly activated prompt
                 result = await session.execute(
                     select(AiPrompt)
                     .where(AiPrompt.scope == scope, AiPrompt.is_active == True)
@@ -106,25 +107,39 @@ class PromptRepository:
                 row = result.scalar_one_or_none()
                 if row:
                     return self._to_dict(row)
+
+                # 2nd priority: most recently created/updated prompt
+                result = await session.execute(
+                    select(AiPrompt)
+                    .where(AiPrompt.scope == scope)
+                    .order_by(AiPrompt.updated_at.desc())
+                    .limit(1)
+                )
+                row = result.scalar_one_or_none()
+                if row:
+                    return self._to_dict(row)
         except OperationalError:
             pass
+        # 3rd priority: hardcoded default
         return _default_prompt(scope)
 
     async def list_all(self, scope: str) -> list[dict]:
-        """Return all saved prompts for scope, with the default always first."""
-        prompts = [_default_prompt(scope)]
+        """Return prompts: active first, then others by recency, base prompt last."""
+        custom: list[dict] = []
         try:
             async with self._db.session() as session:
                 result = await session.execute(
                     select(AiPrompt)
                     .where(AiPrompt.scope == scope)
-                    .order_by(AiPrompt.updated_at.desc())
+                    # active first, then by most recently updated
+                    .order_by(AiPrompt.is_active.desc(), AiPrompt.updated_at.desc())
                 )
                 rows = result.scalars().all()
-                prompts += [self._to_dict(r) for r in rows]
+                custom = [self._to_dict(r) for r in rows]
         except OperationalError:
             pass
-        return prompts
+        # Base prompt always at the end
+        return custom + [_default_prompt(scope)]
 
     async def create(self, scope: str, name: str, description: str, content: str) -> dict:
         async with self._db.session() as session:
@@ -168,6 +183,15 @@ class PromptRepository:
             await session.commit()
             await session.refresh(prompt)
             return self._to_dict(prompt)
+
+    async def deactivate(self, scope: str) -> dict:
+        """Deactivate all prompts for the scope — Gemini falls back to most recent."""
+        async with self._db.session() as session:
+            await session.execute(
+                update(AiPrompt).where(AiPrompt.scope == scope).values(is_active=False)
+            )
+            await session.commit()
+        return await self.get_active(scope)
 
     async def delete(self, prompt_id: str) -> bool:
         async with self._db.session() as session:

@@ -119,6 +119,18 @@ async def delete_prompt(
         raise HTTPException(status_code=404, detail="Prompt não encontrado.")
 
 
+@router.post("/{scope}/deactivate")
+@inject
+async def deactivate_prompt(
+    scope: str,
+    current_user: dict = Depends(get_current_user),
+    repo: PromptRepository = Depends(Provide[Container.prompt_repository]),
+):
+    _check_scope(scope)
+    _require_editor(current_user)
+    return await repo.deactivate(scope)
+
+
 @router.post("/{scope}/reset")
 @inject
 async def reset_prompt(
