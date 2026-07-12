@@ -20,6 +20,7 @@ from infrastructure.repositories.school_repository import SchoolRepository
 from infrastructure.repositories.teacher_repository import TeacherRepository
 from infrastructure.repositories.case_study_repository import CaseStudyRepository
 from infrastructure.repositories.chat_repository import ChatRepository
+from infrastructure.repositories.prompt_repository import PromptRepository
 from infrastructure.services.cognito_service import CognitoService
 from infrastructure.services.gemini_service import GeminiService
 from infrastructure.services.rag_service import RagService
@@ -31,7 +32,7 @@ class Container(containers.DeclarativeContainer):
             "api.auth_routes", "api.dependencies",
             "api.student_routes", "api.diary_routes", "api.pdi_routes",
             "api.school_routes", "api.teacher_routes", "api.case_study_routes",
-            "api.chat_routes",
+            "api.chat_routes", "api.prompt_routes", "api.pei_gen_routes",
         ],
     )
 
@@ -61,6 +62,8 @@ class Container(containers.DeclarativeContainer):
     case_study_repository = providers.Factory(CaseStudyRepository, database=database)
 
     chat_repository = providers.Factory(ChatRepository, database=database)
+
+    prompt_repository = providers.Factory(PromptRepository, database=database)
 
     rag_service = providers.Factory(RagService, database=database, gemini=gemini_service)
 

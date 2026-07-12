@@ -6,16 +6,11 @@ from typing import Optional
 from core.kernel.container import Container
 from api.dependencies import get_current_user
 from infrastructure.repositories.chat_repository import ChatRepository
+from infrastructure.repositories.prompt_repository import PromptRepository
 from infrastructure.services.gemini_service import GeminiService
 from infrastructure.services.rag_service import RagService
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
-
-SYSTEM_INSTRUCTION = """Você é um assistente especializado em educação inclusiva para alunos com Transtorno do Espectro Autista (TEA).
-Responda sempre em português do Brasil, de forma clara e profissional.
-Use os dados do aluno fornecidos para contextualizar suas respostas.
-Foque em estratégias pedagógicas, comportamentais e de comunicação adequadas ao perfil do aluno.
-Se não souber algo, diga claramente. Não invente informações sobre o aluno."""
 
 
 class SendMessageRequest(BaseModel):
@@ -38,6 +33,7 @@ async def send_message(
     chat_repo: ChatRepository = Depends(Provide[Container.chat_repository]),
     gemini: GeminiService = Depends(Provide[Container.gemini_service]),
     rag: RagService = Depends(Provide[Container.rag_service]),
+    prompt_repo: PromptRepository = Depends(Provide[Container.prompt_repository]),
 ):
     """Send a message and receive an AI response with RAG-retrieved student context."""
     user_id = current_user.get("user_id", "")
@@ -87,9 +83,13 @@ Pergunta: {body.message}"""
         username=username,
     )
 
+    # Load active system prompt (custom or default)
+    prompt_data = await prompt_repo.get_active("chat")
+    system_instruction = prompt_data["content"]
+
     # Generate AI response
     try:
-        answer = gemini.generate_text(prompt=prompt, system_instruction=SYSTEM_INSTRUCTION)
+        answer = gemini.generate_text(prompt=prompt, system_instruction=system_instruction)
     except Exception:
         answer = "Desculpe, ocorreu um erro ao processar sua pergunta. Tente novamente."
 

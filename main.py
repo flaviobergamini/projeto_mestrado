@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from api import auth_routes, student_routes, diary_routes, pdi_routes, school_routes, teacher_routes, case_study_routes, chat_routes
+from api import auth_routes, student_routes, diary_routes, pdi_routes, school_routes, teacher_routes, case_study_routes, chat_routes, prompt_routes, pei_gen_routes
 from api.auth_routes import router as auth_router
 from api.student_routes import router as student_router
 from api.diary_routes import router as diary_router
@@ -9,11 +9,13 @@ from api.school_routes import router as school_router
 from api.teacher_routes import router as teacher_router
 from api.case_study_routes import router as case_study_router
 from api.chat_routes import router as chat_router
+from api.prompt_routes import router as prompt_router
+from api.pei_gen_routes import router as pei_gen_router
 from core.kernel.container import Container
 
 container = Container()
 container.config.database.url.from_env("DATABASE_URL")
-container.wire(modules=[auth_routes, student_routes, diary_routes, pdi_routes, school_routes, teacher_routes, case_study_routes, chat_routes])
+container.wire(modules=[auth_routes, student_routes, diary_routes, pdi_routes, school_routes, teacher_routes, case_study_routes, chat_routes, prompt_routes, pei_gen_routes])
 
 app = FastAPI(
     title="Agente IA TEA",
@@ -38,6 +40,8 @@ app.include_router(school_router)
 app.include_router(teacher_router)
 app.include_router(case_study_router)
 app.include_router(chat_router)
+app.include_router(prompt_router)
+app.include_router(pei_gen_router)
 
 
 @app.get("/health", tags=["Health"])
