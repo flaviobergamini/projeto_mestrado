@@ -12,6 +12,7 @@ from infrastructure.database_context.database import Database
 from infrastructure.models.diary_embedding_gemini import DiaryEmbeddingGemini
 from infrastructure.models.case_study_embedding_gemini import CaseStudyEmbeddingGemini
 from infrastructure.services.gemini_service import GeminiService
+from infrastructure.repositories.ai_usage_repository import AiUsageRepository
 
 logger = logging.getLogger(__name__)
 
@@ -300,9 +301,10 @@ def _pick_simno(target: dict, source: dict, mapping: dict) -> None:
 # ── RagService ────────────────────────────────────────────────────────────────
 
 class RagService:
-    def __init__(self, database: Database, gemini: GeminiService):
+    def __init__(self, database: Database, gemini: GeminiService, usage_repo: Optional[AiUsageRepository] = None):
         self._db = database
         self._gemini = gemini
+        self._usage = usage_repo
 
     # ── embed & save ──────────────────────────────────────────────────────────
 
@@ -321,7 +323,11 @@ class RagService:
         content = json_to_content(structured)
 
         try:
-            vector = self._gemini.generate_embedding(content)
+            vector, usage = self._gemini.generate_embedding_tracked(content)
+            if self._usage:
+                await self._usage.log(model=usage.model, operation="embedding_diary",
+                                      input_tokens=usage.input_tokens, output_tokens=0,
+                                      total_tokens=usage.total_tokens, duration_ms=usage.duration_ms)
         except Exception:
             logger.exception("Gemini embedding failed for diary entry %s", entry_id)
             return
@@ -357,7 +363,11 @@ class RagService:
         content = json_to_content(structured)
 
         try:
-            vector = self._gemini.generate_embedding(content)
+            vector, usage = self._gemini.generate_embedding_tracked(content)
+            if self._usage:
+                await self._usage.log(model=usage.model, operation="embedding_case_study",
+                                      input_tokens=usage.input_tokens, output_tokens=0,
+                                      total_tokens=usage.total_tokens, duration_ms=usage.duration_ms)
         except Exception:
             logger.exception("Gemini embedding failed for case study %s", case_id)
             return
@@ -417,7 +427,11 @@ class RagService:
             return []
 
         try:
-            query_vector = self._gemini.generate_embedding(query)
+            query_vector, emb_usage = self._gemini.generate_embedding_tracked(query)
+            if self._usage:
+                await self._usage.log(model=emb_usage.model, operation="embedding_search",
+                                      input_tokens=emb_usage.input_tokens, output_tokens=0,
+                                      total_tokens=emb_usage.total_tokens, duration_ms=emb_usage.duration_ms)
         except Exception:
             logger.exception("Gemini embedding failed for query")
             return []

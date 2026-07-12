@@ -18,6 +18,8 @@ from api.prompt_routes import router as prompt_router
 from api.pei_gen_routes import router as pei_gen_router
 from api.municipality_routes import router as municipality_router
 from api.admin_routes import router as admin_router
+from api import ai_usage_routes
+from api.ai_usage_routes import router as ai_usage_router
 from api.middleware.audit_middleware import AuditMiddleware
 from core.kernel.container import Container
 
@@ -27,7 +29,7 @@ container.wire(modules=[
     auth_routes, student_routes, diary_routes, pdi_routes,
     school_routes, teacher_routes, case_study_routes,
     chat_routes, prompt_routes, pei_gen_routes,
-    municipality_routes, admin_routes,
+    municipality_routes, admin_routes, ai_usage_routes,
 ])
 
 app = FastAPI(
@@ -60,6 +62,7 @@ app.include_router(prompt_router)
 app.include_router(pei_gen_router)
 app.include_router(municipality_router)
 app.include_router(admin_router)
+app.include_router(ai_usage_router)
 
 
 @app.get("/health", tags=["Health"])

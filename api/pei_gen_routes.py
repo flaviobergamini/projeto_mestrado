@@ -10,6 +10,7 @@ from core.kernel.container import Container
 from infrastructure.repositories.student_repository import StudentRepository
 from infrastructure.repositories.prompt_repository import PromptRepository
 from infrastructure.repositories.generated_pei_repository import GeneratedPeiRepository
+from infrastructure.repositories.ai_usage_repository import AiUsageRepository
 from infrastructure.services.rag_service import RagService
 from infrastructure.services.gemini_service import GeminiService
 
@@ -31,6 +32,7 @@ async def generate_pei(
     gemini: GeminiService = Depends(Provide[Container.gemini_service]),
     prompt_repo: PromptRepository = Depends(Provide[Container.prompt_repository]),
     pei_repo: GeneratedPeiRepository = Depends(Provide[Container.generated_pei_repository]),
+    usage_repo: AiUsageRepository = Depends(Provide[Container.ai_usage_repository]),
 ):
     student = await student_repo.get_by_id(body.student_id)
     if not student:
@@ -56,7 +58,16 @@ async def generate_pei(
 Gere o Plano Educacional Individualizado (PEI) completo para este aluno."""
 
     try:
-        pei_text = gemini.generate_text(prompt=prompt, system_instruction=system_instruction)
+        pei_text, usage = gemini.generate_text_tracked(prompt=prompt, system_instruction=system_instruction)
+        await usage_repo.log(
+            model=usage.model,
+            operation="pei_generation",
+            input_tokens=usage.input_tokens,
+            output_tokens=usage.output_tokens,
+            total_tokens=usage.total_tokens,
+            duration_ms=usage.duration_ms,
+            user_id=generated_by,
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erro ao gerar PEI: {str(e)}")
 

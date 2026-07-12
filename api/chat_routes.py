@@ -7,6 +7,7 @@ from core.kernel.container import Container
 from api.dependencies import get_current_user
 from infrastructure.repositories.chat_repository import ChatRepository
 from infrastructure.repositories.prompt_repository import PromptRepository
+from infrastructure.repositories.ai_usage_repository import AiUsageRepository
 from infrastructure.services.gemini_service import GeminiService
 from infrastructure.services.rag_service import RagService
 
@@ -35,6 +36,7 @@ async def send_message(
     gemini: GeminiService = Depends(Provide[Container.gemini_service]),
     rag: RagService = Depends(Provide[Container.rag_service]),
     prompt_repo: PromptRepository = Depends(Provide[Container.prompt_repository]),
+    usage_repo: AiUsageRepository = Depends(Provide[Container.ai_usage_repository]),
 ):
     """Send a message and receive an AI response with RAG-retrieved student context."""
     user_id = current_user.get("user_id", "")
@@ -89,9 +91,19 @@ Pergunta: {body.message}"""
     prompt_data = await prompt_repo.get_active("chat")
     system_instruction = prompt_data["content"]
 
-    # Generate AI response
+    # Generate AI response (tracked)
     try:
-        answer = gemini.generate_text(prompt=prompt, system_instruction=system_instruction)
+        answer, usage = gemini.generate_text_tracked(prompt=prompt, system_instruction=system_instruction)
+        await usage_repo.log(
+            model=usage.model,
+            operation="chat_rag",
+            input_tokens=usage.input_tokens,
+            output_tokens=usage.output_tokens,
+            total_tokens=usage.total_tokens,
+            duration_ms=usage.duration_ms,
+            user_id=user_id,
+            username=username,
+        )
     except Exception:
         answer = "Desculpe, ocorreu um erro ao processar sua pergunta. Tente novamente."
 
