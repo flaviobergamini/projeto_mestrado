@@ -101,3 +101,74 @@ class GeminiService:
 
     def generate_embeddings_batch(self, texts: list[str]) -> list[list[float]]:
         return [self.generate_embedding(t) for t in texts]
+
+    # ── Audio transcription ──────────────────────────────────────────────────
+
+    def transcribe_diary_audio(self, audio_bytes: bytes, mime_type: str = "audio/webm") -> dict:
+        """Send audio to Gemini and extract structured diary fields.
+
+        Returns a dict with the same keys as DiaryEntryCreate (minus student_id/diary_date).
+        All answer fields use 'Sim' | 'Não' | 'Parcialmente' | null.
+        """
+        import base64
+
+        prompt = """Você é um assistente que ajuda professores a registrar o diário de acompanhamento de alunos com TEA.
+
+Ouça o áudio e preencha o JSON abaixo com base no que o professor relatou.
+
+Regras:
+- Para os campos de atividade use SOMENTE: "Sim", "Não", "Parcialmente" ou null (se não mencionado).
+- Para "presence" use SOMENTE: "Presente", "Falta Justificada" ou "Falta Injustificada".
+- "open_observation": texto livre com observações adicionais mencionadas, ou null.
+- "absence_reason": motivo da falta se for Falta Justificada, ou null.
+- Não invente informações que não foram ditas no áudio. Use null para campos não mencionados.
+
+Retorne APENAS o JSON, sem explicações, sem markdown, sem ```json.
+
+{
+  "presence": "Presente",
+  "teacher_attention": null,
+  "followed_agreements": null,
+  "activity_interest": null,
+  "had_lunch": null,
+  "participated_in_play": null,
+  "completed_activities": null,
+  "bathroom_use": null,
+  "open_observation": null,
+  "absence_reason": null
+}"""
+
+        message = HumanMessage(content=[
+            {
+                "type": "media",
+                "data": base64.b64encode(audio_bytes).decode("utf-8"),
+                "mime_type": mime_type,
+            },
+            {"type": "text", "text": prompt},
+        ])
+
+        t0 = time.monotonic()
+        response = self._llm.invoke([message])
+        duration_ms = int((time.monotonic() - t0) * 1000)
+
+        import json, re
+        raw = response.content.strip()
+        # Strip accidental markdown fences
+        raw = re.sub(r"^```[a-z]*\n?", "", raw, flags=re.MULTILINE)
+        raw = re.sub(r"```$", "", raw, flags=re.MULTILINE).strip()
+
+        meta = getattr(response, "usage_metadata", None) or {}
+        usage = UsageData(
+            model=self.model_name,
+            input_tokens=int(meta.get("input_tokens", 0)),
+            output_tokens=int(meta.get("output_tokens", 0)),
+            total_tokens=int(meta.get("total_tokens", 0)),
+            duration_ms=duration_ms,
+        )
+
+        try:
+            fields = json.loads(raw)
+        except Exception:
+            fields = {}
+
+        return fields, usage

@@ -9,8 +9,10 @@ from api.dependencies import get_current_user, get_current_user_read_write
 from core.kernel.container import Container
 from infrastructure.repositories.diary_repository import DiaryRepository
 from infrastructure.repositories.student_repository import StudentRepository
+from infrastructure.repositories.ai_usage_repository import AiUsageRepository
 from infrastructure.services.storage_service import StorageService
 from infrastructure.services.rag_service import RagService
+from infrastructure.services.gemini_service import GeminiService
 
 router = APIRouter(prefix="/diary", tags=["Diary"])
 
@@ -44,6 +46,49 @@ class DiaryEntryUpdate(BaseModel):
     bathroom_use: Optional[str] = None
     open_observation: Optional[str] = None
     absence_reason: Optional[str] = None
+
+
+ALLOWED_AUDIO_TYPES = {
+    "audio/webm", "audio/webm;codecs=opus", "audio/ogg", "audio/ogg;codecs=opus",
+    "audio/mp4", "audio/mpeg", "audio/wav", "audio/x-wav",
+}
+MAX_AUDIO_SIZE = 20 * 1024 * 1024  # 20 MB
+
+
+@router.post("/transcribe-audio")
+@inject
+async def transcribe_diary_audio(
+    file: UploadFile = File(...),
+    current_user: dict = Depends(get_current_user_read_write),
+    gemini: GeminiService = Depends(Provide[Container.gemini_service]),
+    usage_repo: AiUsageRepository = Depends(Provide[Container.ai_usage_repository]),
+):
+    """Receive an audio recording and return pre-filled diary fields extracted by Gemini."""
+    content_type = (file.content_type or "").split(";")[0].strip()
+    normalized_mime = content_type if content_type in {
+        "audio/webm", "audio/ogg", "audio/mp4", "audio/mpeg", "audio/wav", "audio/x-wav",
+    } else "audio/webm"
+
+    content = await file.read()
+    if len(content) > MAX_AUDIO_SIZE:
+        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                            detail="Áudio muito grande. Máximo: 20 MB.")
+
+    try:
+        fields, usage = gemini.transcribe_diary_audio(content, mime_type=normalized_mime)
+        await usage_repo.log(
+            model=usage.model,
+            operation="diary_audio_transcription",
+            input_tokens=usage.input_tokens,
+            output_tokens=usage.output_tokens,
+            total_tokens=usage.total_tokens,
+            duration_ms=usage.duration_ms,
+            user_id=current_user.get("user_id"),
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao transcrever áudio: {str(e)}")
+
+    return fields
 
 
 @router.get("/students")
