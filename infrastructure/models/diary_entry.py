@@ -32,6 +32,7 @@ class DiaryEntry(Base):
     status: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     source: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
 
+    anonymized_data: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime, server_default=func.now(), onupdate=func.now(), nullable=True

@@ -46,11 +46,9 @@ async def get_case_study(
 
 
 async def _trigger_case_embedding(rag: RagService, student_repo: StudentRepository, case: dict) -> None:
-    student_id = case.get("student_id", "")
+    """Fire-and-forget: embed case study (anonymised — no student name sent to Gemini)."""
     try:
-        student = await student_repo.get_by_id(student_id) if student_id else None
-        student_name = student.get("name", "") if student else (case.get("student_name") or "")
-        await rag.embed_case_study(case, student_name)
+        await rag.embed_case_study(case)
     except Exception:
         pass
 

@@ -92,12 +92,9 @@ async def get_entry(
 
 
 async def _trigger_embedding(rag: RagService, student_repo: StudentRepository, entry: dict) -> None:
-    """Fire-and-forget: resolve student name then embed the diary entry."""
-    student_id = entry.get("student_id", "")
+    """Fire-and-forget: embed diary entry (anonymised — no student name sent to Gemini)."""
     try:
-        student = await student_repo.get_by_id(student_id) if student_id else None
-        student_name = student.get("name", "") if student else ""
-        await rag.embed_diary_entry(entry, student_name)
+        await rag.embed_diary_entry(entry)
     except Exception:
         pass  # never let embedding failure surface to the caller
 

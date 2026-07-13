@@ -22,6 +22,7 @@ class Student(Base):
     guardians: Mapped[Optional[str]] = mapped_column(EncryptedText, nullable=True)
     diagnosis: Mapped[Optional[str]] = mapped_column(EncryptedText, nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(EncryptedText, nullable=True)
+    anonymized_data: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 

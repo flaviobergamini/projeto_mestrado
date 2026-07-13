@@ -1,4 +1,5 @@
 import uuid
+import json
 from datetime import date
 from typing import Optional
 from sqlalchemy import select, func, delete
@@ -8,6 +9,11 @@ from infrastructure.models.student import Student
 from infrastructure.models.teacher_student_link import TeacherStudentLink
 from infrastructure.models.teacher import Teacher
 from infrastructure.models.object_storage_file import ObjectStorageFile
+from infrastructure.services.anonymization_service import anon_diary_entry
+
+
+def _build_diary_anonymized(entry_data: dict) -> str:
+    return json.dumps(anon_diary_entry(entry_data), ensure_ascii=False)
 
 
 def _to_dict(e: DiaryEntry) -> dict:
@@ -104,6 +110,7 @@ class DiaryRepository:
                 presence=data.get("presence", "Presente"),
                 status="active",
                 source="manual",
+                anonymized_data=_build_diary_anonymized(data),
             )
 
             session.add(entry)
@@ -134,6 +141,21 @@ class DiaryRepository:
                         value = date.fromisoformat(value)
                     setattr(entry, field, value)
 
+            # Refresh anonymized_data
+            entry.anonymized_data = _build_diary_anonymized({
+                "student_id": entry.student_id,
+                "diary_date": entry.diary_date.isoformat() if entry.diary_date else "",
+                "presence": entry.presence,
+                "teacher_attention": entry.teacher_attention,
+                "followed_agreements": entry.followed_agreements,
+                "activity_interest": entry.activity_interest,
+                "had_lunch": entry.had_lunch,
+                "participated_in_play": entry.participated_in_play,
+                "completed_activities": entry.completed_activities,
+                "bathroom_use": entry.bathroom_use,
+                "open_observation": entry.open_observation,
+                "absence_reason": entry.absence_reason,
+            })
             await session.commit()
 
             await session.refresh(entry)

@@ -18,8 +18,8 @@ logger = logging.getLogger(__name__)
 
 # ── JSON builders ─────────────────────────────────────────────────────────────
 
-def build_diary_json(entry: dict, student_name: str) -> dict:
-    """Returns a compact, categorised dict that represents one diary record."""
+def build_diary_json(entry: dict) -> dict:
+    """Returns a compact, anonymised dict for one diary record (no PII)."""
     presenca = entry.get("presence") or "Não informado"
     is_present = presenca.lower() == "presente"
 
@@ -27,8 +27,6 @@ def build_diary_json(entry: dict, student_name: str) -> dict:
         "tipo": "registro_diario",
         "data": entry.get("diary_date") or "",
         "aluno_id": entry.get("student_id") or "",
-        "aluno_nome": student_name,
-        "professor": entry.get("teacher_name") or "",
         "presenca": presenca,
     }
 
@@ -51,27 +49,21 @@ def build_diary_json(entry: dict, student_name: str) -> dict:
     return data
 
 
-def build_case_study_json(case: dict, student_name: str) -> dict:
-    """Returns a compact, categorised dict for a case study submission."""
+def build_case_study_json(case: dict) -> dict:
+    """Returns a compact, anonymised dict for a case study (no PII)."""
     answers = case.get("answers") or {}
 
     data: dict = {
         "tipo": "estudo_caso",
         "data": case.get("submitted_at", "")[:10] if case.get("submitted_at") else "",
         "aluno_id": case.get("student_id") or "",
-        "aluno_nome": student_name,
-        "submetido_por": case.get("submitted_by") or "",
     }
 
-    # Informações cadastrais do aluno
+    # Non-PII cadastral fields only (exclude studentName, schoolName, mainTeacher, supportTeacher)
     _pick(data, answers, {
-        "nome_aluno": "studentName",
         "idade_aluno": "studentAge",
-        "escola": "schoolName",
         "ano_escolar": "schoolYear",
         "turma": "className",
-        "professor_regente": "mainTeacher",
-        "professor_apoio": "supportTeacher",
     })
 
     # Informações pessoais (texto livre)
@@ -184,8 +176,7 @@ def json_to_content(data: dict) -> str:
 
 def _diary_to_text(d: dict) -> str:
     lines = [
-        f"Registro diário de {d.get('aluno_nome', '')} em {d.get('data', '')}.",
-        f"Professor(a): {d.get('professor', 'não informado')}.",
+        f"Registro diário (aluno {d.get('aluno_id', '')}) em {d.get('data', '')}.",
         f"Presença: {d.get('presenca', 'não informado')}.",
     ]
     atividades = d.get("atividades")
@@ -211,17 +202,12 @@ def _diary_to_text(d: dict) -> str:
 
 def _case_study_to_text(d: dict) -> str:
     lines = [
-        f"Estudo de caso de {d.get('aluno_nome', '')} ({d.get('data', '')}).",
-        f"Submetido por: {d.get('submetido_por', 'não informado')}.",
+        f"Estudo de caso (aluno {d.get('aluno_id', '')}) em {d.get('data', '')}.",
     ]
-    if d.get("nome_aluno"):
-        lines.append(f"Aluno: {d['nome_aluno']}, {d.get('idade_aluno', '')} anos.")
-    if d.get("escola"):
-        lines.append(f"Escola: {d['escola']}, {d.get('ano_escolar', '')} - Turma {d.get('turma', '')}.")
-    if d.get("professor_regente"):
-        lines.append(f"Professor regente: {d['professor_regente']}.")
-    if d.get("professor_apoio"):
-        lines.append(f"Professor de apoio: {d['professor_apoio']}.")
+    if d.get("idade_aluno"):
+        lines.append(f"Idade: {d['idade_aluno']} anos.")
+    if d.get("ano_escolar"):
+        lines.append(f"Ano escolar: {d['ano_escolar']} - Turma {d.get('turma', '')}.")
 
     for key, label in [
         ("atividades_favoritas", "Atividades favoritas"),
@@ -311,15 +297,14 @@ class RagService:
     async def embed_diary_entry(
         self,
         entry: dict,
-        student_name: str,
     ) -> None:
-        """Build JSON + embed + upsert into diary_embedding_gemini."""
+        """Build anonymised JSON + embed + upsert into diary_embedding_gemini."""
         entry_id = entry.get("id")
         student_id = entry.get("student_id")
         if not entry_id:
             return
 
-        structured = build_diary_json(entry, student_name)
+        structured = build_diary_json(entry)
         content = json_to_content(structured)
 
         try:
@@ -351,15 +336,14 @@ class RagService:
     async def embed_case_study(
         self,
         case: dict,
-        student_name: str,
     ) -> None:
-        """Build JSON + embed + upsert into case_study_embedding_gemini."""
+        """Build anonymised JSON + embed + upsert into case_study_embedding_gemini."""
         case_id = case.get("id")
         student_id = case.get("student_id")
         if not case_id:
             return
 
-        structured = build_case_study_json(case, student_name)
+        structured = build_case_study_json(case)
         content = json_to_content(structured)
 
         try:
@@ -482,16 +466,15 @@ class RagService:
         self,
         query: str,
         student_id: str,
-        student_name: str,
         limit: int = 5,
         sources: Optional[list[str]] = None,
     ) -> str:
-        """Returns a ready-to-use context string for the LLM prompt."""
+        """Returns a ready-to-use anonymised context string for the LLM prompt."""
         chunks = await self.search(query, student_id, limit=limit, sources=sources)
         if not chunks:
-            return f"Não há registros vetorizados para {student_name} ainda."
+            return "Não há registros vetorizados para este aluno ainda."
 
-        lines = [f"Informações relevantes sobre {student_name} (recuperadas por similaridade semântica):"]
+        lines = [f"Registros relevantes (aluno {student_id}, recuperados por similaridade semântica):"]
         for i, chunk in enumerate(chunks, 1):
             source_label = "Diário" if chunk["source"] == "diario" else "Estudo de Caso"
             lines.append(f"\n[{i}] {source_label}")

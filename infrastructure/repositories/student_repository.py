@@ -6,6 +6,15 @@ from sqlalchemy import select, func
 from infrastructure.database_context.database import Database
 from infrastructure.models.student import Student
 from infrastructure.models.school import School
+from infrastructure.services.anonymization_service import anon_student
+
+
+def _build_anonymized_data(student_id: str, school_id: str | None, age: str | None,
+                            grade: str | None, class_name: str | None, diagnosis: str | None) -> str:
+    return json.dumps(anon_student({
+        "id": student_id, "school_id": school_id,
+        "age": age, "grade": grade, "class_name": class_name, "diagnosis": diagnosis,
+    }), ensure_ascii=False)
 
 
 def _to_dict(s: Student, school_name: Optional[str] = None) -> dict:
@@ -64,8 +73,9 @@ class StudentRepository:
     async def create(self, data: dict) -> dict:
         async with self.database.session() as session:
             guardians = data.get("guardians", [])
+            sid = str(uuid.uuid4())
             student = Student(
-                id=str(uuid.uuid4()),
+                id=sid,
                 school_id=data.get("school_id"),
                 name=data["name"],
                 birth_date=date.fromisoformat(data["birth_date"]) if data.get("birth_date") else None,
@@ -75,6 +85,10 @@ class StudentRepository:
                 guardians=json.dumps(guardians, ensure_ascii=False) if guardians else None,
                 diagnosis=data.get("diagnosis"),
                 notes=data.get("notes"),
+                anonymized_data=_build_anonymized_data(
+                    sid, data.get("school_id"), data.get("age"),
+                    data.get("grade"), data.get("class_name"), data.get("diagnosis"),
+                ),
             )
             session.add(student)
             await session.commit()
@@ -106,6 +120,11 @@ class StudentRepository:
                 student.diagnosis = data["diagnosis"]
             if "notes" in data:
                 student.notes = data["notes"]
+            # Refresh anonymized_data whenever non-PII fields change
+            student.anonymized_data = _build_anonymized_data(
+                student.id, student.school_id, student.age,
+                student.grade, student.class_name, student.diagnosis,
+            )
             await session.commit()
             await session.refresh(student)
             # fetch school name

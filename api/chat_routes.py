@@ -10,6 +10,7 @@ from infrastructure.repositories.prompt_repository import PromptRepository
 from infrastructure.repositories.ai_usage_repository import AiUsageRepository
 from infrastructure.services.gemini_service import GeminiService
 from infrastructure.services.rag_service import RagService
+from infrastructure.services.anonymization_service import AnonymizationService, deanonymize
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
 
@@ -25,6 +26,7 @@ class SendMessageResponse(BaseModel):
     session_id: str
     answer: str
     message_index: int
+    debug_prompt: str | None = None
 
 
 @router.post("/message", response_model=SendMessageResponse)
@@ -37,46 +39,48 @@ async def send_message(
     rag: RagService = Depends(Provide[Container.rag_service]),
     prompt_repo: PromptRepository = Depends(Provide[Container.prompt_repository]),
     usage_repo: AiUsageRepository = Depends(Provide[Container.ai_usage_repository]),
+    anon_svc: AnonymizationService = Depends(Provide[Container.anonymization_service]),
 ):
-    """Send a message and receive an AI response with RAG-retrieved student context."""
+    """Send a message and receive an AI response with anonymised RAG context."""
     user_id = current_user.get("user_id", "")
     username = current_user.get("full_name") or current_user.get("username", "")
     role = current_user.get("role", "")
 
     # Get or create session
     session_id = body.session_id
-    student_name = ""
     if session_id:
         session = await chat_repo.get_session(session_id)
         if not session:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sessão não encontrada")
-        student_name = session.get("student_name") or ""
     else:
-        # Use static context briefly just to extract the student name
-        static_ctx = await chat_repo.get_student_context(body.student_id)
-        first_line = static_ctx.split("\n")[0] if static_ctx else ""
-        student_name = first_line.replace("ALUNO: ", "").strip() if first_line.startswith("ALUNO:") else ""
         new_session = await chat_repo.create_session(
             user_id=user_id,
             username=username,
             role=role,
             student_id=body.student_id,
-            student_name=student_name or None,
+            student_name=None,  # never store real name in session
         )
         session_id = new_session["id"]
 
-    # RAG: retrieve semantically relevant chunks for the user's question
+    # Build anonymised student context (profile + school + teachers + recent diary)
+    anon_context, deanon_map = await anon_svc.build_context(body.student_id)
+
+    # RAG: semantically similar chunks (already anonymised — no PII in embeddings)
     rag_context = await rag.build_rag_context(
         query=body.message,
         student_id=body.student_id,
-        student_name=student_name,
         limit=5,
         sources=body.sources,
     )
 
-    prompt = f"""{rag_context}
+    prompt = f"""=== CONTEXTO DO ALUNO (ANONIMIZADO) ===
+{anon_context}
 
-Pergunta: {body.message}"""
+=== REGISTROS SIMILARES (RAG) ===
+{rag_context}
+
+=== PERGUNTA ===
+{body.message}"""
 
     # Save user message
     await chat_repo.add_message(
@@ -87,13 +91,16 @@ Pergunta: {body.message}"""
         username=username,
     )
 
-    # Load active system prompt (custom or default)
+    # Load active system prompt
     prompt_data = await prompt_repo.get_active("chat")
     system_instruction = prompt_data["content"]
 
-    # Generate AI response (tracked)
+    # Generate AI response (anonymised prompt → Gemini)
     try:
-        answer, usage = gemini.generate_text_tracked(prompt=prompt, system_instruction=system_instruction)
+        raw_answer, usage = gemini.generate_text_tracked(
+            prompt=prompt,
+            system_instruction=system_instruction,
+        )
         await usage_repo.log(
             model=usage.model,
             operation="chat_rag",
@@ -105,9 +112,13 @@ Pergunta: {body.message}"""
             username=username,
         )
     except Exception:
-        answer = "Desculpe, ocorreu um erro ao processar sua pergunta. Tente novamente."
+        raw_answer = "Desculpe, ocorreu um erro ao processar sua pergunta. Tente novamente."
+        deanon_map = {}
 
-    # Save assistant message
+    # De-anonymise: replace UUIDs in the response with real names
+    answer = deanonymize(raw_answer, deanon_map)
+
+    # Save assistant message (de-anonymised version for display)
     assistant_msg = await chat_repo.add_message(
         session_id=session_id,
         role="assistant",
@@ -118,6 +129,7 @@ Pergunta: {body.message}"""
         session_id=session_id,
         answer=answer,
         message_index=assistant_msg["message_index"],
+        debug_prompt=prompt,
     )
 
 
