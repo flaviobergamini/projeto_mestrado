@@ -27,6 +27,7 @@ class CaseStudyRepository:
             result = await session.execute(
                 select(CaseStudySubmission)
                 .options(selectinload(CaseStudySubmission.student))
+                .where(CaseStudySubmission.deleted == False)
                 .order_by(CaseStudySubmission.submitted_at.desc())
             )
             return [self._to_dict(c) for c in result.scalars().all()]
@@ -36,7 +37,7 @@ class CaseStudyRepository:
             result = await session.execute(
                 select(CaseStudySubmission)
                 .options(selectinload(CaseStudySubmission.student))
-                .where(CaseStudySubmission.id == case_id)
+                .where(CaseStudySubmission.id == case_id, CaseStudySubmission.deleted == False)
             )
             c = result.scalar_one_or_none()
             return self._to_dict(c) if c else None
@@ -67,7 +68,7 @@ class CaseStudyRepository:
             result = await session.execute(
                 select(CaseStudySubmission)
                 .options(selectinload(CaseStudySubmission.student))
-                .where(CaseStudySubmission.id == case_id)
+                .where(CaseStudySubmission.id == case_id, CaseStudySubmission.deleted == False)
             )
             case = result.scalar_one_or_none()
             if not case:
@@ -83,11 +84,11 @@ class CaseStudyRepository:
     async def delete(self, case_id: str) -> bool:
         async with self._db.session() as session:
             result = await session.execute(
-                select(CaseStudySubmission).where(CaseStudySubmission.id == case_id)
+                select(CaseStudySubmission).where(CaseStudySubmission.id == case_id, CaseStudySubmission.deleted == False)
             )
             case = result.scalar_one_or_none()
             if not case:
                 return False
-            await session.delete(case)
+            case.deleted = True
             await session.commit()
             return True

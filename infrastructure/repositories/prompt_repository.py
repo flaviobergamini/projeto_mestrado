@@ -100,7 +100,7 @@ class PromptRepository:
                 # 1st priority: explicitly activated prompt
                 result = await session.execute(
                     select(AiPrompt)
-                    .where(AiPrompt.scope == scope, AiPrompt.is_active == True)
+                    .where(AiPrompt.scope == scope, AiPrompt.is_active == True, AiPrompt.deleted == False)
                     .order_by(AiPrompt.updated_at.desc())
                     .limit(1)
                 )
@@ -111,7 +111,7 @@ class PromptRepository:
                 # 2nd priority: most recently created/updated prompt
                 result = await session.execute(
                     select(AiPrompt)
-                    .where(AiPrompt.scope == scope)
+                    .where(AiPrompt.scope == scope, AiPrompt.deleted == False)
                     .order_by(AiPrompt.updated_at.desc())
                     .limit(1)
                 )
@@ -130,7 +130,7 @@ class PromptRepository:
             async with self._db.session() as session:
                 result = await session.execute(
                     select(AiPrompt)
-                    .where(AiPrompt.scope == scope)
+                    .where(AiPrompt.scope == scope, AiPrompt.deleted == False)
                     # active first, then by most recently updated
                     .order_by(AiPrompt.is_active.desc(), AiPrompt.updated_at.desc())
                 )
@@ -200,7 +200,7 @@ class PromptRepository:
             if not prompt:
                 return False
             # If active, deactivation makes the default take over automatically
-            await session.execute(delete(AiPrompt).where(AiPrompt.id == prompt_id))
+            prompt.deleted = True
             await session.commit()
             return True
 

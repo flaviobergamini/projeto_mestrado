@@ -27,7 +27,7 @@ class TeacherRepository:
     async def list_all(self) -> list[dict]:
         async with self._db.session() as session:
             result = await session.execute(
-                select(Teacher).options(selectinload(Teacher.school)).order_by(Teacher.name)
+                select(Teacher).options(selectinload(Teacher.school)).where(Teacher.deleted == False).order_by(Teacher.name)
             )
 
             return [self._to_dict(t) for t in result.scalars().all()]
@@ -35,7 +35,7 @@ class TeacherRepository:
     async def get_by_id(self, teacher_id: str) -> Optional[dict]:
         async with self._db.session() as session:
             result = await session.execute(
-                select(Teacher).options(selectinload(Teacher.school)).where(Teacher.id == teacher_id)
+                select(Teacher).options(selectinload(Teacher.school)).where(Teacher.id == teacher_id, Teacher.deleted == False)
             )
 
             t = result.scalar_one_or_none()
@@ -76,7 +76,7 @@ class TeacherRepository:
     async def update(self, teacher_id: str, data: dict) -> Optional[dict]:
         async with self._db.session() as session:
             result = await session.execute(
-                select(Teacher).options(selectinload(Teacher.school)).where(Teacher.id == teacher_id)
+                select(Teacher).options(selectinload(Teacher.school)).where(Teacher.id == teacher_id, Teacher.deleted == False)
             )
 
             teacher = result.scalar_one_or_none()
@@ -96,15 +96,15 @@ class TeacherRepository:
 
     async def delete(self, teacher_id: str) -> bool:
         async with self._db.session() as session:
-            result = await session.execute(select(Teacher).where(Teacher.id == teacher_id))
+            result = await session.execute(select(Teacher).where(Teacher.id == teacher_id, Teacher.deleted == False))
 
             teacher = result.scalar_one_or_none()
 
             if not teacher:
                 return False
-            
-            await session.delete(teacher)
+
+            teacher.deleted = True
 
             await session.commit()
-            
+
             return True

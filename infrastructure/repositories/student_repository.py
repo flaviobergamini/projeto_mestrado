@@ -50,6 +50,7 @@ class StudentRepository:
             stmt = (
                 select(Student, School.name.label("school_name"))
                 .outerjoin(School, Student.school_id == School.id)
+                .where(Student.deleted == False)
                 .order_by(Student.name)
             )
             if school_id:
@@ -63,7 +64,7 @@ class StudentRepository:
             result = await session.execute(
                 select(Student, School.name.label("school_name"))
                 .outerjoin(School, Student.school_id == School.id)
-                .where(Student.id == student_id)
+                .where(Student.id == student_id, Student.deleted == False)
             )
             row = result.first()
             if not row:
@@ -142,6 +143,6 @@ class StudentRepository:
             student = result.scalars().first()
             if not student:
                 return False
-            await session.delete(student)
+            student.deleted = True
             await session.commit()
             return True

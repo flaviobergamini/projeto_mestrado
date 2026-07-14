@@ -42,7 +42,7 @@ class PdiRepository:
     async def list_all(self) -> list[dict]:
         async with self._db.session() as session:
             result = await session.execute(
-                select(Pdi).options(selectinload(Pdi.student)).order_by(Pdi.updated_at.desc())
+                select(Pdi).options(selectinload(Pdi.student)).where(Pdi.deleted == False).order_by(Pdi.updated_at.desc())
             )
             pdis = result.scalars().all()
             return [self._pdi_to_dict(p) for p in pdis]
@@ -52,7 +52,7 @@ class PdiRepository:
             result = await session.execute(
                 select(Pdi)
                 .options(selectinload(Pdi.student), selectinload(Pdi.trimester_subjects))
-                .where(Pdi.id == pdi_id)
+                .where(Pdi.id == pdi_id, Pdi.deleted == False)
             )
             pdi = result.scalar_one_or_none()
             if not pdi:
@@ -83,7 +83,7 @@ class PdiRepository:
     async def update(self, pdi_id: str, data: dict) -> Optional[dict]:
         async with self._db.session() as session:
             result = await session.execute(
-                select(Pdi).options(selectinload(Pdi.student)).where(Pdi.id == pdi_id)
+                select(Pdi).options(selectinload(Pdi.student)).where(Pdi.id == pdi_id, Pdi.deleted == False)
             )
             pdi = result.scalar_one_or_none()
             if not pdi:
@@ -97,11 +97,11 @@ class PdiRepository:
 
     async def delete(self, pdi_id: str) -> bool:
         async with self._db.session() as session:
-            result = await session.execute(select(Pdi).where(Pdi.id == pdi_id))
+            result = await session.execute(select(Pdi).where(Pdi.id == pdi_id, Pdi.deleted == False))
             pdi = result.scalar_one_or_none()
             if not pdi:
                 return False
-            await session.delete(pdi)
+            pdi.deleted = True
             await session.commit()
             return True
 

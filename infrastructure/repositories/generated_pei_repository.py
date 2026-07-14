@@ -36,7 +36,7 @@ class GeneratedPeiRepository:
         async with self._db.session() as session:
             result = await session.execute(
                 select(GeneratedPei)
-                .where(GeneratedPei.student_id == student_id)
+                .where(GeneratedPei.student_id == student_id, GeneratedPei.deleted == False)
                 .order_by(GeneratedPei.generated_at.desc())
             )
             return [self._to_dict(r) for r in result.scalars().all()]
@@ -44,7 +44,7 @@ class GeneratedPeiRepository:
     async def get_by_id(self, pei_id: str) -> dict | None:
         async with self._db.session() as session:
             result = await session.execute(
-                select(GeneratedPei).where(GeneratedPei.id == pei_id)
+                select(GeneratedPei).where(GeneratedPei.id == pei_id, GeneratedPei.deleted == False)
             )
             row = result.scalar_one_or_none()
             return self._to_dict(row) if row else None
@@ -52,12 +52,12 @@ class GeneratedPeiRepository:
     async def delete(self, pei_id: str) -> bool:
         async with self._db.session() as session:
             result = await session.execute(
-                select(GeneratedPei).where(GeneratedPei.id == pei_id)
+                select(GeneratedPei).where(GeneratedPei.id == pei_id, GeneratedPei.deleted == False)
             )
             row = result.scalar_one_or_none()
             if not row:
                 return False
-            await session.execute(delete(GeneratedPei).where(GeneratedPei.id == pei_id))
+            row.deleted = True
             await session.commit()
             return True
 

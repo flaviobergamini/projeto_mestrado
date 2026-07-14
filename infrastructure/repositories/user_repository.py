@@ -37,6 +37,24 @@ class UserRepository(IUserRepository):
         is_active: bool = True,
     ) -> dict:
         async with self.database.session() as session:
+            # Check for soft-deleted record with same username
+            existing_result = await session.execute(
+                select(UserProfile).where(UserProfile.username == username, UserProfile.deleted == True)
+            )
+            existing = existing_result.scalars().first()
+            if existing:
+                existing.id = id
+                existing.full_name = full_name
+                existing.role = role
+                existing.municipality_id = municipality_id
+                existing.school_id = school_id
+                existing.teacher_id = teacher_id
+                existing.is_active = is_active
+                existing.deleted = False
+                await session.commit()
+                await session.refresh(existing)
+                return _to_dict(existing)
+
             user = UserProfile(
                 id=id,
                 username=username,
@@ -54,7 +72,7 @@ class UserRepository(IUserRepository):
 
     async def update_role(self, user_id: str, role: str) -> dict:
         async with self.database.session() as session:
-            result = await session.execute(select(UserProfile).where(UserProfile.id == user_id))
+            result = await session.execute(select(UserProfile).where(UserProfile.id == user_id, UserProfile.deleted == False))
             user = result.scalars().first()
             if not user:
                 return None
@@ -65,7 +83,7 @@ class UserRepository(IUserRepository):
 
     async def update(self, user_id: str, full_name: Optional[str] = None, role: Optional[str] = None, is_active: Optional[bool] = None) -> dict | None:
         async with self.database.session() as session:
-            result = await session.execute(select(UserProfile).where(UserProfile.id == user_id))
+            result = await session.execute(select(UserProfile).where(UserProfile.id == user_id, UserProfile.deleted == False))
             user = result.scalars().first()
             if not user:
                 return None
@@ -82,37 +100,39 @@ class UserRepository(IUserRepository):
     async def delete(self, user_id: str) -> bool:
         async with self.database.session() as session:
             result = await session.execute(select(UserProfile).where(UserProfile.id == user_id))
-            if not result.scalar_one_or_none():
+            user = result.scalar_one_or_none()
+            if not user:
                 return False
-            await session.execute(delete(UserProfile).where(UserProfile.id == user_id))
+            user.deleted = True
             await session.commit()
             return True
 
     async def get_by_username(self, username: str) -> Optional[dict]:
         async with self.database.session() as session:
-            result = await session.execute(select(UserProfile).where(UserProfile.username == username))
+            result = await session.execute(select(UserProfile).where(UserProfile.username == username, UserProfile.deleted == False))
             user = result.scalars().first()
             return _to_dict(user) if user else None
 
     async def get_by_id(self, user_id: str) -> Optional[dict]:
         async with self.database.session() as session:
-            result = await session.execute(select(UserProfile).where(UserProfile.id == user_id))
+            result = await session.execute(select(UserProfile).where(UserProfile.id == user_id, UserProfile.deleted == False))
             user = result.scalars().first()
             return _to_dict(user) if user else None
 
     async def get_all(self) -> list[dict]:
         async with self.database.session() as session:
-            result = await session.execute(select(UserProfile).order_by(UserProfile.username))
+            result = await session.execute(select(UserProfile).where(UserProfile.deleted == False).order_by(UserProfile.username))
             return [_to_dict(u) for u in result.scalars().all()]
 
     async def list_paginated(self, page: int = 1, page_size: int = 20) -> dict:
         offset = (page - 1) * page_size
         async with self.database.session() as session:
-            total_result = await session.execute(select(func.count()).select_from(UserProfile))
+            total_result = await session.execute(select(func.count()).select_from(UserProfile).where(UserProfile.deleted == False))
             total = total_result.scalar() or 0
 
             result = await session.execute(
                 select(UserProfile)
+                .where(UserProfile.deleted == False)
                 .order_by(UserProfile.username)
                 .offset(offset)
                 .limit(page_size)

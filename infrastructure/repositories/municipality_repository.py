@@ -10,12 +10,12 @@ class MunicipalityRepository:
 
     async def list_all(self) -> list[dict]:
         async with self._db.session() as session:
-            result = await session.execute(select(Municipality).order_by(Municipality.name))
+            result = await session.execute(select(Municipality).where(Municipality.deleted == False).order_by(Municipality.name))
             return [self._to_dict(r) for r in result.scalars().all()]
 
     async def get_by_id(self, municipality_id: str) -> dict | None:
         async with self._db.session() as session:
-            result = await session.execute(select(Municipality).where(Municipality.id == municipality_id))
+            result = await session.execute(select(Municipality).where(Municipality.id == municipality_id, Municipality.deleted == False))
             row = result.scalar_one_or_none()
             return self._to_dict(row) if row else None
 
@@ -40,10 +40,11 @@ class MunicipalityRepository:
 
     async def delete(self, municipality_id: str) -> bool:
         async with self._db.session() as session:
-            result = await session.execute(select(Municipality).where(Municipality.id == municipality_id))
-            if not result.scalar_one_or_none():
+            result = await session.execute(select(Municipality).where(Municipality.id == municipality_id, Municipality.deleted == False))
+            row = result.scalar_one_or_none()
+            if not row:
                 return False
-            await session.execute(delete(Municipality).where(Municipality.id == municipality_id))
+            row.deleted = True
             await session.commit()
             return True
 

@@ -23,13 +23,13 @@ class SchoolRepository:
 
     async def list_all(self) -> list[dict]:
         async with self._db.session() as session:
-            result = await session.execute(select(School).order_by(School.name))
+            result = await session.execute(select(School).where(School.deleted == False).order_by(School.name))
 
             return [self._to_dict(s) for s in result.scalars().all()]
 
     async def get_by_id(self, school_id: str) -> Optional[dict]:
         async with self._db.session() as session:
-            result = await session.execute(select(School).where(School.id == school_id))
+            result = await session.execute(select(School).where(School.id == school_id, School.deleted == False))
 
             s = result.scalar_one_or_none()
 
@@ -81,9 +81,9 @@ class SchoolRepository:
 
             if not school:
                 return False
-            
-            await session.delete(school)
+
+            school.deleted = True
 
             await session.commit()
-            
+
             return True

@@ -1,7 +1,7 @@
 """Repositório para gerenciar vínculos professor-aluno."""
 
 import uuid
-from sqlalchemy import select, delete
+from sqlalchemy import select, delete, update
 from sqlalchemy.orm import selectinload
 
 from infrastructure.database_context.database import Database
@@ -29,6 +29,7 @@ class VinculosRepository:
                     selectinload(Student.school),
                     selectinload(Student.teacher_links).selectinload(TeacherStudentLink.teacher),
                 )
+                .where(Student.deleted == False)
                 .order_by(Student.name)
             )
             all_students = result.scalars().all()
@@ -47,7 +48,7 @@ class VinculosRepository:
             teachers = [
                 {"id": lnk.teacher.id, "name": lnk.teacher.name}
                 for lnk in s.teacher_links
-                if lnk.teacher
+                if lnk.teacher and not lnk.deleted
             ]
             items.append({
                 "id": s.id,
@@ -71,18 +72,28 @@ class VinculosRepository:
             if not student:
                 return False
 
-            # Remove all existing links for this student
+            # Soft-delete all existing links for this student
             await session.execute(
-                delete(TeacherStudentLink).where(TeacherStudentLink.student_id == student_id)
+                update(TeacherStudentLink).where(TeacherStudentLink.student_id == student_id).values(deleted=True)
             )
 
-            # Insert new links
+            # Insert new links (reactivate existing if deleted, else create new)
             for tid in teacher_ids:
-                session.add(TeacherStudentLink(
-                    id=str(uuid.uuid4()),
-                    teacher_id=tid,
-                    student_id=student_id,
-                ))
+                existing_result = await session.execute(
+                    select(TeacherStudentLink).where(
+                        TeacherStudentLink.teacher_id == tid,
+                        TeacherStudentLink.student_id == student_id,
+                    )
+                )
+                existing_link = existing_result.scalar_one_or_none()
+                if existing_link:
+                    existing_link.deleted = False
+                else:
+                    session.add(TeacherStudentLink(
+                        id=str(uuid.uuid4()),
+                        teacher_id=tid,
+                        student_id=student_id,
+                    ))
 
             await session.commit()
         return True

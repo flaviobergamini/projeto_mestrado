@@ -55,6 +55,7 @@ class DiaryRepository:
                     func.count(DiaryEntry.id).label("total_entries"),
                 )
                 .outerjoin(Student, DiaryEntry.student_id == Student.id)
+                .where(DiaryEntry.deleted == False)
                 .group_by(DiaryEntry.student_id, Student.name)
                 .order_by(Student.name)
             )
@@ -77,7 +78,7 @@ class DiaryRepository:
         async with self.database.session() as session:
             result = await session.execute(
                 select(DiaryEntry)
-                .where(DiaryEntry.student_id == student_id)
+                .where(DiaryEntry.student_id == student_id, DiaryEntry.deleted == False)
                 .order_by(DiaryEntry.diary_date.desc())
             )
 
@@ -85,7 +86,7 @@ class DiaryRepository:
 
     async def get_by_id(self, entry_id: str) -> Optional[dict]:
         async with self.database.session() as session:
-            result = await session.execute(select(DiaryEntry).where(DiaryEntry.id == entry_id))
+            result = await session.execute(select(DiaryEntry).where(DiaryEntry.id == entry_id, DiaryEntry.deleted == False))
 
             e = result.scalars().first()
 
@@ -123,7 +124,7 @@ class DiaryRepository:
 
     async def update(self, entry_id: str, data: dict) -> Optional[dict]:
         async with self.database.session() as session:
-            result = await session.execute(select(DiaryEntry).where(DiaryEntry.id == entry_id))
+            result = await session.execute(select(DiaryEntry).where(DiaryEntry.id == entry_id, DiaryEntry.deleted == False))
 
             entry = result.scalars().first()
 
@@ -164,17 +165,17 @@ class DiaryRepository:
 
     async def delete(self, entry_id: str) -> bool:
         async with self.database.session() as session:
-            result = await session.execute(select(DiaryEntry).where(DiaryEntry.id == entry_id))
+            result = await session.execute(select(DiaryEntry).where(DiaryEntry.id == entry_id, DiaryEntry.deleted == False))
 
             entry = result.scalars().first()
 
             if not entry:
                 return False
-            
-            await session.delete(entry)
+
+            entry.deleted = True
 
             await session.commit()
-            
+
             return True
 
     async def get_linked_teachers(self, student_id: str) -> list[str]:
@@ -193,8 +194,9 @@ class DiaryRepository:
 
     async def delete_all_for_student(self, student_id: str) -> int:
         async with self.database.session() as session:
+            from sqlalchemy import update as sa_update
             result = await session.execute(
-                delete(DiaryEntry).where(DiaryEntry.student_id == student_id)
+                sa_update(DiaryEntry).where(DiaryEntry.student_id == student_id).values(deleted=True)
             )
 
             await session.commit()
