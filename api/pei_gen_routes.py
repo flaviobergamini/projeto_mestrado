@@ -1,6 +1,7 @@
 """PEI generation endpoint — uses anonymised RAG context + Gemini + custom system prompt."""
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import Response
 from pydantic import BaseModel
 from typing import Optional
 from dependency_injector.wiring import inject, Provide
@@ -14,6 +15,7 @@ from infrastructure.repositories.student_repository import StudentRepository
 from infrastructure.services.rag_service import RagService
 from infrastructure.services.gemini_service import GeminiService
 from infrastructure.services.anonymization_service import AnonymizationService, deanonymize
+from infrastructure.services.pdf_service import generate_pei_pdf
 
 router = APIRouter(prefix="/pei-gen", tags=["PEI Generation"])
 
@@ -128,6 +130,34 @@ async def get_saved_pei(
     if not pei:
         raise HTTPException(status_code=404, detail="PEI não encontrado.")
     return pei
+
+
+@router.get("/pdf/{pei_id}")
+@inject
+async def download_pei_pdf(
+    pei_id: str,
+    current_user: dict = Depends(get_current_user),
+    pei_repo: GeneratedPeiRepository = Depends(Provide[Container.generated_pei_repository]),
+):
+    """Generate and return a PDF for the given saved PEI."""
+    pei = await pei_repo.get_by_id(pei_id)
+    if not pei:
+        raise HTTPException(status_code=404, detail="PEI não encontrado.")
+
+    pdf_bytes = generate_pei_pdf(
+        pei_text=pei["pei_text"],
+        student_name=pei["student_name"],
+        generated_at=str(pei.get("generated_at", "")),
+    )
+
+    safe_name = pei["student_name"].replace(" ", "_")[:40]
+    filename = f"PEI_{safe_name}_{pei_id[:8]}.pdf"
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.delete("/saved/{pei_id}", status_code=204)

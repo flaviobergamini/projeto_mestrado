@@ -390,11 +390,18 @@ class RagService:
             )
             case_count = int(case_result.scalar() or 0)
 
-            school_result = await session.execute(
-                text("SELECT school_id FROM students WHERE id = :sid AND deleted = false"),
+            student_result = await session.execute(
+                text("SELECT id, school_id FROM students WHERE id = :sid AND deleted = false"),
                 {"sid": student_id},
             )
-            school_id = school_result.scalar()
+            student_row = student_result.fetchone()
+            school_id = student_row.school_id if student_row else None
+
+            teacher_result = await session.execute(
+                text("SELECT COUNT(*) FROM teacher_student_links WHERE student_id = :sid AND deleted = false"),
+                {"sid": student_id},
+            )
+            teacher_count = int(teacher_result.scalar() or 0)
 
             pdi_result = await session.execute(
                 text("SELECT COUNT(*) FROM pdis WHERE student_id = :sid AND deleted = false"),
@@ -402,11 +409,20 @@ class RagService:
             )
             pdi_count = int(pdi_result.scalar() or 0)
 
+            gpei_result = await session.execute(
+                text("SELECT COUNT(*) FROM generated_peis WHERE student_id = :sid AND deleted = false"),
+                {"sid": student_id},
+            )
+            gpei_count = int(gpei_result.scalar() or 0)
+
         return {
+            "student": {"available": student_row is not None, "count": 1 if student_row else 0},
             "diary": {"available": diary_count > 0, "count": diary_count},
             "case_study": {"available": case_count > 0, "count": case_count},
             "school": {"available": school_id is not None, "count": 1 if school_id else 0},
+            "teacher": {"available": teacher_count > 0, "count": teacher_count},
             "pdi": {"available": pdi_count > 0, "count": pdi_count},
+            "generated_pei": {"available": gpei_count > 0, "count": gpei_count},
         }
 
     async def search(

@@ -27,6 +27,7 @@ from infrastructure.models.teacher import Teacher
 from infrastructure.models.teacher_student_link import TeacherStudentLink
 from infrastructure.models.diary_entry import DiaryEntry
 from infrastructure.models.pdi import Pdi
+from infrastructure.models.generated_pei import GeneratedPei
 
 logger = logging.getLogger(__name__)
 
@@ -156,17 +157,21 @@ class AnonymizationService:
         (anonymized_data IS NULL).
 
         sources: optional list of sections to include. When None or empty, all sections are included.
-        Valid values: 'diary', 'case_study' (RAG only), 'school', 'pdi'.
-        Student profile is always included.
+        Valid values: 'student', 'school', 'teacher', 'diary', 'case_study' (RAG only), 'pdi', 'generated_pei'.
+        When sources is None or empty, all sections are included.
         """
         # Determine which sections to include (None = all)
         include_all = not sources
+        include_student = include_all or "student" in sources
         include_school = include_all or "school" in sources
+        include_teacher = include_all or "teacher" in sources
         include_diary = include_all or "diary" in sources
         include_pdi = include_all or "pdi" in sources
+        include_generated_pei = include_all or "generated_pei" in sources
 
         async with self._db.session() as session:
             # ── Student ──────────────────────────────────────────────────────
+            # Always fetch the student row (needed for deanon map and school_id)
             student_row = await session.get(Student, student_id)
             if not student_row:
                 return ("Aluno não encontrado.", {})
@@ -181,17 +186,16 @@ class AnonymizationService:
                 "diagnosis": student_row.diagnosis,
             }
 
-            # Read pre-computed or fall back
-            if student_row.anonymized_data:
-                student_anon = json.loads(student_row.anonymized_data)
-            else:
-                student_anon = anon_student(student_dict)
+            student_anon: dict = {}
+            if include_student:
+                if student_row.anonymized_data:
+                    student_anon = json.loads(student_row.anonymized_data)
+                else:
+                    student_anon = anon_student(student_dict)
 
             # ── School ───────────────────────────────────────────────────────
             school_dict = None
             school_anon: dict = {}
-            teacher_dicts: list[dict] = []
-            teachers_anon: list[dict] = []
             if include_school and student_row.school_id:
                 school_row = await session.get(School, student_row.school_id)
                 if school_row:
@@ -199,7 +203,10 @@ class AnonymizationService:
                                    "institution_type": school_row.institution_type}
                     school_anon = anon_school(school_dict)
 
-                # ── Linked teachers ──────────────────────────────────────────
+            # ── Linked teachers ──────────────────────────────────────────────
+            teacher_dicts: list[dict] = []
+            teachers_anon: list[dict] = []
+            if include_teacher:
                 links_result = await session.execute(
                     select(TeacherStudentLink)
                     .options(selectinload(TeacherStudentLink.teacher))
@@ -266,14 +273,32 @@ class AnonymizationService:
                         "class_name": pdi_row.class_name,
                     })
 
+            # ── PEIs gerados anteriormente ───────────────────────────────────
+            prev_pei_list: list[dict] = []
+            if include_generated_pei:
+                gpei_result = await session.execute(
+                    select(GeneratedPei)
+                    .where(GeneratedPei.student_id == student_id,
+                           GeneratedPei.deleted == False)
+                    .order_by(GeneratedPei.generated_at.desc())
+                    .limit(3)
+                )
+                for gp in gpei_result.scalars().all():
+                    prev_pei_list.append({
+                        "id": gp.id,
+                        "pei_text": gp.pei_text[:3000],  # truncate to avoid huge prompts
+                        "generated_at": str(gp.generated_at),
+                    })
+
         # ── De-anonymization map ──────────────────────────────────────────────
         deanon_map = build_deanon_map(student_dict, school_dict, teacher_dicts)
 
         # ── Assemble context string ───────────────────────────────────────────
         sections: list[str] = []
 
-        sections.append("=== DADOS DO ALUNO (ANONIMIZADOS) ===")
-        sections.append(json.dumps(student_anon, ensure_ascii=False, indent=2))
+        if student_anon:
+            sections.append("=== PRÉ-CADASTRO DO ALUNO (ANONIMIZADO) ===")
+            sections.append(json.dumps(student_anon, ensure_ascii=False, indent=2))
 
         if school_anon:
             sections.append("=== ESCOLA (ANONIMIZADA) ===")
@@ -290,6 +315,10 @@ class AnonymizationService:
         if pdi_anon_list:
             sections.append("=== PDI (Plano de Desenvolvimento Individual) ===")
             sections.append(json.dumps(pdi_anon_list, ensure_ascii=False, indent=2))
+
+        if prev_pei_list:
+            sections.append(f"=== PEIs GERADOS ANTERIORMENTE (últimos {len(prev_pei_list)}) ===")
+            sections.append(json.dumps(prev_pei_list, ensure_ascii=False, indent=2))
 
         context_str = "\n\n".join(sections)
         return context_str, deanon_map
