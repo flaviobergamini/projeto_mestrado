@@ -43,8 +43,8 @@ async def generate_pei(
     student_name = student.get("name", "")
     generated_by = current_user.get("user_id")
 
-    # Build anonymised student context
-    anon_context, deanon_map = await anon_svc.build_context(body.student_id, diary_limit=15)
+    # Build anonymised student context (sections filtered by selected sources)
+    anon_context, deanon_map = await anon_svc.build_context(body.student_id, diary_limit=15, sources=body.sources)
 
     # RAG: semantically similar chunks (anonymised embeddings)
     rag_context = await rag.build_rag_context(

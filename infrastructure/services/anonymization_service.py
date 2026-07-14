@@ -26,6 +26,7 @@ from infrastructure.models.school import School
 from infrastructure.models.teacher import Teacher
 from infrastructure.models.teacher_student_link import TeacherStudentLink
 from infrastructure.models.diary_entry import DiaryEntry
+from infrastructure.models.pdi import Pdi
 
 logger = logging.getLogger(__name__)
 
@@ -146,13 +147,24 @@ class AnonymizationService:
         self,
         student_id: str,
         diary_limit: int = 10,
+        sources: list[str] | None = None,
     ) -> tuple[str, dict[str, str]]:
         """Return (anonymized_context_str, deanon_map).
 
         Reads from `anonymized_data` columns — never touches PII fields.
         Falls back to computing on-the-fly for rows that predate the migration
         (anonymized_data IS NULL).
+
+        sources: optional list of sections to include. When None or empty, all sections are included.
+        Valid values: 'diary', 'case_study' (RAG only), 'school', 'pdi'.
+        Student profile is always included.
         """
+        # Determine which sections to include (None = all)
+        include_all = not sources
+        include_school = include_all or "school" in sources
+        include_diary = include_all or "diary" in sources
+        include_pdi = include_all or "pdi" in sources
+
         async with self._db.session() as session:
             # ── Student ──────────────────────────────────────────────────────
             student_row = await session.get(Student, student_id)
@@ -178,63 +190,81 @@ class AnonymizationService:
             # ── School ───────────────────────────────────────────────────────
             school_dict = None
             school_anon: dict = {}
-            if student_row.school_id:
+            teacher_dicts: list[dict] = []
+            teachers_anon: list[dict] = []
+            if include_school and student_row.school_id:
                 school_row = await session.get(School, student_row.school_id)
                 if school_row:
                     school_dict = {"id": school_row.id, "name": school_row.name,
                                    "institution_type": school_row.institution_type}
                     school_anon = anon_school(school_dict)
 
-            # ── Linked teachers ──────────────────────────────────────────────
-            links_result = await session.execute(
-                select(TeacherStudentLink)
-                .options(selectinload(TeacherStudentLink.teacher))
-                .where(TeacherStudentLink.student_id == student_id)
-            )
-            teacher_dicts: list[dict] = []
-            teachers_anon: list[dict] = []
-            for link in links_result.scalars().all():
-                t = link.teacher
-                if t:
-                    td = {"id": t.id, "name": t.name, "school_id": t.school_id,
-                          "specialization": t.specialization}
-                    teacher_dicts.append(td)
-                    teachers_anon.append(anon_teacher(td))
+                # ── Linked teachers ──────────────────────────────────────────
+                links_result = await session.execute(
+                    select(TeacherStudentLink)
+                    .options(selectinload(TeacherStudentLink.teacher))
+                    .where(TeacherStudentLink.student_id == student_id,
+                           TeacherStudentLink.deleted == False)
+                )
+                for link in links_result.scalars().all():
+                    t = link.teacher
+                    if t:
+                        td = {"id": t.id, "name": t.name, "school_id": t.school_id,
+                              "specialization": t.specialization}
+                        teacher_dicts.append(td)
+                        teachers_anon.append(anon_teacher(td))
 
             # ── Recent diary entries ─────────────────────────────────────────
-            diary_result = await session.execute(
-                select(DiaryEntry)
-                .where(DiaryEntry.student_id == student_id)
-                .order_by(DiaryEntry.diary_date.desc())
-                .limit(diary_limit)
-            )
-            diary_rows = diary_result.scalars().all()
-
             school_id = student_row.school_id or ""
             diary_anon_list: list[dict] = []
-            for e in diary_rows:
-                if e.anonymized_data:
-                    # Pre-computed — inject school_id since it's not stored in diary's column
-                    d = json.loads(e.anonymized_data)
-                    d["school_id"] = school_id
-                    diary_anon_list.append(d)
-                else:
-                    # Fallback for rows that predate the migration
-                    entry_dict = {
-                        "student_id": e.student_id,
-                        "diary_date": str(e.diary_date) if e.diary_date else "",
-                        "presence": e.presence,
-                        "teacher_attention": e.teacher_attention,
-                        "followed_agreements": e.followed_agreements,
-                        "activity_interest": e.activity_interest,
-                        "had_lunch": e.had_lunch,
-                        "participated_in_play": e.participated_in_play,
-                        "completed_activities": e.completed_activities,
-                        "bathroom_use": e.bathroom_use,
-                        "open_observation": e.open_observation,
-                        "absence_reason": e.absence_reason,
-                    }
-                    diary_anon_list.append(anon_diary_entry(entry_dict, school_id=school_id))
+            if include_diary:
+                diary_result = await session.execute(
+                    select(DiaryEntry)
+                    .where(DiaryEntry.student_id == student_id,
+                           DiaryEntry.deleted == False)
+                    .order_by(DiaryEntry.diary_date.desc())
+                    .limit(diary_limit)
+                )
+                diary_rows = diary_result.scalars().all()
+
+                for e in diary_rows:
+                    if e.anonymized_data:
+                        d = json.loads(e.anonymized_data)
+                        d["school_id"] = school_id
+                        diary_anon_list.append(d)
+                    else:
+                        entry_dict = {
+                            "student_id": e.student_id,
+                            "diary_date": str(e.diary_date) if e.diary_date else "",
+                            "presence": e.presence,
+                            "teacher_attention": e.teacher_attention,
+                            "followed_agreements": e.followed_agreements,
+                            "activity_interest": e.activity_interest,
+                            "had_lunch": e.had_lunch,
+                            "participated_in_play": e.participated_in_play,
+                            "completed_activities": e.completed_activities,
+                            "bathroom_use": e.bathroom_use,
+                            "open_observation": e.open_observation,
+                            "absence_reason": e.absence_reason,
+                        }
+                        diary_anon_list.append(anon_diary_entry(entry_dict, school_id=school_id))
+
+            # ── PDI ──────────────────────────────────────────────────────────
+            pdi_anon_list: list[dict] = []
+            if include_pdi:
+                pdi_result = await session.execute(
+                    select(Pdi)
+                    .where(Pdi.student_id == student_id, Pdi.deleted == False)
+                    .order_by(Pdi.updated_at.desc())
+                    .limit(3)
+                )
+                for pdi_row in pdi_result.scalars().all():
+                    pdi_anon_list.append({
+                        "id": pdi_row.id,
+                        "birth_date": pdi_row.birth_date,
+                        "diagnosis": pdi_row.diagnosis,
+                        "class_name": pdi_row.class_name,
+                    })
 
         # ── De-anonymization map ──────────────────────────────────────────────
         deanon_map = build_deanon_map(student_dict, school_dict, teacher_dicts)
@@ -256,6 +286,10 @@ class AnonymizationService:
         if diary_anon_list:
             sections.append(f"=== DIÁRIO RECENTE (últimas {len(diary_anon_list)} entradas, ANONIMIZADO) ===")
             sections.append(json.dumps(diary_anon_list, ensure_ascii=False, indent=2))
+
+        if pdi_anon_list:
+            sections.append("=== PDI (Plano de Desenvolvimento Individual) ===")
+            sections.append(json.dumps(pdi_anon_list, ensure_ascii=False, indent=2))
 
         context_str = "\n\n".join(sections)
         return context_str, deanon_map

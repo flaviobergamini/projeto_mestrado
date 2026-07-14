@@ -8,7 +8,7 @@ from alembic import op
 import sqlalchemy as sa
 
 revision = "0014"
-down_revision = "0013"
+down_revision = "0013_add_anonymized_data_columns"
 branch_labels = None
 depends_on = None
 

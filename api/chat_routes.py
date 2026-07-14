@@ -62,8 +62,8 @@ async def send_message(
         )
         session_id = new_session["id"]
 
-    # Build anonymised student context (profile + school + teachers + recent diary)
-    anon_context, deanon_map = await anon_svc.build_context(body.student_id)
+    # Build anonymised student context (sections filtered by selected sources)
+    anon_context, deanon_map = await anon_svc.build_context(body.student_id, sources=body.sources)
 
     # RAG: semantically similar chunks (already anonymised — no PII in embeddings)
     rag_context = await rag.build_rag_context(

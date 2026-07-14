@@ -390,9 +390,23 @@ class RagService:
             )
             case_count = int(case_result.scalar() or 0)
 
+            school_result = await session.execute(
+                text("SELECT school_id FROM students WHERE id = :sid AND deleted = false"),
+                {"sid": student_id},
+            )
+            school_id = school_result.scalar()
+
+            pdi_result = await session.execute(
+                text("SELECT COUNT(*) FROM pdis WHERE student_id = :sid AND deleted = false"),
+                {"sid": student_id},
+            )
+            pdi_count = int(pdi_result.scalar() or 0)
+
         return {
             "diary": {"available": diary_count > 0, "count": diary_count},
             "case_study": {"available": case_count > 0, "count": case_count},
+            "school": {"available": school_id is not None, "count": 1 if school_id else 0},
+            "pdi": {"available": pdi_count > 0, "count": pdi_count},
         }
 
     async def search(
