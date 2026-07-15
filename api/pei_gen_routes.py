@@ -138,19 +138,25 @@ async def download_pei_pdf(
     pei_id: str,
     current_user: dict = Depends(get_current_user),
     pei_repo: GeneratedPeiRepository = Depends(Provide[Container.generated_pei_repository]),
+    student_repo: StudentRepository = Depends(Provide[Container.student_repository]),
 ):
     """Generate and return a PDF for the given saved PEI."""
     pei = await pei_repo.get_by_id(pei_id)
     if not pei:
         raise HTTPException(status_code=404, detail="PEI não encontrado.")
 
+    student_name = pei.get("student_name") or ""
+    if not student_name:
+        student = await student_repo.get_by_id(pei["student_id"])
+        student_name = (student or {}).get("name", "") if student else ""
+
     pdf_bytes = generate_pei_pdf(
         pei_text=pei["pei_text"],
-        student_name=pei["student_name"],
+        student_name=student_name,
         generated_at=str(pei.get("generated_at", "")),
     )
 
-    safe_name = pei["student_name"].replace(" ", "_")[:40]
+    safe_name = student_name.replace(" ", "_")[:40]
     filename = f"PEI_{safe_name}_{pei_id[:8]}.pdf"
 
     return Response(
