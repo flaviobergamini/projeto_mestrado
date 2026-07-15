@@ -193,8 +193,24 @@ def _diary_to_text(d: dict) -> str:
         ativ_parts = [f"{_LABELS.get(k, k)}: {v}" for k, v in atividades.items() if v]
         if ativ_parts:
             lines.append("Atividades: " + "; ".join(ativ_parts) + ".")
-    if d.get("observacoes"):
+
+    # Normalized observation — preferred over raw text when available
+    obs_norm = d.get("observacoes_normalizadas")
+    if obs_norm and isinstance(obs_norm, dict):
+        if obs_norm.get("resumo"):
+            lines.append(f"Resumo das observações: {obs_norm['resumo']}")
+        for field, label in [
+            ("comportamentos_observados", "Comportamentos observados"),
+            ("habilidades_demonstradas", "Habilidades demonstradas"),
+            ("dificuldades_identificadas", "Dificuldades identificadas"),
+            ("recomendacoes", "Recomendações"),
+        ]:
+            items = obs_norm.get(field) or []
+            if items:
+                lines.append(f"{label}: {', '.join(items)}.")
+    elif d.get("observacoes"):
         lines.append(f"Observações: {d['observacoes']}")
+
     if d.get("motivo_falta"):
         lines.append(f"Motivo da falta: {d['motivo_falta']}")
     return "\n".join(lines)
@@ -287,10 +303,11 @@ def _pick_simno(target: dict, source: dict, mapping: dict) -> None:
 # ── RagService ────────────────────────────────────────────────────────────────
 
 class RagService:
-    def __init__(self, database: Database, gemini: GeminiService, usage_repo: Optional[AiUsageRepository] = None):
+    def __init__(self, database: Database, gemini: GeminiService, usage_repo: Optional[AiUsageRepository] = None, diary_repo=None):
         self._db = database
         self._gemini = gemini
         self._usage = usage_repo
+        self._diary_repo = diary_repo  # DiaryRepository — injected for persisting normalized_observation
 
     # ── embed & save ──────────────────────────────────────────────────────────
 
@@ -298,13 +315,38 @@ class RagService:
         self,
         entry: dict,
     ) -> None:
-        """Build anonymised JSON + embed + upsert into diary_embedding_gemini."""
+        """Build anonymised JSON + normalize observation + embed + upsert into diary_embedding_gemini."""
         entry_id = entry.get("id")
         student_id = entry.get("student_id")
         if not entry_id:
             return
 
         structured = build_diary_json(entry)
+
+        # Normalize open_observation with Gemini, persist to DB, then use in embedding
+        raw_obs = entry.get("open_observation") or ""
+        # Prefer already-persisted normalization to avoid re-processing
+        obs_normalized = entry.get("normalized_observation")
+        if not obs_normalized and raw_obs.strip():
+            try:
+                obs_normalized, obs_usage = self._gemini.normalize_diary_observation(raw_obs)
+                if self._usage:
+                    await self._usage.log(
+                        model=obs_usage.model,
+                        operation="normalize_diary_observation",
+                        input_tokens=obs_usage.input_tokens,
+                        output_tokens=obs_usage.output_tokens,
+                        total_tokens=obs_usage.total_tokens,
+                        duration_ms=obs_usage.duration_ms,
+                    )
+                # Persist so all future AI features read from the stored JSON
+                if self._diary_repo and obs_normalized:
+                    await self._diary_repo.save_normalized_observation(entry_id, obs_normalized)
+            except Exception:
+                logger.warning("Observation normalization failed for entry %s — using raw text", entry_id)
+        if obs_normalized:
+            structured["observacoes_normalizadas"] = obs_normalized
+
         content = json_to_content(structured)
 
         try:

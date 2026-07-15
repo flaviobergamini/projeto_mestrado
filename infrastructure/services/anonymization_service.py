@@ -238,7 +238,6 @@ class AnonymizationService:
                     if e.anonymized_data:
                         d = json.loads(e.anonymized_data)
                         d["school_id"] = school_id
-                        diary_anon_list.append(d)
                     else:
                         entry_dict = {
                             "student_id": e.student_id,
@@ -254,7 +253,14 @@ class AnonymizationService:
                             "open_observation": e.open_observation,
                             "absence_reason": e.absence_reason,
                         }
-                        diary_anon_list.append(anon_diary_entry(entry_dict, school_id=school_id))
+                        d = anon_diary_entry(entry_dict, school_id=school_id)
+                    # Enrich with persisted normalized observation when available
+                    if e.normalized_observation:
+                        try:
+                            d["observacoes_normalizadas"] = json.loads(e.normalized_observation)
+                        except Exception:
+                            pass
+                    diary_anon_list.append(d)
 
             # ── PDI ──────────────────────────────────────────────────────────
             pdi_anon_list: list[dict] = []

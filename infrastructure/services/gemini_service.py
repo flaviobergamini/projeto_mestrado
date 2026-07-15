@@ -102,6 +102,62 @@ class GeminiService:
     def generate_embeddings_batch(self, texts: list[str]) -> list[list[float]]:
         return [self.generate_embedding(t) for t in texts]
 
+    # ── Diary normalization ──────────────────────────────────────────────────
+
+    def normalize_diary_observation(self, text: str) -> tuple[dict, UsageData]:
+        """Send raw open_observation text to Gemini and return a structured summary dict.
+
+        Returns a dict with keys: resumo, comportamentos_observados,
+        habilidades_demonstradas, dificuldades_identificadas, recomendacoes.
+        Falls back to {"resumo": text} on any parse failure.
+        """
+        import json, re
+
+        prompt = f"""Você é um assistente especializado em educação inclusiva para alunos com TEA (Transtorno do Espectro Autista).
+
+Analise a seguinte observação livre escrita por um professor e normalize-a em um JSON estruturado.
+
+OBSERVAÇÃO:
+{text}
+
+Retorne APENAS o JSON abaixo preenchido, sem explicações, sem markdown, sem ```json:
+
+{{
+  "resumo": "<resumo objetivo em 1-2 frases>",
+  "comportamentos_observados": ["<lista de comportamentos mencionados ou inferidos>"],
+  "habilidades_demonstradas": ["<habilidades positivas observadas>"],
+  "dificuldades_identificadas": ["<dificuldades ou desafios mencionados>"],
+  "recomendacoes": ["<sugestões ou encaminhamentos mencionados pelo professor>"]
+}}
+
+Se alguma categoria não tiver informações, use lista vazia [].
+Não invente informações que não estejam na observação original."""
+
+        messages = [HumanMessage(content=prompt)]
+        t0 = time.monotonic()
+        response = self._llm.invoke(messages)
+        duration_ms = int((time.monotonic() - t0) * 1000)
+
+        raw = response.content.strip()
+        raw = re.sub(r"^```[a-z]*\n?", "", raw, flags=re.MULTILINE)
+        raw = re.sub(r"```$", "", raw, flags=re.MULTILINE).strip()
+
+        meta = getattr(response, "usage_metadata", None) or {}
+        usage = UsageData(
+            model=self.model_name,
+            input_tokens=int(meta.get("input_tokens", 0)),
+            output_tokens=int(meta.get("output_tokens", 0)),
+            total_tokens=int(meta.get("total_tokens", 0)),
+            duration_ms=duration_ms,
+        )
+
+        try:
+            normalized = json.loads(raw)
+        except Exception:
+            normalized = {"resumo": text}
+
+        return normalized, usage
+
     # ── Audio transcription ──────────────────────────────────────────────────
 
     def transcribe_diary_audio(self, audio_bytes: bytes, mime_type: str = "audio/webm") -> dict:

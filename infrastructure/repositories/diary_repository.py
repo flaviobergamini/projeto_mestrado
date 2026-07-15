@@ -17,6 +17,12 @@ def _build_diary_anonymized(entry_data: dict) -> str:
 
 
 def _to_dict(e: DiaryEntry) -> dict:
+    norm = None
+    if e.normalized_observation:
+        try:
+            norm = json.loads(e.normalized_observation)
+        except Exception:
+            pass
     return {
         "id": e.id,
         "student_id": e.student_id,
@@ -34,6 +40,7 @@ def _to_dict(e: DiaryEntry) -> dict:
         "presence": e.presence,
         "status": e.status,
         "source": e.source,
+        "normalized_observation": norm,
         "created_at": e.created_at.isoformat() if e.created_at else None,
         "updated_at": e.updated_at.isoformat() if e.updated_at else None,
     }
@@ -202,6 +209,17 @@ class DiaryRepository:
             await session.commit()
 
             return result.rowcount
+
+    async def save_normalized_observation(self, entry_id: str, normalized: dict) -> None:
+        """Persist the Gemini-normalized observation JSON for a diary entry."""
+        async with self.database.session() as session:
+            result = await session.execute(
+                select(DiaryEntry).where(DiaryEntry.id == entry_id, DiaryEntry.deleted == False)
+            )
+            entry = result.scalars().first()
+            if entry:
+                entry.normalized_observation = json.dumps(normalized, ensure_ascii=False)
+                await session.commit()
 
     # ── Image / media helpers ─────────────────────────────────────────────────
 

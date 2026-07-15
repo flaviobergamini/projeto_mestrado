@@ -85,7 +85,7 @@ class Container(containers.DeclarativeContainer):
 
     anonymization_service = providers.Factory(AnonymizationService, database=database)
 
-    rag_service = providers.Factory(RagService, database=database, gemini=gemini_service, usage_repo=ai_usage_repository)
+    rag_service = providers.Factory(RagService, database=database, gemini=gemini_service, usage_repo=ai_usage_repository, diary_repo=diary_repository)
 
     create_user_use_case = providers.Factory(
         CreateUserUseCase,
