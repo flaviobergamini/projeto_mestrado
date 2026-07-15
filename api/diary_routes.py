@@ -237,6 +237,33 @@ async def upload_image(
     )
 
 
+@router.get("/images/batch")
+@inject
+async def list_images_batch(
+    entry_ids: str,  # comma-separated list of entry IDs
+    current_user: dict = Depends(get_current_user),
+    repo: DiaryRepository = Depends(Provide[Container.diary_repository]),
+):
+    """Return images for multiple diary entries in one request, with batch-signed URLs."""
+    ids = [i.strip() for i in entry_ids.split(",") if i.strip()]
+    if not ids:
+        return {}
+
+    grouped = await repo.list_images_batch(ids)
+
+    # Collect all object keys then sign them in one Supabase call
+    all_keys = [rec["object_key"] for recs in grouped.values() for rec in recs if rec.get("object_key")]
+    storage = StorageService()
+    signed_map = await storage.create_signed_urls_batch_async(all_keys) if all_keys else {}
+
+    for recs in grouped.values():
+        for rec in recs:
+            key = rec.get("object_key", "")
+            rec["url"] = signed_map.get(key) or rec.get("public_url", "")
+
+    return grouped
+
+
 @router.get("/{entry_id}/images")
 @inject
 async def list_images(
@@ -245,10 +272,14 @@ async def list_images(
     repo: DiaryRepository = Depends(Provide[Container.diary_repository]),
 ):
     records = await repo.list_images(entry_id)
+    if not records:
+        return records
+
     storage = StorageService()
+    keys = [r["object_key"] for r in records if r.get("object_key")]
+    signed_map = await storage.create_signed_urls_batch_async(keys) if keys else {}
     for rec in records:
-        signed = storage.create_signed_url(rec["object_key"])
-        rec["url"] = signed or rec.get("public_url", "")
+        rec["url"] = signed_map.get(rec.get("object_key", "")) or rec.get("public_url", "")
     return records
 
 

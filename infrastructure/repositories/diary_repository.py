@@ -247,6 +247,25 @@ class DiaryRepository:
 
             return [self._image_to_dict(r) for r in result.scalars().all()]
 
+    async def list_images_batch(self, entry_ids: list[str]) -> dict[str, list[dict]]:
+        """Return images for multiple diary entries in a single query."""
+        if not entry_ids:
+            return {}
+        async with self.database.session() as session:
+            result = await session.execute(
+                select(ObjectStorageFile).where(
+                    ObjectStorageFile.doc_type == "diary_image",
+                    ObjectStorageFile.extra["diary_entry_id"].as_string().in_(entry_ids),
+                    ObjectStorageFile.deleted == False,
+                ).order_by(ObjectStorageFile.created_at)
+            )
+            grouped: dict[str, list[dict]] = {eid: [] for eid in entry_ids}
+            for row in result.scalars().all():
+                eid = (row.extra or {}).get("diary_entry_id")
+                if eid in grouped:
+                    grouped[eid].append(self._image_to_dict(row))
+            return grouped
+
     async def get_image(self, file_id: str) -> Optional[dict]:
         async with self.database.session() as session:
             obj = await session.get(ObjectStorageFile, file_id)
