@@ -1,7 +1,7 @@
 import uuid
 from datetime import date, datetime
 from typing import Optional
-from sqlalchemy import select, desc, func
+from sqlalchemy import select, desc, func, delete as sa_delete
 from sqlalchemy.orm import selectinload
 
 from infrastructure.database_context.database import Database
@@ -215,9 +215,35 @@ class ChatRepository:
 
             return "\n".join(lines)
 
+    async def delete_session(self, session_id: str) -> bool:
+        async with self._db.session() as session:
+            obj = await session.get(ChatSession, session_id)
+            if not obj:
+                return False
+            await session.execute(
+                sa_delete(ChatMessage).where(ChatMessage.session_id == session_id)
+            )
+            await session.delete(obj)
+            await session.commit()
+            return True
+
+    async def rename_session(self, session_id: str, title: str) -> Optional[dict]:
+        async with self._db.session() as session:
+            obj = await session.get(ChatSession, session_id)
+            if not obj:
+                return None
+            extra = dict(obj.extra or {})
+            extra["title"] = title
+            obj.extra = extra
+            await session.commit()
+            await session.refresh(obj)
+            return self._session_to_dict(obj)
+
     def _session_to_dict(self, obj: ChatSession) -> dict:
+        extra = obj.extra or {}
         return {
             "id": obj.id,
+            "title": extra.get("title"),
             "session_date": str(obj.session_date) if obj.session_date else None,
             "student_id": obj.student_id,
             "student_name": obj.student_name,

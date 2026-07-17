@@ -276,3 +276,71 @@ def generate_pei_pdf(
 
     doc.build(story, onFirstPage=_footer_canvas, onLaterPages=_footer_canvas)
     return buf.getvalue()
+
+
+def generate_chat_pdf(messages: list[dict], title: str = "Chat") -> bytes:
+    """Generate a PDF export of a chat session."""
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf,
+        pagesize=A4,
+        rightMargin=2 * cm,
+        leftMargin=2 * cm,
+        topMargin=2.5 * cm,
+        bottomMargin=2 * cm,
+    )
+    styles = _build_styles()
+    br_tz = timezone(timedelta(hours=-3))
+    generated_at = datetime.now(br_tz).strftime("%d/%m/%Y %H:%M")
+
+
+    story: list = []
+
+    # ── Header ────────────────────────────────────────────────────────────────
+    if LOGO_PATH:
+        story.append(Image(LOGO_PATH, width=2 * cm, height=2 * cm))
+        story.append(Spacer(1, 4))
+
+    story.append(Paragraph("Autism.iA — Exportação de Chat", styles["h1"]))
+    story.append(Paragraph(title, styles["h2"]))
+    story.append(Paragraph(f"Gerado em: {generated_at}", styles["caption"]))
+    story.append(HRFlowable(width="100%", thickness=1, color=PRIMARY, spaceAfter=10))
+
+    if not messages:
+        story.append(Paragraph("Nenhuma mensagem nesta sessão.", styles["body"]))
+    else:
+        for msg in messages:
+            role = msg.get("role", "")
+            content = msg.get("content", "")
+            ts = msg.get("created_at", "")
+            if ts:
+                try:
+                    dt = datetime.fromisoformat(ts)
+                    ts = dt.strftime("%d/%m/%Y %H:%M")
+                except Exception:
+                    pass
+
+            if role == "user":
+                label = "<font color='#1a237e'>Você</font>"
+            else:
+                label = "<font color='#1565c0'>Autism.iA</font>"
+
+            header_text = f"<b>{label}</b>  <font size='8' color='#9e9e9e'>{ts}</font>"
+            header_para = Paragraph(header_text, styles["body"])
+
+            lines = content.split("\n")
+            body_paras = [Paragraph(ln if ln.strip() else "&nbsp;", styles["body"]) for ln in lines]
+
+            block = KeepTogether([header_para, Spacer(1, 2)] + body_paras + [Spacer(1, 8)])
+            story.append(block)
+
+    story.append(Spacer(1, 12))
+    story.append(HRFlowable(width="100%", thickness=0.5,
+                             color=colors.HexColor("#bdbdbd"), spaceAfter=6))
+    story.append(Paragraph(
+        "Documento gerado automaticamente pelo sistema Autism.iA.",
+        styles["confidential"],
+    ))
+
+    doc.build(story, onFirstPage=_footer_canvas, onLaterPages=_footer_canvas)
+    return buf.getvalue()

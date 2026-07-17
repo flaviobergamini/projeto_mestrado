@@ -149,6 +149,8 @@ class AnonymizationService:
         student_id: str,
         diary_limit: int = 10,
         sources: list[str] | None = None,
+        diary_date_from: str | None = None,
+        diary_date_to: str | None = None,
     ) -> tuple[str, dict[str, str]]:
         """Return (anonymized_context_str, deanon_map).
 
@@ -225,10 +227,17 @@ class AnonymizationService:
             school_id = student_row.school_id or ""
             diary_anon_list: list[dict] = []
             if include_diary:
+                diary_filters = [
+                    DiaryEntry.student_id == student_id,
+                    DiaryEntry.deleted == False,
+                ]
+                if diary_date_from:
+                    diary_filters.append(DiaryEntry.diary_date >= diary_date_from)
+                if diary_date_to:
+                    diary_filters.append(DiaryEntry.diary_date <= diary_date_to)
                 diary_result = await session.execute(
                     select(DiaryEntry)
-                    .where(DiaryEntry.student_id == student_id,
-                           DiaryEntry.deleted == False)
+                    .where(*diary_filters)
                     .order_by(DiaryEntry.diary_date.desc())
                     .limit(diary_limit)
                 )

@@ -22,7 +22,9 @@ router = APIRouter(prefix="/pei-gen", tags=["PEI Generation"])
 
 class GeneratePEIRequest(BaseModel):
     student_id: str
-    sources: Optional[list[str]] = None  # e.g. ["diary", "case_study"]
+    sources: Optional[list[str]] = None
+    diary_date_from: Optional[str] = None  # YYYY-MM-DD
+    diary_date_to: Optional[str] = None    # YYYY-MM-DD
 
 
 @router.post("/generate")
@@ -46,7 +48,13 @@ async def generate_pei(
     generated_by = current_user.get("user_id")
 
     # Build anonymised student context (sections filtered by selected sources)
-    anon_context, deanon_map = await anon_svc.build_context(body.student_id, diary_limit=15, sources=body.sources)
+    anon_context, deanon_map = await anon_svc.build_context(
+        body.student_id,
+        diary_limit=15,
+        sources=body.sources,
+        diary_date_from=body.diary_date_from,
+        diary_date_to=body.diary_date_to,
+    )
 
     # RAG: semantically similar chunks (anonymised embeddings)
     rag_context = await rag.build_rag_context(
