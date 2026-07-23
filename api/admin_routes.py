@@ -27,6 +27,16 @@ class UserUpdateBody(BaseModel):
 
 # ── Users ──────────────────────────────────────────────────────────────────────
 
+@router.get("/users/by-role/{role}")
+@inject
+async def list_users_by_role(
+    role: str,
+    current_user: dict = Depends(require_roles("admin")),
+    user_repo: UserRepository = Depends(Provide[Container.user_repository]),
+):
+    return await user_repo.list_by_role(role)
+
+
 @router.get("/users")
 @inject
 async def list_users_paginated(

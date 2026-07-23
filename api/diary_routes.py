@@ -118,7 +118,7 @@ async def list_entries(
     current_user: dict = Depends(get_current_user),
     repo: DiaryRepository = Depends(Provide[Container.diary_repository]),
 ):
-    return await repo.list_by_student(student_id)
+    return await repo.list_by_student(student_id, source="school")
 
 
 @router.get("/{entry_id}")

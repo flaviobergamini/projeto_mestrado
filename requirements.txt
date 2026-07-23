@@ -18,17 +18,23 @@ email-validator==2.3.0
 PyJWT==2.10.1
 passlib[bcrypt]==1.7.4
 
+# AWS (Cognito)
+boto3==1.38.42
+
+# Encryption
+cryptography==44.0.3
+
 # Dependency Injection
 dependency-injector==4.48.1
 
 # Configuration
 python-dotenv==1.1.1
 
-# LangChain & LLM Integrations (apenas Gemini que está sendo usado)
+# LangChain & Gemini
 langchain-google-genai==2.1.12
 langchain-text-splitters==0.3.9
 
-# Machine Learning & Embeddings
+# Embeddings
 numpy>=2.2.0,<2.4.0
 
 # Storage
@@ -38,4 +44,3 @@ python-multipart==0.0.18
 # PDF Generation
 reportlab==4.2.5
 markdown==3.10
-

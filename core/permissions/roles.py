@@ -17,14 +17,19 @@ SECRETARIA = "secretaria"
 COORDENACAO = "coordenacao"
 PROFESSOR = "professor"
 VIEWER = "viewer"
+PARENT = "parent"          # Responsável/familiar — acessa apenas seus filhos
+THERAPIST = "therapist"    # Terapeuta — acessa apenas seus pacientes
 
-ALL_ROLES = {ADMIN, SECRETARIA, COORDENACAO, PROFESSOR, VIEWER}
+ALL_ROLES = {ADMIN, SECRETARIA, COORDENACAO, PROFESSOR, VIEWER, PARENT, THERAPIST}
 
 # Roles que podem escrever dados
-WRITE_ROLES = {ADMIN, SECRETARIA, COORDENACAO, PROFESSOR}
+WRITE_ROLES = {ADMIN, SECRETARIA, COORDENACAO, PROFESSOR, PARENT, THERAPIST}
 
 # Roles somente leitura
 READ_ONLY_ROLES = {VIEWER}
+
+# Roles com acesso limitado a seus próprios alunos/pacientes
+SCOPED_ROLES = {PARENT, THERAPIST}
 
 # ------------------------------------------------------------------ #
 # Permissões por recurso                                              #
@@ -65,6 +70,12 @@ CAN_VIEW_CASE_STUDY = {ADMIN, SECRETARIA, COORDENACAO, PROFESSOR, VIEWER}
 
 # Quem pode usar o chat/RAG
 CAN_USE_CHAT = {ADMIN, SECRETARIA, COORDENACAO, PROFESSOR, VIEWER}
+
+# Quem pode registrar diário familiar
+CAN_WRITE_FAMILY_DIARY = {ADMIN, PARENT}
+
+# Quem pode registrar diário de terapia
+CAN_WRITE_THERAPY_DIARY = {ADMIN, THERAPIST}
 
 
 # ------------------------------------------------------------------ #

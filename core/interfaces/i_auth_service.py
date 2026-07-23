@@ -5,6 +5,11 @@ from typing import Optional
 class IAuthService(ABC):
 
     @abstractmethod
+    def admin_create_user(self, username: str, password: str, email: str, full_name: Optional[str]) -> str:
+        """Cria usuário via API admin (já confirmado, sem código de verificação) e retorna o sub."""
+        ...
+
+    @abstractmethod
     def sign_up(self, username: str, password: str, email: str, full_name: Optional[str]) -> str:
         """Registra usuário e retorna o ID (sub) gerado."""
         ...

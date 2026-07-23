@@ -228,3 +228,33 @@ Retorne APENAS o JSON, sem explicações, sem markdown, sem ```json.
             fields = {}
 
         return fields, usage
+
+    def transcribe_audio_verbatim(self, audio_bytes: bytes, mime_type: str = "audio/webm") -> tuple[str, "UsageData"]:
+        """Transcreve o áudio fielmente, sem resumir. Retorna o texto e os dados de uso."""
+        import base64, time as _time
+
+        prompt = """Transcreva exatamente o que foi dito no áudio, em português, sem resumir, sem interpretar, sem adicionar ou omitir nenhuma informação. Retorne apenas o texto transcrito, sem títulos, sem explicações adicionais."""
+
+        message = HumanMessage(content=[
+            {
+                "type": "media",
+                "data": base64.b64encode(audio_bytes).decode("utf-8"),
+                "mime_type": mime_type,
+            },
+            {"type": "text", "text": prompt},
+        ])
+
+        t0 = _time.monotonic()
+        response = self._llm.invoke([message])
+        duration_ms = int((_time.monotonic() - t0) * 1000)
+
+        meta = getattr(response, "usage_metadata", None) or {}
+        usage = UsageData(
+            model=self.model_name,
+            input_tokens=int(meta.get("input_tokens", 0)),
+            output_tokens=int(meta.get("output_tokens", 0)),
+            total_tokens=int(meta.get("total_tokens", 0)),
+            duration_ms=duration_ms,
+        )
+
+        return response.content.strip(), usage

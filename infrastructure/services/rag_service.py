@@ -415,7 +415,7 @@ class RagService:
 
     # ── search ────────────────────────────────────────────────────────────────
 
-    VALID_SOURCES = {"diary", "case_study"}
+    VALID_SOURCES = {"diary", "case_study", "family_diary", "therapy_diary"}
 
     async def get_sources_preview(self, student_id: str) -> dict:
         """Return available source counts for a student."""
@@ -457,9 +457,23 @@ class RagService:
             )
             gpei_count = int(gpei_result.scalar() or 0)
 
+            family_result = await session.execute(
+                text("SELECT COUNT(*) FROM diary_entries WHERE student_id = :sid AND source = 'family' AND deleted = false"),
+                {"sid": student_id},
+            )
+            family_count = int(family_result.scalar() or 0)
+
+            therapy_result = await session.execute(
+                text("SELECT COUNT(*) FROM diary_entries WHERE student_id = :sid AND source = 'therapy' AND deleted = false"),
+                {"sid": student_id},
+            )
+            therapy_count = int(therapy_result.scalar() or 0)
+
         return {
             "student": {"available": student_row is not None, "count": 1 if student_row else 0},
             "diary": {"available": diary_count > 0, "count": diary_count},
+            "family_diary": {"available": family_count > 0, "count": family_count},
+            "therapy_diary": {"available": therapy_count > 0, "count": therapy_count},
             "case_study": {"available": case_count > 0, "count": case_count},
             "school": {"available": school_id is not None, "count": 1 if school_id else 0},
             "teacher": {"available": teacher_count > 0, "count": teacher_count},
@@ -495,7 +509,7 @@ class RagService:
         vector_literal = f"[{','.join(str(x) for x in query_vector)}]"
 
         parts = []
-        if "diary" in active:
+        if active & {"diary", "family_diary", "therapy_diary"}:
             parts.append(
                 "SELECT content, meta_data::text AS meta_json,"
                 " (embedding <=> CAST(:vec AS vector)) AS distance,"

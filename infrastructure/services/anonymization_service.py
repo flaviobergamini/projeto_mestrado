@@ -168,6 +168,8 @@ class AnonymizationService:
         include_school = include_all or "school" in sources
         include_teacher = include_all or "teacher" in sources
         include_diary = include_all or "diary" in sources
+        include_family_diary = include_all or "family_diary" in sources
+        include_therapy_diary = include_all or "therapy_diary" in sources
         include_pdi = include_all or "pdi" in sources
         include_generated_pei = include_all or "generated_pei" in sources
 
@@ -271,6 +273,68 @@ class AnonymizationService:
                             pass
                     diary_anon_list.append(d)
 
+            # ── Diário familiar (pais) ───────────────────────────────────────
+            family_diary_list: list[dict] = []
+            if include_family_diary:
+                fam_filters = [
+                    DiaryEntry.student_id == student_id,
+                    DiaryEntry.deleted == False,
+                    DiaryEntry.source == "family",
+                ]
+                if diary_date_from:
+                    fam_filters.append(DiaryEntry.diary_date >= diary_date_from)
+                if diary_date_to:
+                    fam_filters.append(DiaryEntry.diary_date <= diary_date_to)
+                fam_result = await session.execute(
+                    select(DiaryEntry).where(*fam_filters)
+                    .order_by(DiaryEntry.diary_date.desc())
+                    .limit(diary_limit)
+                )
+                for e in fam_result.scalars().all():
+                    d = {"diary_date": str(e.diary_date) if e.diary_date else "",
+                         "source": "family",
+                         "presence": e.presence or ""}
+                    if e.open_observation:
+                        d["observacao"] = e.open_observation
+                    if e.normalized_observation:
+                        try:
+                            import json as _json
+                            d["observacoes_normalizadas"] = _json.loads(e.normalized_observation)
+                        except Exception:
+                            pass
+                    family_diary_list.append(d)
+
+            # ── Diário de terapia ────────────────────────────────────────────
+            therapy_diary_list: list[dict] = []
+            if include_therapy_diary:
+                ther_filters = [
+                    DiaryEntry.student_id == student_id,
+                    DiaryEntry.deleted == False,
+                    DiaryEntry.source == "therapy",
+                ]
+                if diary_date_from:
+                    ther_filters.append(DiaryEntry.diary_date >= diary_date_from)
+                if diary_date_to:
+                    ther_filters.append(DiaryEntry.diary_date <= diary_date_to)
+                ther_result = await session.execute(
+                    select(DiaryEntry).where(*ther_filters)
+                    .order_by(DiaryEntry.diary_date.desc())
+                    .limit(diary_limit)
+                )
+                for e in ther_result.scalars().all():
+                    d = {"diary_date": str(e.diary_date) if e.diary_date else "",
+                         "source": "therapy",
+                         "presence": e.presence or ""}
+                    if e.open_observation:
+                        d["observacao_sessao"] = e.open_observation
+                    if e.normalized_observation:
+                        try:
+                            import json as _json
+                            d["observacoes_normalizadas"] = _json.loads(e.normalized_observation)
+                        except Exception:
+                            pass
+                    therapy_diary_list.append(d)
+
             # ── PDI ──────────────────────────────────────────────────────────
             pdi_anon_list: list[dict] = []
             if include_pdi:
@@ -324,8 +388,16 @@ class AnonymizationService:
             sections.append(json.dumps(teachers_anon, ensure_ascii=False, indent=2))
 
         if diary_anon_list:
-            sections.append(f"=== DIÁRIO RECENTE (últimas {len(diary_anon_list)} entradas, ANONIMIZADO) ===")
+            sections.append(f"=== DIÁRIO ESCOLAR (últimas {len(diary_anon_list)} entradas, ANONIMIZADO) ===")
             sections.append(json.dumps(diary_anon_list, ensure_ascii=False, indent=2))
+
+        if family_diary_list:
+            sections.append(f"=== DIÁRIO FAMILIAR — registros dos pais/responsáveis (últimas {len(family_diary_list)} entradas) ===")
+            sections.append(json.dumps(family_diary_list, ensure_ascii=False, indent=2))
+
+        if therapy_diary_list:
+            sections.append(f"=== DIÁRIO TERAPÊUTICO — sessões de terapia (últimas {len(therapy_diary_list)} entradas) ===")
+            sections.append(json.dumps(therapy_diary_list, ensure_ascii=False, indent=2))
 
         if pdi_anon_list:
             sections.append("=== PDI (Plano de Desenvolvimento Individual) ===")

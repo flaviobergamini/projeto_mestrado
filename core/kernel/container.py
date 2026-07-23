@@ -20,6 +20,8 @@ from infrastructure.repositories.school_repository import SchoolRepository
 from infrastructure.repositories.teacher_repository import TeacherRepository
 from infrastructure.repositories.case_study_repository import CaseStudyRepository
 from infrastructure.repositories.case_study_draft_repository import CaseStudyDraftRepository
+from infrastructure.repositories.parent_student_link_repository import ParentStudentLinkRepository
+from infrastructure.repositories.therapist_student_link_repository import TherapistStudentLinkRepository
 from infrastructure.repositories.chat_repository import ChatRepository
 from infrastructure.repositories.prompt_repository import PromptRepository
 from infrastructure.repositories.generated_pei_repository import GeneratedPeiRepository
@@ -41,7 +43,7 @@ class Container(containers.DeclarativeContainer):
             "api.school_routes", "api.teacher_routes", "api.case_study_routes",
             "api.chat_routes", "api.prompt_routes", "api.pei_gen_routes",
             "api.municipality_routes", "api.admin_routes", "api.ai_usage_routes",
-            "api.vinculos_routes",
+            "api.vinculos_routes", "api.family_routes",
         ],
     )
 
@@ -71,6 +73,10 @@ class Container(containers.DeclarativeContainer):
     case_study_repository = providers.Factory(CaseStudyRepository, database=database)
 
     case_study_draft_repository = providers.Factory(CaseStudyDraftRepository, database=database)
+
+    parent_student_link_repository = providers.Factory(ParentStudentLinkRepository, database=database)
+
+    therapist_student_link_repository = providers.Factory(TherapistStudentLinkRepository, database=database)
 
     chat_repository = providers.Factory(ChatRepository, database=database)
 

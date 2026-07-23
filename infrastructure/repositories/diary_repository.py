@@ -81,11 +81,14 @@ class DiaryRepository:
                 for row in rows
             ]
 
-    async def list_by_student(self, student_id: str) -> list[dict]:
+    async def list_by_student(self, student_id: str, source: Optional[str] = None) -> list[dict]:
         async with self.database.session() as session:
+            filters = [DiaryEntry.student_id == student_id, DiaryEntry.deleted == False]
+            if source:
+                filters.append(DiaryEntry.source == source)
             result = await session.execute(
                 select(DiaryEntry)
-                .where(DiaryEntry.student_id == student_id, DiaryEntry.deleted == False)
+                .where(*filters)
                 .order_by(DiaryEntry.diary_date.desc())
             )
 
@@ -117,7 +120,7 @@ class DiaryRepository:
                 teacher_name=data.get("teacher_name"),
                 presence=data.get("presence", "Presente"),
                 status="active",
-                source="manual",
+                source=data.get("source") or "school",
                 anonymized_data=_build_diary_anonymized(data),
             )
 

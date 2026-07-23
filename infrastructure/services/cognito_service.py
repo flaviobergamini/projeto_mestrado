@@ -67,6 +67,33 @@ class CognitoService(IAuthService):
             kwargs["SecretHash"] = self._secret_hash(username)
         return kwargs
 
+    def admin_create_user(self, username: str, password: str, email: str, full_name: Optional[str] = None) -> str:
+        """Cria usuário via API admin — já confirma o e-mail automaticamente, sem código de verificação."""
+        user_attributes = [{"Name": "email", "Value": email}, {"Name": "email_verified", "Value": "true"}]
+        if full_name:
+            user_attributes.append({"Name": "name", "Value": full_name})
+        try:
+            response = self.client.admin_create_user(
+                UserPoolId=self.user_pool_id,
+                Username=username,
+                TemporaryPassword=password,
+                UserAttributes=user_attributes,
+                MessageAction="SUPPRESS",  # não envia e-mail de senha temporária
+            )
+            sub = next(
+                a["Value"] for a in response["User"]["Attributes"] if a["Name"] == "sub"
+            )
+            # Define a senha permanente imediatamente, evitando o fluxo FORCE_CHANGE_PASSWORD
+            self.client.admin_set_user_password(
+                UserPoolId=self.user_pool_id,
+                Username=username,
+                Password=password,
+                Permanent=True,
+            )
+            return sub
+        except ClientError as e:
+            raise _to_domain_exception(e)
+
     def sign_up(self, username: str, password: str, email: str, full_name: Optional[str] = None) -> str:
         user_attributes = [{"Name": "email", "Value": email}]
         if full_name:

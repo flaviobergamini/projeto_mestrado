@@ -124,6 +124,15 @@ class UserRepository(IUserRepository):
             result = await session.execute(select(UserProfile).where(UserProfile.deleted == False).order_by(UserProfile.username))
             return [_to_dict(u) for u in result.scalars().all()]
 
+    async def list_by_role(self, role: str) -> list[dict]:
+        async with self.database.session() as session:
+            result = await session.execute(
+                select(UserProfile)
+                .where(UserProfile.role == role, UserProfile.deleted == False)
+                .order_by(UserProfile.full_name, UserProfile.username)
+            )
+            return [_to_dict(u) for u in result.scalars().all()]
+
     async def list_paginated(self, page: int = 1, page_size: int = 20) -> dict:
         offset = (page - 1) * page_size
         async with self.database.session() as session:
