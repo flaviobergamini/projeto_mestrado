@@ -186,6 +186,19 @@ class CognitoService(IAuthService):
         except ClientError as e:
             raise _to_domain_exception(e)
 
+    def delete_user(self, username: str) -> None:
+        """Remove o usuário do Cognito User Pool pelo username (email)."""
+        try:
+            self.client.admin_delete_user(
+                UserPoolId=self.user_pool_id,
+                Username=username,
+            )
+        except ClientError as e:
+            code = e.response["Error"]["Code"]
+            if code == "UserNotFoundException":
+                return  # já removido, não é erro
+            raise _to_domain_exception(e)
+
     def get_username_from_token(self, access_token: str) -> str:
         """
         Retorna o 'sub' (UUID estável) do usuário Cognito a partir do access token.

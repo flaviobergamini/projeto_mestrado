@@ -8,6 +8,7 @@ from sqlalchemy import select, func
 
 from api.dependencies import require_roles
 from core.kernel.container import Container
+from core.interfaces.i_auth_service import IAuthService
 from infrastructure.database_context.database import Database
 from infrastructure.repositories.user_repository import UserRepository
 from infrastructure.repositories.audit_repository import AuditRepository
@@ -68,13 +69,16 @@ async def delete_user(
     user_id: str,
     current_user: dict = Depends(require_roles("admin")),
     user_repo: UserRepository = Depends(Provide[Container.user_repository]),
+    auth_service: IAuthService = Depends(Provide[Container.cognito_service]),
 ):
-    # Prevent self-deletion
     if user_id == current_user.get("user_id"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Não é possível apagar o próprio usuário.")
-    deleted = await user_repo.delete(user_id)
-    if not deleted:
+    user = await user_repo.get_by_id(user_id)
+    if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuário não encontrado.")
+    # Remove do Cognito primeiro; se falhar, o banco permanece intacto
+    auth_service.delete_user(user["username"])
+    await user_repo.delete(user_id)
 
 
 # ── Pre-registration summary ────────────────────────────────────────────────────
