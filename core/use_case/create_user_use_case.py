@@ -38,7 +38,7 @@ class CreateUserUseCase:
                 return Result.bad_request("Nome de usuário já cadastrado")
 
             try:
-                cognito_sub = self.auth_service.sign_up(username, password, email, full_name)
+                cognito_sub = self.auth_service.admin_create_user(username, password, email, full_name)
             except UserAlreadyExistsError as e:
                 return Result.bad_request(e.message)
             except AuthException as e:
@@ -55,7 +55,7 @@ class CreateUserUseCase:
             )
 
             return Result.ok({
-                "message": "Usuário criado. Verifique seu e-mail para confirmar o cadastro.",
+                "message": "Usuário criado com sucesso. As credenciais foram enviadas por e-mail.",
                 "username": username,
                 "user_id": cognito_sub,
             })

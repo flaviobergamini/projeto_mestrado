@@ -78,7 +78,6 @@ class CognitoService(IAuthService):
                 Username=username,
                 TemporaryPassword=password,
                 UserAttributes=user_attributes,
-                MessageAction="SUPPRESS",  # não envia e-mail de senha temporária
             )
             sub = next(
                 a["Value"] for a in response["User"]["Attributes"] if a["Name"] == "sub"
