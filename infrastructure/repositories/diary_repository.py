@@ -81,17 +81,26 @@ class DiaryRepository:
                 for row in rows
             ]
 
-    async def list_by_student(self, student_id: str, source: Optional[str] = None) -> list[dict]:
+    async def list_by_student(
+        self,
+        student_id: str,
+        source: Optional[str] = None,
+        date_from: Optional[date] = None,
+        date_to: Optional[date] = None,
+    ) -> list[dict]:
         async with self.database.session() as session:
             filters = [DiaryEntry.student_id == student_id, DiaryEntry.deleted == False]
             if source:
                 filters.append(DiaryEntry.source == source)
+            if date_from:
+                filters.append(DiaryEntry.diary_date >= date_from)
+            if date_to:
+                filters.append(DiaryEntry.diary_date <= date_to)
             result = await session.execute(
                 select(DiaryEntry)
                 .where(*filters)
                 .order_by(DiaryEntry.diary_date.desc())
             )
-
             return [_to_dict(e) for e in result.scalars().all()]
 
     async def get_by_id(self, entry_id: str) -> Optional[dict]:

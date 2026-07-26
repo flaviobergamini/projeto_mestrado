@@ -278,6 +278,235 @@ def generate_pei_pdf(
     return buf.getvalue()
 
 
+def generate_diary_pdf(
+    entries: list[dict],
+    student_name: str,
+    diary_label: str,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    source: str = "school",
+    images_map: Optional[dict[str, list[bytes]]] = None,
+) -> bytes:
+    """Generate a letterhead PDF for diary entries and return raw bytes."""
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf,
+        pagesize=A4,
+        leftMargin=2.2 * cm,
+        rightMargin=2.2 * cm,
+        topMargin=2.2 * cm,
+        bottomMargin=2.8 * cm,
+        title=f"{diary_label} — {student_name}",
+        author="Autism.iA",
+        subject=diary_label,
+    )
+
+    styles = _build_styles()
+    br_tz = timezone(timedelta(hours=-3))
+    now_str = datetime.now(br_tz).strftime("%d/%m/%Y às %H:%M")
+
+    def fmt_date(iso: Optional[str]) -> str:
+        if not iso:
+            return "—"
+        try:
+            return datetime.fromisoformat(iso.split("T")[0]).strftime("%d/%m/%Y")
+        except Exception:
+            return iso
+
+    # Period label
+    if date_from and date_to:
+        period = f"{fmt_date(date_from)} a {fmt_date(date_to)}"
+    elif date_from:
+        period = f"A partir de {fmt_date(date_from)}"
+    elif date_to:
+        period = f"Até {fmt_date(date_to)}"
+    else:
+        period = "Todos os registros"
+
+    story: list = []
+
+    # ── Header (same letterhead as PEI) ──────────────────────────────────────
+    logo_img = None
+    if LOGO_PATH:
+        try:
+            logo_img = Image(LOGO_PATH, width=2.0 * cm, height=2.0 * cm)
+        except Exception:
+            pass
+
+    title_para = Paragraph(
+        f'Autism.iA<br/>'
+        f'<font size="9" color="#757575">'
+        f'Sistema de Apoio à Educação Inclusiva para Alunos com TEA<br/>'
+        f'{diary_label}'
+        f'</font>',
+        styles["header_name"],
+    )
+
+    if logo_img:
+        header_table = Table([[logo_img, title_para]], colWidths=[2.6 * cm, None])
+        header_table.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("LEFTPADDING", (0, 0), (0, 0), 0),
+            ("RIGHTPADDING", (0, 0), (0, 0), 10),
+            ("TOPPADDING", (0, 0), (-1, -1), 0),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+        ]))
+        story.append(header_table)
+    else:
+        story.append(title_para)
+
+    story.append(Spacer(1, 6))
+    story.append(HRFlowable(width="100%", thickness=2, color=PRIMARY, spaceAfter=10))
+
+    # Two-row info table: row 1 = aluno (full width), row 2 = período + gerado em
+    info_data = [
+        [Paragraph("<b>Aluno(a):</b>", styles["info_label"]),
+         Paragraph(_escape(student_name), styles["info_value"]),
+         Paragraph(""), Paragraph(""), Paragraph(""), Paragraph("")],
+        [Paragraph("<b>Período:</b>", styles["info_label"]),
+         Paragraph(period, styles["info_value"]),
+         Paragraph(""), Paragraph(""),
+         Paragraph("<b>Gerado em:</b>", styles["info_label"]),
+         Paragraph(now_str, styles["info_value"])],
+    ]
+    col_w = [2.2 * cm, 8.0 * cm, 0 * cm, 0 * cm, 2.5 * cm, 3.5 * cm]
+    info_table = Table(info_data, colWidths=col_w)
+    info_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), LIGHT),
+        ("TOPPADDING", (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ("LEFTPADDING", (0, 0), (-1, -1), 8),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        # Merge cols 1..3 on row 0 so student name gets full width
+        ("SPAN", (1, 0), (5, 0)),
+    ]))
+    story.append(info_table)
+    story.append(Spacer(1, 4))
+    story.append(Paragraph(
+        f"{len(entries)} registro(s) encontrado(s)",
+        styles["caption"],
+    ))
+    story.append(Spacer(1, 12))
+
+    # ── Entries ───────────────────────────────────────────────────────────────
+    FIELD_LABELS: dict[str, str] = {
+        "teacher_name": "Professor(a)",
+        "teacher_attention": "Atenção do professor",
+        "followed_agreements": "Seguiu os combinados",
+        "activity_interest": "Interesse nas atividades",
+        "presence": "Presença",
+        "session_type": "Tipo de sessão",
+        "absence_reason": "Motivo de ausência",
+    }
+    SCHOOL_FIELDS = ["teacher_name", "teacher_attention", "followed_agreements", "activity_interest"]
+    THERAPY_FIELDS = ["presence", "session_type", "absence_reason"]
+
+    extra_keys = SCHOOL_FIELDS if source == "school" else (THERAPY_FIELDS if source == "therapy" else [])
+
+    if not entries:
+        story.append(Paragraph("Nenhum registro encontrado para o período selecionado.", styles["body"]))
+    else:
+        for entry in entries:
+            block_items: list = []
+
+            # Entry date header row
+            date_cell = Paragraph(
+                f"<font color='white'><b>{fmt_date(entry.get('diary_date'))}</b></font>",
+                ParagraphStyle("dh", fontName="Helvetica-Bold", fontSize=11, textColor=colors.white),
+            )
+            date_table = Table([[date_cell]], colWidths=["100%"])
+            date_table.setStyle(TableStyle([
+                ("BACKGROUND", (0, 0), (-1, -1), PRIMARY),
+                ("TOPPADDING", (0, 0), (-1, -1), 6),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                ("LEFTPADDING", (0, 0), (-1, -1), 10),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+            ]))
+            block_items.append(date_table)
+
+            # Extra fields
+            for key in extra_keys:
+                val = entry.get(key)
+                if val:
+                    label = FIELD_LABELS.get(key, key)
+                    row_table = Table(
+                        [[Paragraph(f"<b>{_escape(label)}:</b>", styles["info_label"]),
+                          Paragraph(_escape(str(val)), styles["info_value"])]],
+                        colWidths=[4 * cm, None],
+                    )
+                    row_table.setStyle(TableStyle([
+                        ("TOPPADDING", (0, 0), (-1, -1), 3),
+                        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+                        ("LEFTPADDING", (0, 0), (-1, -1), 10),
+                        ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+                        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ]))
+                    block_items.append(row_table)
+
+            # Observation
+            obs = entry.get("open_observation") or "—"
+            block_items.append(Spacer(1, 4))
+            block_items.append(Paragraph(
+                _escape(obs),
+                ParagraphStyle("obs", fontName="Helvetica", fontSize=10, textColor=TEXT,
+                               leading=14, leftIndent=10, rightIndent=10, spaceAfter=4),
+            ))
+
+            # Images
+            img_bytes_list = (images_map or {}).get(entry.get("id", ""), [])
+            if img_bytes_list:
+                block_items.append(Spacer(1, 6))
+                block_items.append(Paragraph(
+                    f"<b>Imagens ({len(img_bytes_list)}):</b>",
+                    ParagraphStyle("img_label", fontName="Helvetica-Bold", fontSize=9,
+                                   textColor=MUTED, leftIndent=10),
+                ))
+                block_items.append(Spacer(1, 4))
+                img_row = []
+                for raw in img_bytes_list:
+                    try:
+                        img_buf = io.BytesIO(raw)
+                        rl_img = Image(img_buf, width=4.5 * cm, height=4.5 * cm)
+                        rl_img.hAlign = "LEFT"
+                        img_row.append(rl_img)
+                    except Exception:
+                        pass
+                if img_row:
+                    # Lay images out in rows of up to 3
+                    for i in range(0, len(img_row), 3):
+                        chunk = img_row[i:i + 3]
+                        # Pad to 3 cells so table is uniform
+                        while len(chunk) < 3:
+                            chunk.append(Paragraph("", styles["body"]))
+                        img_table = Table([chunk], colWidths=[5.0 * cm, 5.0 * cm, 5.0 * cm])
+                        img_table.setStyle(TableStyle([
+                            ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                            ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+                            ("TOPPADDING", (0, 0), (-1, -1), 2),
+                            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                        ]))
+                        block_items.append(img_table)
+
+            block_items.append(Spacer(1, 8))
+            story.append(KeepTogether(block_items))
+            story.append(HRFlowable(width="100%", thickness=0.5,
+                                    color=colors.HexColor("#e0e0e0"), spaceAfter=8))
+
+    # ── Footer notice ─────────────────────────────────────────────────────────
+    story.append(Spacer(1, 16))
+    story.append(HRFlowable(width="100%", thickness=0.5,
+                             color=colors.HexColor("#bdbdbd"), spaceAfter=6))
+    story.append(Paragraph(
+        "Documento confidencial gerado pelo sistema Autism.iA — uso restrito à equipe pedagógica e familiar.",
+        styles["confidential"],
+    ))
+
+    doc.build(story, onFirstPage=_footer_canvas, onLaterPages=_footer_canvas)
+    return buf.getvalue()
+
+
 def generate_chat_pdf(messages: list[dict], title: str = "Chat") -> bytes:
     """Generate a PDF export of a chat session."""
     buf = io.BytesIO()

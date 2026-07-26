@@ -1,6 +1,9 @@
 import uuid
 import asyncio
+import httpx
+from datetime import date as _date
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from fastapi.responses import Response
 from pydantic import BaseModel
 from typing import Optional
 from dependency_injector.wiring import inject, Provide
@@ -13,6 +16,7 @@ from infrastructure.repositories.ai_usage_repository import AiUsageRepository
 from infrastructure.services.storage_service import StorageService
 from infrastructure.services.rag_service import RagService
 from infrastructure.services.gemini_service import GeminiService
+from infrastructure.services.pdf_service import generate_diary_pdf
 
 router = APIRouter(prefix="/diary", tags=["Diary"])
 
@@ -115,10 +119,17 @@ async def get_linked_teachers(
 @inject
 async def list_entries(
     student_id: str,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
     current_user: dict = Depends(get_current_user),
     repo: DiaryRepository = Depends(Provide[Container.diary_repository]),
 ):
-    return await repo.list_by_student(student_id, source="school")
+    return await repo.list_by_student(
+        student_id,
+        source="school",
+        date_from=_date.fromisoformat(date_from) if date_from else None,
+        date_to=_date.fromisoformat(date_to) if date_to else None,
+    )
 
 
 @router.get("/{entry_id}")
@@ -191,7 +202,82 @@ async def delete_all_for_student(
     await repo.delete_all_for_student(student_id)
 
 
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+
+async def _fetch_images_map(entry_ids: list[str], diary_repo: DiaryRepository) -> dict[str, list[bytes]]:
+    """Download image bytes for a list of diary entry IDs."""
+    if not entry_ids:
+        return {}
+    grouped = await diary_repo.list_images_batch(entry_ids)
+    all_keys = [rec["object_key"] for recs in grouped.values() for rec in recs if rec.get("object_key")]
+    if not all_keys:
+        return {}
+    storage = StorageService()
+    signed_map = await storage.create_signed_urls_batch_async(all_keys)
+    result: dict[str, list[bytes]] = {}
+    async with httpx.AsyncClient(timeout=30) as client:
+        for entry_id, recs in grouped.items():
+            imgs: list[bytes] = []
+            for rec in recs:
+                url = signed_map.get(rec.get("object_key", "")) or rec.get("public_url", "")
+                if url:
+                    try:
+                        resp = await client.get(url)
+                        if resp.status_code == 200:
+                            imgs.append(resp.content)
+                    except Exception:
+                        pass
+            if imgs:
+                result[entry_id] = imgs
+    return result
+
+
 # ── Image routes ──────────────────────────────────────────────────────────────
+
+@router.get("/export/pdf/{student_id}")
+@inject
+async def export_diary_pdf(
+    student_id: str,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    current_user: dict = Depends(get_current_user),
+    repo: DiaryRepository = Depends(Provide[Container.diary_repository]),
+    student_repo: StudentRepository = Depends(Provide[Container.student_repository]),
+):
+    """Exporta os registros do diário escolar de um aluno em PDF com timbragem."""
+    student = await student_repo.get_by_id(student_id)
+    if not student:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Aluno não encontrado.")
+
+    entries = await repo.list_by_student(
+        student_id,
+        source="school",
+        date_from=_date.fromisoformat(date_from) if date_from else None,
+        date_to=_date.fromisoformat(date_to) if date_to else None,
+    )
+
+    entry_ids = [e["id"] for e in entries if e.get("id")]
+    images_map = await _fetch_images_map(entry_ids, repo)
+
+    pdf_bytes = generate_diary_pdf(
+        entries=entries,
+        student_name=student.get("name", ""),
+        diary_label="Diário Escolar",
+        date_from=date_from,
+        date_to=date_to,
+        source="school",
+        images_map=images_map,
+    )
+
+    safe_name = (student.get("name") or "aluno").replace(" ", "_")[:40]
+    filename = f"Diario_Escolar_{safe_name}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
 
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
 MAX_IMAGE_SIZE = 10 * 1024 * 1024  # 10 MB
