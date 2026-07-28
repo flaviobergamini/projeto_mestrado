@@ -251,7 +251,7 @@ async def list_family_diary(
         linked = await parent_repo.is_linked(current_user["user_id"], student_id)
         if not linked:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Aluno não vinculado")
-    elif role not in ("admin", "coordenacao", "professor", "viewer", "therapist"):
+    elif role not in ("admin", "coordenacao", "professor", "viewer", "therapist", "secretaria"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Acesso negado")
 
     return await diary_repo.list_by_student(
@@ -307,7 +307,7 @@ async def list_therapy_diary(
         linked = await therapist_repo.is_linked(current_user["user_id"], student_id)
         if not linked:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Aluno não vinculado")
-    elif role not in ("admin", "coordenacao", "professor", "viewer", "parent"):
+    elif role not in ("admin", "coordenacao", "professor", "viewer", "parent", "secretaria"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Acesso negado")
 
     return await diary_repo.list_by_student(
@@ -335,7 +335,7 @@ async def export_family_diary_pdf(
         linked = await parent_repo.is_linked(current_user["user_id"], student_id)
         if not linked:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Aluno não vinculado")
-    elif role not in ("admin", "coordenacao", "professor", "viewer", "therapist"):
+    elif role not in ("admin", "coordenacao", "professor", "viewer", "therapist", "secretaria"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Acesso negado")
 
     student = await student_repo.get_by_id(student_id)
@@ -381,7 +381,7 @@ async def export_therapy_diary_pdf(
         linked = await therapist_repo.is_linked(current_user["user_id"], student_id)
         if not linked:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Aluno não vinculado")
-    elif role not in ("admin", "coordenacao", "professor", "viewer", "parent"):
+    elif role not in ("admin", "coordenacao", "professor", "viewer", "parent", "secretaria"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Acesso negado")
 
     student = await student_repo.get_by_id(student_id)
