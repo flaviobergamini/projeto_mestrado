@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional
-from sqlalchemy import String, Integer, Boolean, DateTime, JSON, UniqueConstraint, func
+from sqlalchemy import String, Integer, Boolean, DateTime, UniqueConstraint, ForeignKey, func
 from sqlalchemy.orm import Mapped, mapped_column
 from infrastructure.database_context.database import Base
 
@@ -17,7 +17,13 @@ class ObjectStorageFile(Base):
     original_filename: Mapped[str] = mapped_column(String(255), nullable=False)
     mime_type: Mapped[str] = mapped_column(String(120), nullable=False)
     size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
-    extra: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    diary_entry_id: Mapped[Optional[str]] = mapped_column(
+        String(64),
+        ForeignKey("diary_entries.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    public_url: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
     deleted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())

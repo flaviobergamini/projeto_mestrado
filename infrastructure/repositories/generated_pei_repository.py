@@ -1,4 +1,3 @@
-import json
 import uuid
 from sqlalchemy import select, delete
 
@@ -24,7 +23,7 @@ class GeneratedPeiRepository:
                 student_id=student_id,
                 student_name=student_name,
                 pei_text=pei_text,
-                sources_used=json.dumps(sources_used) if sources_used else None,
+                sources_used=sources_used or None,
                 generated_by=generated_by,
             )
             session.add(row)
@@ -62,17 +61,12 @@ class GeneratedPeiRepository:
             return True
 
     def _to_dict(self, row: GeneratedPei) -> dict:
-        sources = []
-        try:
-            sources = json.loads(row.sources_used) if row.sources_used else []
-        except Exception:
-            pass
         return {
             "id": row.id,
             "student_id": row.student_id,
             "student_name": row.student_name,
             "pei_text": row.pei_text,
-            "sources_used": sources,
+            "sources_used": row.sources_used or [],
             "generated_by": row.generated_by,
             "generated_at": row.generated_at.isoformat() if row.generated_at else None,
         }

@@ -232,18 +232,15 @@ class ChatRepository:
             obj = await session.get(ChatSession, session_id)
             if not obj:
                 return None
-            extra = dict(obj.extra or {})
-            extra["title"] = title
-            obj.extra = extra
+            obj.title = title
             await session.commit()
             await session.refresh(obj)
             return self._session_to_dict(obj)
 
     def _session_to_dict(self, obj: ChatSession) -> dict:
-        extra = obj.extra or {}
         return {
             "id": obj.id,
-            "title": extra.get("title"),
+            "title": obj.title,
             "session_date": str(obj.session_date) if obj.session_date else None,
             "student_id": obj.student_id,
             "student_name": obj.student_name,

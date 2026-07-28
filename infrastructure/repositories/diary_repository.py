@@ -255,7 +255,8 @@ class DiaryRepository:
                 original_filename=original_filename,
                 mime_type=mime_type,
                 size_bytes=size_bytes,
-                extra={"diary_entry_id": entry_id, "public_url": public_url},
+                diary_entry_id=entry_id,
+                public_url=public_url,
             )
 
             session.add(record)
@@ -271,7 +272,8 @@ class DiaryRepository:
             result = await session.execute(
                 select(ObjectStorageFile).where(
                     ObjectStorageFile.doc_type == "diary_image",
-                    ObjectStorageFile.extra["diary_entry_id"].as_string() == entry_id,
+                    ObjectStorageFile.diary_entry_id == entry_id,
+                    ObjectStorageFile.deleted == False,
                 ).order_by(ObjectStorageFile.created_at)
             )
 
@@ -285,15 +287,14 @@ class DiaryRepository:
             result = await session.execute(
                 select(ObjectStorageFile).where(
                     ObjectStorageFile.doc_type == "diary_image",
-                    ObjectStorageFile.extra["diary_entry_id"].as_string().in_(entry_ids),
+                    ObjectStorageFile.diary_entry_id.in_(entry_ids),
                     ObjectStorageFile.deleted == False,
                 ).order_by(ObjectStorageFile.created_at)
             )
             grouped: dict[str, list[dict]] = {eid: [] for eid in entry_ids}
             for row in result.scalars().all():
-                eid = (row.extra or {}).get("diary_entry_id")
-                if eid in grouped:
-                    grouped[eid].append(self._image_to_dict(row))
+                if row.diary_entry_id in grouped:
+                    grouped[row.diary_entry_id].append(self._image_to_dict(row))
             return grouped
 
     async def get_image(self, file_id: str) -> Optional[dict]:
@@ -302,7 +303,7 @@ class DiaryRepository:
 
             if not obj or obj.doc_type != "diary_image":
                 return None
-            
+
             return self._image_to_dict(obj)
 
     async def delete_image(self, file_id: str) -> Optional[dict]:
@@ -311,7 +312,7 @@ class DiaryRepository:
 
             if not obj or obj.doc_type != "diary_image":
                 return None
-            
+
             data = self._image_to_dict(obj)
 
             await session.delete(obj)
@@ -322,14 +323,13 @@ class DiaryRepository:
 
     @staticmethod
     def _image_to_dict(r: ObjectStorageFile) -> dict:
-        extra = r.extra or {}
         return {
             "id": r.id,
-            "diary_entry_id": extra.get("diary_entry_id"),
+            "diary_entry_id": r.diary_entry_id,
             "original_filename": r.original_filename,
             "mime_type": r.mime_type,
             "size_bytes": r.size_bytes,
-            "public_url": extra.get("public_url"),
+            "public_url": r.public_url,
             "object_key": r.object_key,
             "bucket": r.bucket,
             "created_at": r.created_at.isoformat() if r.created_at else None,

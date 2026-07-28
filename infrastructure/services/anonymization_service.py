@@ -17,6 +17,7 @@ What is stripped per entity:
 
 import json
 import logging
+from datetime import date as date_type
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
@@ -234,9 +235,9 @@ class AnonymizationService:
                     DiaryEntry.deleted == False,
                 ]
                 if diary_date_from:
-                    diary_filters.append(DiaryEntry.diary_date >= diary_date_from)
+                    diary_filters.append(DiaryEntry.diary_date >= date_type.fromisoformat(diary_date_from))
                 if diary_date_to:
-                    diary_filters.append(DiaryEntry.diary_date <= diary_date_to)
+                    diary_filters.append(DiaryEntry.diary_date <= date_type.fromisoformat(diary_date_to))
                 diary_result = await session.execute(
                     select(DiaryEntry)
                     .where(*diary_filters)
@@ -282,9 +283,9 @@ class AnonymizationService:
                     DiaryEntry.source == "family",
                 ]
                 if diary_date_from:
-                    fam_filters.append(DiaryEntry.diary_date >= diary_date_from)
+                    fam_filters.append(DiaryEntry.diary_date >= date_type.fromisoformat(diary_date_from))
                 if diary_date_to:
-                    fam_filters.append(DiaryEntry.diary_date <= diary_date_to)
+                    fam_filters.append(DiaryEntry.diary_date <= date_type.fromisoformat(diary_date_to))
                 fam_result = await session.execute(
                     select(DiaryEntry).where(*fam_filters)
                     .order_by(DiaryEntry.diary_date.desc())
@@ -313,9 +314,9 @@ class AnonymizationService:
                     DiaryEntry.source == "therapy",
                 ]
                 if diary_date_from:
-                    ther_filters.append(DiaryEntry.diary_date >= diary_date_from)
+                    ther_filters.append(DiaryEntry.diary_date >= date_type.fromisoformat(diary_date_from))
                 if diary_date_to:
-                    ther_filters.append(DiaryEntry.diary_date <= diary_date_to)
+                    ther_filters.append(DiaryEntry.diary_date <= date_type.fromisoformat(diary_date_to))
                 ther_result = await session.execute(
                     select(DiaryEntry).where(*ther_filters)
                     .order_by(DiaryEntry.diary_date.desc())
