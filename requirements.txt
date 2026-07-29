@@ -44,3 +44,6 @@ python-multipart==0.0.18
 # PDF Generation
 reportlab==4.2.5
 markdown==3.10
+
+# MCP Server
+mcp[cli]>=1.0.0
