@@ -1,28 +1,43 @@
+import logging
 from core.kernel.result import Result
-from core.services.jwt_service import JwtService
-from infrastructure.models.users import User
-from infrastructure.repositories.user_repository import UserRepository
+from core.interfaces.i_user_repository import IUserRepository
+from core.interfaces.i_auth_service import IAuthService
+from core.exceptions.auth_exceptions import AuthException, UserNotConfirmedError, InvalidCredentialsError
+
+logger = logging.getLogger(__name__)
 
 
 class LoginUserUseCase:
-    def __init__(self, user_repository: UserRepository, jwt_service: JwtService):
+    def __init__(self, user_repository: IUserRepository, auth_service: IAuthService):
         self.user_repository = user_repository
-        self.jwt_service = jwt_service
+        self.auth_service = auth_service
 
-    async def execute(self, email: str, password: str):
+    async def execute(self, username: str, password: str):
         try:
-            user = await self.user_repository.get_by_email(email)
+            try:
+                tokens = self.auth_service.sign_in(username, password)
+            except UserNotConfirmedError as e:
+                return Result.unauthorized(e.message)
+            except InvalidCredentialsError as e:
+                return Result.unauthorized(e.message)
+            except AuthException as e:
+                return Result.unauthorized(e.message)
 
+            user = await self.user_repository.get_by_username(username)
             if not user:
-                return Result.not_found("Usuário não encontrado")
-            
-            check_password = self.jwt_service.verify_password(password, user.password)
-            
-            if not check_password:
-                return Result.unauthorized("Senha inválida")
-            
-            token = self.jwt_service.create_access_token({"sub": str(user.id)})
-            return Result.ok({"access_token": token})
+                return Result.not_found("Perfil de usuário não encontrado")
+
+            if not user["is_active"]:
+                return Result.unauthorized("Usuário inativo")
+
+            return Result.ok({
+                **tokens,
+                "user_id": user["id"],
+                "username": user["username"],
+                "full_name": user["full_name"],
+                "role": user["role"],
+            })
 
         except Exception as e:
-            return Result.error(f"Erro ao cadastrar usuário")
+            logger.error(f"Erro ao fazer login: {e}")
+            return Result.error("Erro ao autenticar usuário")

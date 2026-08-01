@@ -1,79 +1,45 @@
 from pydantic import BaseModel, EmailStr
-from datetime import date
+from typing import Optional
 
-
-class DiaryRequest(BaseModel):
-    diary: str
-    model: str
-    beneficiary_id: int
 
 class UserRegister(BaseModel):
-    name:str
     email: EmailStr
     password: str
+    full_name: Optional[str] = None
+    role: str = "professor"
+    municipality_id: Optional[str] = None
+    school_id: Optional[str] = None
+    teacher_id: Optional[str] = None
+
 
 class UserLogin(BaseModel):
     email: EmailStr
     password: str
 
+
+class ConfirmEmail(BaseModel):
+    email: EmailStr
+    code: str
+
+
+class ResendConfirmation(BaseModel):
+    email: EmailStr
+
+
 class ForgotPassword(BaseModel):
     email: EmailStr
 
-class ResetPassword(BaseModel):
-    token: str
+
+class ConfirmResetPassword(BaseModel):
+    email: EmailStr
+    code: str
     new_password: str
 
-class SchoolRequest(BaseModel):
-    name: str
-    address: str
-    telephone: str
-    email: str
-    responsible: str
 
-class SchoolResponse(BaseModel):
-    id: int
-    name: str
-    address: str
-    telephone: str
-    email: str
-    responsible: str
+class RefreshToken(BaseModel):
+    email: EmailStr
+    refresh_token: str
 
-class HealthPlanRequest(BaseModel):
-    name: str
-    address: str
-    telephone: str
-    email: str
-    responsible: str
 
-class HealthPlanResponse(BaseModel):
-    id: int
-    name: str
-    address: str
-    telephone: str
-    email: str
-    responsible: str
-
-class BeneficiaryRequest(BaseModel):
-    name: str
-    date_of_birth: date 
-    diagnosis: str
-    main_responsible: str
-    responsible_contact: str
-    entry_date: date
-    exit_date: date
-    status: str
-    school_id: int
-    healthplan_id: int
-
-class BeneficiaryResponse(BaseModel):
-    id: int
-    name: str
-    date_of_birth: str 
-    diagnosis: str
-    main_responsible: str
-    responsible_contact: str
-    entry_date: str
-    exit_date: str
-    status: str
-    school_id: int
-    healthplan_id: int
+class UpdateRoleRequest(BaseModel):
+    role: str

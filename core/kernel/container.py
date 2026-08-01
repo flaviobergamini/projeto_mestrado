@@ -1,180 +1,151 @@
 from dependency_injector import containers, providers
-from dependency_injector.wiring import Provide, inject
 
 from core.services.jwt_service import JwtService
-from core.use_case.create_beneficiary_use_case import CreateBeneficiaryUseCase
-from core.use_case.create_health_plan_use_case import CreateHealthPlanUseCase
-from core.use_case.create_school_use_case import CreateSchoolUseCase
 from core.use_case.create_user_use_case import CreateUserUseCase
-from core.use_case.delete_beneficiary_use_case import DeleteBeneficiaryUseCase
-from core.use_case.delete_health_plan_use_case import DeleteHealthPlanUseCase
-from core.use_case.delete_school_use_case import DeleteSchoolUseCase
-from core.use_case.diary_embedding_use_case import DiaryEmbeddingUseCase
-from core.use_case.get_beneficiary_use_case import GetBeneficiaryByIdUseCase
-from core.use_case.get_health_plan_by_id_use_case import GetHealthPlanByIdUseCase
-from core.use_case.get_school_by_id_use_case import GetSchoolByIdUseCase
-from core.use_case.list_beneficiary_use_case import ListBeneficiaryUseCase
-from core.use_case.list_health_plan_use_case import ListHealthPlanUseCase
-from core.use_case.list_school_use_case import ListSchoolUseCase
 from core.use_case.login_user_use_case import LoginUserUseCase
-from core.use_case.query_diary_use_case import QueryDiaryUseCase
-from core.use_case.update_beneficiary_use_case import UpdateBeneficiaryUseCase
-from core.use_case.update_health_plan_use_case import UpdateHealthPlanUseCase
-from core.use_case.update_school_use_case import UpdateSchoolUseCase
+from core.use_case.refresh_token_use_case import RefreshTokenUseCase
+from core.use_case.confirm_email_use_case import ConfirmEmailUseCase
+from core.use_case.resend_confirmation_use_case import ResendConfirmationUseCase
+from core.use_case.forgot_password_use_case import ForgotPasswordUseCase
+from core.use_case.confirm_reset_password_use_case import ConfirmResetPasswordUseCase
+from core.use_case.validate_token_use_case import ValidateTokenUseCase
+from core.use_case.list_users_use_case import ListUsersUseCase
+from core.use_case.update_user_role_use_case import UpdateUserRoleUseCase
 from infrastructure.database_context.database import Database
-from infrastructure.repositories.beneficiary_repository import BeneficiaryRepository
-from infrastructure.repositories.diary_embedding_gemini_repository import DiaryEmbeddingGeminiRepository
-from infrastructure.repositories.diary_embedding_groq_repository import DiaryEmbeddingGroqRepository
-from infrastructure.repositories.diary_embedding_repository import DiaryEmbeddingRepository
-from infrastructure.repositories.health_plan_repository import HealthPlanRepository
-from infrastructure.repositories.school_repository import SchoolRepository
 from infrastructure.repositories.user_repository import UserRepository
-from infrastructure.services.llm_service import LLMService
+from infrastructure.repositories.student_repository import StudentRepository
+from infrastructure.repositories.diary_repository import DiaryRepository
+from infrastructure.repositories.pdi_repository import PdiRepository as PdiRepo
+from infrastructure.repositories.school_repository import SchoolRepository
+from infrastructure.repositories.teacher_repository import TeacherRepository
+from infrastructure.repositories.case_study_repository import CaseStudyRepository
+from infrastructure.repositories.case_study_draft_repository import CaseStudyDraftRepository
+from infrastructure.repositories.parent_student_link_repository import ParentStudentLinkRepository
+from infrastructure.repositories.therapist_student_link_repository import TherapistStudentLinkRepository
+from infrastructure.repositories.chat_repository import ChatRepository
+from infrastructure.repositories.prompt_repository import PromptRepository
+from infrastructure.repositories.generated_pei_repository import GeneratedPeiRepository
+from infrastructure.repositories.municipality_repository import MunicipalityRepository
+from infrastructure.repositories.audit_repository import AuditRepository
+from infrastructure.repositories.ai_usage_repository import AiUsageRepository
+from infrastructure.repositories.vinculos_repository import VinculosRepository
+from infrastructure.services.anonymization_service import AnonymizationService
+from infrastructure.services.cognito_service import CognitoService
+from infrastructure.services.gemini_service import GeminiService
+from infrastructure.services.rag_service import RagService
 
 
 class Container(containers.DeclarativeContainer):
     wiring_config = containers.WiringConfiguration(
-        modules=["api.diary_routes", "api.auth_routes", "api.beneficiary_routes", "api.health_plan_routes", "api.school_routes"],
+        modules=[
+            "api.auth_routes", "api.dependencies",
+            "api.student_routes", "api.diary_routes", "api.pdi_routes",
+            "api.school_routes", "api.teacher_routes", "api.case_study_routes",
+            "api.chat_routes", "api.prompt_routes", "api.pei_gen_routes",
+            "api.municipality_routes", "api.admin_routes", "api.ai_usage_routes",
+            "api.vinculos_routes", "api.family_routes",
+        ],
     )
+
 
     config = providers.Configuration()
 
     database = providers.Singleton(Database, url=config.database.url)
 
-    # Services
-    llm_service = providers.Factory(LLMService)
-
     jwt_service = providers.Factory(JwtService)
 
-    # Repositories
-    diary_embedding_repository=providers.Factory(
-        DiaryEmbeddingRepository, database=database
-    )
+    cognito_service = providers.Factory(CognitoService)
 
-    diary_embedding_groq_repository=providers.Factory(
-        DiaryEmbeddingGroqRepository, database=database
-    )
+    gemini_service = providers.Factory(GeminiService)
 
-    user_repository=providers.Factory(
-        UserRepository, database=database
-    ) 
+    user_repository = providers.Factory(UserRepository, database=database)
 
-    beneficiary_repository = providers.Factory(
-        BeneficiaryRepository, database=database
-    )
+    student_repository = providers.Factory(StudentRepository, database=database)
 
-    school_repository = providers.Factory(
-        SchoolRepository, database=database
-    )
+    diary_repository = providers.Factory(DiaryRepository, database=database)
 
-    health_plan_repository = providers.Factory(
-        HealthPlanRepository, database=database
-    )
+    pdi_repository = providers.Factory(PdiRepo, database=database)
 
-    diary_embedding_gemini_repository = providers.Factory(
-        DiaryEmbeddingGeminiRepository, database=database
-    )
+    school_repository = providers.Factory(SchoolRepository, database=database)
 
-    # Use cases
-    diary_embedding_use_case=providers.Factory(
-        DiaryEmbeddingUseCase,
-        diary_embedding_repository=diary_embedding_repository,
-        llm_service=llm_service,
-        diary_embedding_groq_repository=diary_embedding_groq_repository,
-        beneficiary_repository=beneficiary_repository,
-        diary_embedding_gemini_repository=diary_embedding_gemini_repository
-    )
+    teacher_repository = providers.Factory(TeacherRepository, database=database)
 
-    query_diary_use_case=providers.Factory(
-        QueryDiaryUseCase,
-        diary_embedding_repository=diary_embedding_repository,
-        llm_service=llm_service,
-        diary_embedding_groq_repository=diary_embedding_groq_repository
-    )
+    case_study_repository = providers.Factory(CaseStudyRepository, database=database)
 
-    create_user_use_case=providers.Factory(
+    case_study_draft_repository = providers.Factory(CaseStudyDraftRepository, database=database)
+
+    parent_student_link_repository = providers.Factory(ParentStudentLinkRepository, database=database)
+
+    therapist_student_link_repository = providers.Factory(TherapistStudentLinkRepository, database=database)
+
+    chat_repository = providers.Factory(ChatRepository, database=database)
+
+    prompt_repository = providers.Factory(PromptRepository, database=database)
+
+    generated_pei_repository = providers.Factory(GeneratedPeiRepository, database=database)
+
+    municipality_repository = providers.Factory(MunicipalityRepository, database=database)
+
+    audit_repository = providers.Factory(AuditRepository, database=database)
+
+    ai_usage_repository = providers.Factory(AiUsageRepository, database=database)
+
+    vinculos_repository = providers.Factory(VinculosRepository, database=database)
+
+    anonymization_service = providers.Factory(AnonymizationService, database=database)
+
+    rag_service = providers.Factory(RagService, database=database, gemini=gemini_service, usage_repo=ai_usage_repository, diary_repo=diary_repository)
+
+    create_user_use_case = providers.Factory(
         CreateUserUseCase,
         user_repository=user_repository,
-        jwt_service=jwt_service
-    ) 
+        auth_service=cognito_service,
+    )
 
-    login_user_use_case=providers.Factory(
+    login_user_use_case = providers.Factory(
         LoginUserUseCase,
         user_repository=user_repository,
-        jwt_service=jwt_service
-    ) 
-
-    create_beneficiary_use_case=providers.Factory(
-        CreateBeneficiaryUseCase,
-        beneficiary_repository=beneficiary_repository
+        auth_service=cognito_service,
     )
 
-    create_school_use_case=providers.Factory(
-        CreateSchoolUseCase,
-        school_repository=school_repository
+    refresh_token_use_case = providers.Factory(
+        RefreshTokenUseCase,
+        user_repository=user_repository,
+        auth_service=cognito_service,
     )
 
-    create_health_plan_use_case=providers.Factory(
-        CreateHealthPlanUseCase,
-        health_plan_repository=health_plan_repository
+    confirm_email_use_case = providers.Factory(
+        ConfirmEmailUseCase,
+        auth_service=cognito_service,
     )
 
-    list_health_plan_use_case=providers.Factory(
-        ListHealthPlanUseCase,
-        health_plan_repository=health_plan_repository
+    resend_confirmation_use_case = providers.Factory(
+        ResendConfirmationUseCase,
+        auth_service=cognito_service,
     )
 
-    list_school_use_case=providers.Factory(
-        ListSchoolUseCase,
-        school_repository=school_repository
+    forgot_password_use_case = providers.Factory(
+        ForgotPasswordUseCase,
+        auth_service=cognito_service,
     )
 
-    get_school_by_id_use_case=providers.Factory(
-        GetSchoolByIdUseCase,
-        school_repository=school_repository
+    confirm_reset_password_use_case = providers.Factory(
+        ConfirmResetPasswordUseCase,
+        auth_service=cognito_service,
     )
 
-    get_health_plan_by_id_use_case=providers.Factory(
-        GetHealthPlanByIdUseCase,
-        health_plan_repository=health_plan_repository
+    validate_token_use_case = providers.Factory(
+        ValidateTokenUseCase,
+        auth_service=cognito_service,
+        user_repository=user_repository,
     )
 
-    update_school_use_case=providers.Factory(
-        UpdateSchoolUseCase,
-        school_repository=school_repository
+    list_users_use_case = providers.Factory(
+        ListUsersUseCase,
+        user_repository=user_repository,
     )
 
-    delete_school_use_case=providers.Factory(
-        DeleteSchoolUseCase,
-        school_repository=school_repository
-    )
-
-    update_health_plan_use_case=providers.Factory(
-        UpdateHealthPlanUseCase,
-        health_plan_repository=health_plan_repository
-    )
-
-    delete_health_plan_use_case=providers.Factory(
-        DeleteHealthPlanUseCase,
-        health_plan_repository=health_plan_repository
-    )
-
-    list_beneficiary_use_case=providers.Factory(
-        ListBeneficiaryUseCase,
-        beneficiary_repository=beneficiary_repository
-    )
-
-    get_beneficiary_use_case=providers.Factory(
-        GetBeneficiaryByIdUseCase,
-        beneficiary_repository=beneficiary_repository
-    )
-
-    update_beneficiary_use_case=providers.Factory(
-        UpdateBeneficiaryUseCase,
-        beneficiary_repository=beneficiary_repository
-    )
-
-    delete_beneficiary_use_case=providers.Factory(
-        DeleteBeneficiaryUseCase,
-        beneficiary_repository=beneficiary_repository
+    update_user_role_use_case = providers.Factory(
+        UpdateUserRoleUseCase,
+        user_repository=user_repository,
     )

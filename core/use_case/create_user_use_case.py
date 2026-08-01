@@ -1,33 +1,65 @@
-from datetime import datetime
+import logging
+from typing import Optional
 from core.kernel.result import Result
-from core.services.jwt_service import JwtService
-from infrastructure.models.users import User
-from infrastructure.repositories.user_repository import UserRepository
+from core.interfaces.i_user_repository import IUserRepository
+from core.interfaces.i_auth_service import IAuthService
+from core.exceptions.auth_exceptions import AuthException, UserAlreadyExistsError
+from core.permissions.roles import CAN_CREATE_USER, ALL_ROLES
+
+logger = logging.getLogger(__name__)
+
 
 class CreateUserUseCase:
-    def __init__(self, user_repository: UserRepository, jwt_service: JwtService):
+    def __init__(self, user_repository: IUserRepository, auth_service: IAuthService):
         self.user_repository = user_repository
-        self.jwt_service = jwt_service
+        self.auth_service = auth_service
 
-    async def execute(self, user: User):
+    async def execute(
+        self,
+        requester_role: str,
+        username: str,
+        email: str,
+        password: str,
+        full_name: Optional[str],
+        role: str,
+        municipality_id: Optional[str] = None,
+        school_id: Optional[str] = None,
+        teacher_id: Optional[str] = None,
+    ):
         try:
-            check_user = await self.user_repository.get_by_email(user.email)
+            if requester_role not in CAN_CREATE_USER:
+                return Result.unauthorized("Apenas administradores podem cadastrar usuários")
 
-            if check_user:
-                return Result.bad_request("E-mail já cadastrado")
-            
-            user.password = self.jwt_service.hash_password(user.password)
-            user.created_at = datetime.utcnow()
-            user.updated_at = datetime.utcnow()
+            if role not in ALL_ROLES:
+                return Result.bad_request(f"Role inválido. Valores aceitos: {', '.join(ALL_ROLES)}")
 
-            await self.user_repository.add(user)
+            existing = await self.user_repository.get_by_username(username)
+            if existing:
+                return Result.bad_request("Nome de usuário já cadastrado")
 
-            check_user = await self.user_repository.get_by_email(user.email)
-            
-            if check_user:
-                token = self.jwt_service.create_access_token({"sub": str(check_user.id)})
-                return Result.ok({"access_token": token})
+            try:
+                cognito_sub = self.auth_service.admin_create_user(username, password, email, full_name)
+            except UserAlreadyExistsError as e:
+                return Result.bad_request(e.message)
+            except AuthException as e:
+                return Result.bad_request(e.message)
 
-            return Result.error(f"Erro ao cadastrar usuário no sistema")
+            await self.user_repository.add(
+                id=cognito_sub,
+                username=username,
+                full_name=full_name,
+                role=role,
+                municipality_id=municipality_id,
+                school_id=school_id,
+                teacher_id=teacher_id,
+            )
+
+            return Result.ok({
+                "message": "Usuário criado com sucesso. As credenciais foram enviadas por e-mail.",
+                "username": username,
+                "user_id": cognito_sub,
+            })
+
         except Exception as e:
-            return Result.error(f"Erro ao cadastrar usuário")
+            logger.error(f"Erro ao cadastrar usuário: {e}")
+            return Result.error("Erro ao cadastrar usuário")
