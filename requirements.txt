@@ -41,6 +41,9 @@ numpy>=2.2.0,<2.4.0
 supabase==2.23.2
 python-multipart==0.0.18
 
+# HTTP Client (usado em diary_routes e family_routes para transcrição de áudio)
+httpx==0.28.1
+
 # PDF Generation
 reportlab==4.2.5
 markdown==3.10
