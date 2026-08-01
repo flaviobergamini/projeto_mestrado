@@ -1,113 +1,96 @@
-from supabase import create_client, Client
-from core.config import settings
-from typing import Optional, Tuple, List
-from datetime import datetime
+import asyncio
 import os
-import uuid
-import tempfile
+from concurrent.futures import ThreadPoolExecutor
+from typing import Optional
+from dotenv import load_dotenv
+from supabase import create_client
 
+_executor = ThreadPoolExecutor(max_workers=4)
+
+load_dotenv()
+
+SUPABASE_URL = os.getenv("SUPABASE_URL", "")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
+SUPABASE_BUCKET = os.getenv("SUPABASE_BUCKET", "agents-buket")
+
+# Signed URL validity in seconds (24 h — long enough for in-page display)
+SIGNED_URL_EXPIRY = 86400
 
 
 class StorageService:
-    """
-    Serviço para gerenciar uploads, downloads e exclusões de arquivos no Supabase Storage.
-    Compatível com a documentação oficial do SDK Python:
-    https://supabase.com/docs/reference/python/storage-from-upload
-    """
-
     def __init__(self):
-        if not settings.SUPABASE_URL or not settings.SUPABASE_KEY:
-            raise ValueError(
-                "SUPABASE_URL e SUPABASE_KEY devem estar configuradas nas variáveis de ambiente."
-            )
+        self._client = None
 
-        # Cria cliente
-        self.client: Client = create_client(
-            settings.SUPABASE_URL,
-            settings.SUPABASE_KEY
+    def _get_client(self):
+        if self._client is None:
+            self._client = create_client(SUPABASE_URL, SUPABASE_KEY)
+        return self._client
+
+    def upload(self, object_key: str, content: bytes, content_type: str) -> str:
+        """Uploads bytes to Supabase Storage. Returns a signed URL valid for 24 h."""
+        client = self._get_client()
+        client.storage.from_(SUPABASE_BUCKET).upload(
+            path=object_key,
+            file=content,
+            file_options={"content-type": content_type, "upsert": "true"},
         )
-        self.bucket_name = settings.SUPABASE_BUCKET
+        return self.create_signed_url(object_key) or self.public_url(object_key)
 
-    # ------------------------
-    # Utilitários internos
-    # ------------------------
-    def _generate_unique_filename(self, original_filename: str, user_id: str) -> str:
-        """
-        Gera um caminho único para o arquivo dentro do bucket.
-        Ex: user123/20250101_120000_abc123.png
-        """
-        file_extension = os.path.splitext(original_filename)[1]
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        unique_id = str(uuid.uuid4())[:8]
-        return f"{user_id}/{timestamp}_{unique_id}{file_extension}"
-
-    # ------------------------
-    # Upload de arquivo
-    # ------------------------
-    def upload_file(self, file_content: bytes, filename: str, user_id: str, content_type: str = None):
+    def create_signed_url(self, object_key: str, expires_in: int = SIGNED_URL_EXPIRY) -> Optional[str]:
+        """Returns a signed URL valid for `expires_in` seconds, or None on error."""
         try:
-            file_path = self._generate_unique_filename(filename, user_id)
-            file_options = {"content-type": content_type or "application/octet-stream"}
-
-            # Cria arquivo temporário
-            with tempfile.NamedTemporaryFile(delete=False) as tmp:
-                tmp.write(file_content)
-                tmp_path = tmp.name
-
-            # Faz o upload
-            self.client.storage.from_(self.bucket_name).upload(
-                path=file_path,
-                file=tmp_path,
-                file_options=file_options
+            client = self._get_client()
+            response = client.storage.from_(SUPABASE_BUCKET).create_signed_url(
+                path=object_key,
+                expires_in=expires_in,
             )
+            if isinstance(response, str):
+                return response
+            if isinstance(response, dict):
+                return response.get("signedURL") or response.get("signedUrl") or response.get("data", {}).get("signedUrl")
+        except Exception:
+            pass
+        return None
 
-            # Remove o arquivo temporário
-            os.remove(tmp_path)
-
-            public_url = self.client.storage.from_(self.bucket_name).get_public_url(file_path)
-            return file_path, public_url
-
-        except Exception as e:
-            raise Exception(f"Erro ao fazer upload do arquivo: {e}")
-
-    # ------------------------
-    # Listagem de arquivos
-    # ------------------------
-    def list_files(self, user_id: str) -> List[dict]:
-        """Lista todos os arquivos do usuário dentro do bucket"""
+    def create_signed_urls_batch(self, object_keys: list[str], expires_in: int = SIGNED_URL_EXPIRY) -> dict[str, str]:
+        """Generate signed URLs for multiple keys in a single Supabase API call."""
+        if not object_keys:
+            return {}
         try:
-            return self.client.storage.from_(self.bucket_name).list(path=user_id)
-        except Exception as e:
-            raise Exception(f"Erro ao listar arquivos: {str(e)}")
+            client = self._get_client()
+            response = client.storage.from_(SUPABASE_BUCKET).create_signed_urls(
+                paths=object_keys,
+                expires_in=expires_in,
+            )
+            result: dict[str, str] = {}
+            items = response if isinstance(response, list) else (response or {}).get("data", [])
+            for item in (items or []):
+                if isinstance(item, dict):
+                    key = item.get("path") or item.get("key") or ""
+                    url = item.get("signedURL") or item.get("signedUrl") or ""
+                    if key and url:
+                        result[key] = url
+            return result
+        except Exception:
+            # Fall back to individual calls if batch isn't supported
+            return {k: (self.create_signed_url(k, expires_in) or "") for k in object_keys}
 
-    # ------------------------
-    # Obter URL pública
-    # ------------------------
-    def get_public_url(self, file_path: str) -> str:
-        """Obtém a URL pública de um arquivo"""
-        try:
-            return self.client.storage.from_(self.bucket_name).get_public_url(file_path)
-        except Exception as e:
-            raise Exception(f"Erro ao obter URL pública: {str(e)}")
+    async def create_signed_urls_batch_async(self, object_keys: list[str]) -> dict[str, str]:
+        """Async wrapper — runs the synchronous Supabase call in a thread pool."""
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(_executor, self.create_signed_urls_batch, object_keys)
 
-    # ------------------------
-    # Download de arquivo
-    # ------------------------
-    def download_file(self, file_path: str) -> bytes:
-        """Faz download de um arquivo do storage"""
+    def delete(self, object_key: str) -> bool:
         try:
-            response = self.client.storage.from_(self.bucket_name).download(file_path)
-            return response
-        except Exception as e:
-            raise Exception(f"Erro ao fazer download do arquivo: {str(e)}")
-
-    # ------------------------
-    # Excluir arquivo
-    # ------------------------
-    async def delete_file(self, file_path: str) -> bool:
-        """Remove um arquivo do storage"""
-        try:
-            self.client.storage.from_(self.bucket_name).remove([file_path])
+            client = self._get_client()
+            client.storage.from_(SUPABASE_BUCKET).remove([object_key])
             return True
-        except Exception as e:
-            raise Exception(f"Erro ao remover arquivo: {str(e)}")
+        except Exception:
+            return False
+
+    def public_url(self, object_key: str) -> str:
+        return f"{SUPABASE_URL}/storage/v1/object/public/{SUPABASE_BUCKET}/{object_key}"
+
+    @property
+    def bucket(self) -> str:
+        return SUPABASE_BUCKET

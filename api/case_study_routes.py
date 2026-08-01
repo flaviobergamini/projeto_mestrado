@@ -1,77 +1,154 @@
-from fastapi import APIRouter, Depends
-from fastapi.responses import JSONResponse
-
-from api.dependencies import get_current_user
-from core.kernel.container import Container
-from core.use_case.study_case_use_case import StudyCaseUseCase
-from infrastructure.services.storage_service import StorageService
-from domain.schema import StudyCaseRequest
-from starlette.status import HTTP_404_NOT_FOUND, HTTP_201_CREATED, HTTP_500_INTERNAL_SERVER_ERROR, HTTP_200_OK
+import asyncio
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel
+from typing import Optional, Any
 from dependency_injector.wiring import inject, Provide
-import json
 
-from infrastructure.models.study_case import StudyCase
+from api.dependencies import get_current_user, get_current_user_read_write
+from core.kernel.container import Container
+from infrastructure.repositories.case_study_repository import CaseStudyRepository
+from infrastructure.repositories.case_study_draft_repository import CaseStudyDraftRepository
+from infrastructure.repositories.student_repository import StudentRepository
+from infrastructure.services.rag_service import RagService
 
-router = APIRouter(prefix="/case-study", tags=["CaseStudy"])
+router = APIRouter(prefix="/case-studies", tags=["Case Studies"])
 
 
-@router.post("/create")
+class CaseStudyCreate(BaseModel):
+    student_id: Optional[str] = None
+    answers: dict[str, Any] = {}
+
+
+class CaseStudyUpdate(BaseModel):
+    student_id: Optional[str] = None
+    answers: Optional[dict[str, Any]] = None
+
+
+@router.get("")
+@inject
+async def list_case_studies(
+    current_user: dict = Depends(get_current_user),
+    repo: CaseStudyRepository = Depends(Provide[Container.case_study_repository]),
+):
+    return await repo.list_all()
+
+
+@router.get("/{case_id}")
+@inject
+async def get_case_study(
+    case_id: str,
+    current_user: dict = Depends(get_current_user),
+    repo: CaseStudyRepository = Depends(Provide[Container.case_study_repository]),
+):
+    case = await repo.get_by_id(case_id)
+    if not case:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Estudo de caso não encontrado")
+    return case
+
+
+async def _trigger_case_embedding(rag: RagService, student_repo: StudentRepository, case: dict) -> None:
+    """Fire-and-forget: embed case study (anonymised — no student name sent to Gemini)."""
+    try:
+        await rag.embed_case_study(case)
+    except Exception:
+        pass
+
+
+class DraftUpsert(BaseModel):
+    student_id: str
+    answers: dict[str, Any] = {}
+    case_study_id: Optional[str] = None
+
+
+# ── Draft endpoints (must be before /{case_id} to avoid route conflict) ────────
+
+@router.get("/draft")
+@inject
+async def get_draft(
+    student_id: str = Query(...),
+    current_user: dict = Depends(get_current_user),
+    draft_repo: CaseStudyDraftRepository = Depends(Provide[Container.case_study_draft_repository]),
+):
+    """Return the in-progress draft for the current user + student, or null."""
+    draft = await draft_repo.get(current_user["user_id"], student_id)
+    return draft  # None serialises to null in JSON
+
+
+@router.put("/draft", status_code=status.HTTP_200_OK)
+@inject
+async def upsert_draft(
+    body: DraftUpsert,
+    current_user: dict = Depends(get_current_user),
+    draft_repo: CaseStudyDraftRepository = Depends(Provide[Container.case_study_draft_repository]),
+):
+    """Create or update the draft for the current user + student."""
+    return await draft_repo.upsert(
+        user_id=current_user["user_id"],
+        student_id=body.student_id,
+        answers=body.answers,
+        case_study_id=body.case_study_id,
+    )
+
+
+@router.delete("/draft", status_code=status.HTTP_204_NO_CONTENT)
+@inject
+async def delete_draft(
+    student_id: str = Query(...),
+    current_user: dict = Depends(get_current_user),
+    draft_repo: CaseStudyDraftRepository = Depends(Provide[Container.case_study_draft_repository]),
+):
+    """Delete the draft after the case study is finalised."""
+    await draft_repo.delete(current_user["user_id"], student_id)
+
+
+@router.post("", status_code=status.HTTP_201_CREATED)
 @inject
 async def create_case_study(
-    request: StudyCaseRequest,
-    use_case: StudyCaseUseCase = Depends(
-        Provide[Container.study_case_use_case],
-    ),
-    user_id: str = Depends(get_current_user),
+    body: CaseStudyCreate,
+    current_user: dict = Depends(get_current_user_read_write),
+    repo: CaseStudyRepository = Depends(Provide[Container.case_study_repository]),
+    student_repo: StudentRepository = Depends(Provide[Container.student_repository]),
+    rag: RagService = Depends(Provide[Container.rag_service]),
+    draft_repo: CaseStudyDraftRepository = Depends(Provide[Container.case_study_draft_repository]),
 ):
-    try:
-        study_case = StudyCase(**request.model_dump())
-
-        response = await use_case.execute(study_case, user_id)
-
-        if response.is_not_found:
-            return JSONResponse(
-                status_code=HTTP_404_NOT_FOUND,
-                content={"error": response.not_found_error}
-            )
-
-        if response.is_err:
-            return JSONResponse(
-                status_code=HTTP_500_INTERNAL_SERVER_ERROR,
-                content={"error": response.error}
-            )
-
-        return JSONResponse(status_code=HTTP_201_CREATED, content=response.value)
-    except Exception as e:
-        print(e)
-        return JSONResponse(content={"error": "Internal server error"}, status_code=500)
+    data = body.model_dump()
+    data["submitted_by"] = current_user.get("full_name") or current_user.get("username", "")
+    case = await repo.create(data)
+    asyncio.create_task(_trigger_case_embedding(rag, student_repo, case))
+    # Clean up draft on successful save
+    if data.get("student_id"):
+        await draft_repo.delete(current_user["user_id"], data["student_id"])
+    return case
 
 
-@router.get("/questions")
+@router.put("/{case_id}")
 @inject
-async def get_case_study_questions(
-    storage_service: StorageService = Depends(Provide[Container.storage_service])
+async def update_case_study(
+    case_id: str,
+    body: CaseStudyUpdate,
+    current_user: dict = Depends(get_current_user_read_write),
+    repo: CaseStudyRepository = Depends(Provide[Container.case_study_repository]),
+    student_repo: StudentRepository = Depends(Provide[Container.student_repository]),
+    rag: RagService = Depends(Provide[Container.rag_service]),
+    draft_repo: CaseStudyDraftRepository = Depends(Provide[Container.case_study_draft_repository]),
 ):
-    """
-    Retorna o JSON com as perguntas padrão para estudo de caso.
-    O usuário pode usar esse template e customizá-lo conforme necessário.
-    O template é buscado do Supabase Storage.
-    """
-    try:
-        # Caminho padrão do template no storage
-        template_path = "templates/case_study_questions.json"
+    updated = await repo.update(case_id, body.model_dump(exclude_none=True))
+    if not updated:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Estudo de caso não encontrado")
+    asyncio.create_task(_trigger_case_embedding(rag, student_repo, updated))
+    # Clean up draft on successful save
+    if updated.get("student_id"):
+        await draft_repo.delete(current_user["user_id"], updated["student_id"])
+    return updated
 
-        # Buscar arquivo do storage
-        file_content = storage_service.download_file(template_path)
-        questions_template = json.loads(file_content.decode('utf-8'))
 
-        return JSONResponse(
-            status_code=HTTP_200_OK,
-            content=questions_template
-        )
-    except Exception as e:
-        print(f"Erro ao buscar template: {str(e)}")
-        return JSONResponse(
-            status_code=HTTP_404_NOT_FOUND,
-            content={"error": "Template de perguntas não encontrado no storage"}
-        )
+@router.delete("/{case_id}", status_code=status.HTTP_204_NO_CONTENT)
+@inject
+async def delete_case_study(
+    case_id: str,
+    current_user: dict = Depends(get_current_user_read_write),
+    repo: CaseStudyRepository = Depends(Provide[Container.case_study_repository]),
+):
+    deleted = await repo.delete(case_id)
+    if not deleted:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Estudo de caso não encontrado")

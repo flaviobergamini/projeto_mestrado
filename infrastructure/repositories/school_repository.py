@@ -1,59 +1,89 @@
-import numpy as np
+import uuid
+from typing import Optional
 from sqlalchemy import select
 from infrastructure.database_context.database import Database
 from infrastructure.models.school import School
 
 
 class SchoolRepository:
-    def __init__(self, database: Database) -> None:
-        self.database = database
+    def __init__(self, database: Database):
+        self._db = database
 
-    async def add(self, school: School) -> School:
-        async with self.database.session() as session:
-            session.add(school)
-            await session.commit()
-            await session.refresh(school)
-            
-            return school
-        
-    async def verify(self, entity: School) -> School | None:
-        async with self.database.session() as session:
-            stmt = select(School).filter_by(
-                name=entity.name,
-                address=entity.address,
-                telephone=entity.telephone,
-                email=entity.email,
-                responsible=entity.responsible,
+    def _to_dict(self, s: School) -> dict:
+        return {
+            "id": s.id,
+            "name": s.name,
+            "cnpj": s.cnpj,
+            "institution_type": s.institution_type,
+            "address_city": s.address_city,
+            "notes": s.notes,
+            "created_at": s.created_at.isoformat() if s.created_at else None,
+            "updated_at": s.updated_at.isoformat() if s.updated_at else None,
+        }
+
+    async def list_all(self) -> list[dict]:
+        async with self._db.session() as session:
+            result = await session.execute(select(School).where(School.deleted == False).order_by(School.name))
+
+            return [self._to_dict(s) for s in result.scalars().all()]
+
+    async def get_by_id(self, school_id: str) -> Optional[dict]:
+        async with self._db.session() as session:
+            result = await session.execute(select(School).where(School.id == school_id, School.deleted == False))
+
+            s = result.scalar_one_or_none()
+
+            return self._to_dict(s) if s else None
+
+    async def create(self, data: dict) -> dict:
+        async with self._db.session() as session:
+            school = School(
+                id=str(uuid.uuid4()),
+                name=data["name"],
+                cnpj=data.get("cnpj"),
+                institution_type=data.get("institution_type"),
+                address_city=data.get("address_city"),
+                notes=data.get("notes"),
             )
-            result = await session.execute(stmt)
-            return result.scalars().first()
-        
-    async def list_all(self) -> list[School]:
-        async with self.database.session() as session:
-            result = await session.execute(select(School))
-            return result.scalars().all()
-    
-    async def get_by_id(self, school_id: int) -> School | None:
-        async with self.database.session() as session:
-            stmt = select(School).filter_by(id=school_id)
-            result = await session.execute(stmt)
-            return result.scalars().first()
-    
-    async def update(self, school: School) -> School:
-        try:
-            async with self.database.session() as session:
-                merged_school = await session.merge(school)
-                await session.commit()
-                await session.refresh(merged_school)
-                
-                return merged_school
-        except Exception as e:
-            raise e
 
-    async def delete(self, school: School) -> None:
-        try:
-            async with self.database.session() as session:
-                await session.delete(school)
-                await session.commit()
-        except Exception as e:
-            raise e
+            session.add(school)
+
+            await session.commit()
+
+            await session.refresh(school)
+
+            return self._to_dict(school)
+
+    async def update(self, school_id: str, data: dict) -> Optional[dict]:
+        async with self._db.session() as session:
+            result = await session.execute(select(School).where(School.id == school_id))
+
+            school = result.scalar_one_or_none()
+
+            if not school:
+                return None
+            
+            for field in ("name", "cnpj", "institution_type", "address_city", "notes"):
+                if field in data:
+                    setattr(school, field, data[field])
+
+            await session.commit()
+
+            await session.refresh(school)
+
+            return self._to_dict(school)
+
+    async def delete(self, school_id: str) -> bool:
+        async with self._db.session() as session:
+            result = await session.execute(select(School).where(School.id == school_id))
+
+            school = result.scalar_one_or_none()
+
+            if not school:
+                return False
+
+            school.deleted = True
+
+            await session.commit()
+
+            return True

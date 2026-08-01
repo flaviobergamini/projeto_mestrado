@@ -1,24 +1,20 @@
-from sqlalchemy import Column, Integer, Text, DateTime, JSON, ForeignKey
+from sqlalchemy import Column, Integer, Text, DateTime, JSON, String, ForeignKey
 from sqlalchemy.sql import func
+from sqlalchemy.orm import relationship
 from infrastructure.database_context.database import Base
 from pgvector.sqlalchemy import Vector
 
 
-class PEIEmbeddingGemini(Base):
-    __tablename__ = "pei_embedding_gemini"
+class PdiEmbeddingGemini(Base):
+    __tablename__ = "pdi_embedding_gemini"
 
     id = Column(Integer, primary_key=True, index=True)
-    pei_id = Column(Integer, ForeignKey("pei.id", onupdate="CASCADE", ondelete="CASCADE"), nullable=False, index=True)
-    beneficiary_id = Column(Integer, ForeignKey("beneficiary.id", onupdate="CASCADE", ondelete="CASCADE"), nullable=False, index=True)
-
-    # Conteúdo textual do chunk do PEI
+    pdi_id = Column(String(64), ForeignKey("pdis.id", ondelete="CASCADE", onupdate="CASCADE"), nullable=False, index=True)
+    student_id = Column(String(64), ForeignKey("students.id", ondelete="CASCADE", onupdate="CASCADE"), nullable=False, index=True)
     content = Column(Text, nullable=False)
-
-    # Metadata adicional (ex: seção do PEI, página, etc)
     meta_data = Column(JSON)
-
-    # Embedding vetorial gerado pelo Gemini
     embedding = Column(Vector(768))
-
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    pdi = relationship("Pdi", back_populates="embeddings")

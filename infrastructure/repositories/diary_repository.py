@@ -1,130 +1,336 @@
-from sqlalchemy import select
+import uuid
+import json
+from datetime import date
+from typing import Optional
+from sqlalchemy import select, func, delete
 from infrastructure.database_context.database import Database
-from infrastructure.models.diary import Diary
+from infrastructure.models.diary_entry import DiaryEntry
+from infrastructure.models.student import Student
+from infrastructure.models.teacher_student_link import TeacherStudentLink
+from infrastructure.models.teacher import Teacher
+from infrastructure.models.object_storage_file import ObjectStorageFile
+from infrastructure.services.anonymization_service import anon_diary_entry
+
+
+def _build_diary_anonymized(entry_data: dict) -> str:
+    return json.dumps(anon_diary_entry(entry_data), ensure_ascii=False)
+
+
+def _to_dict(e: DiaryEntry) -> dict:
+    norm = None
+    if e.normalized_observation:
+        try:
+            norm = json.loads(e.normalized_observation)
+        except Exception:
+            pass
+    return {
+        "id": e.id,
+        "student_id": e.student_id,
+        "diary_date": e.diary_date.isoformat() if e.diary_date else None,
+        "teacher_attention": e.teacher_attention,
+        "followed_agreements": e.followed_agreements,
+        "activity_interest": e.activity_interest,
+        "had_lunch": e.had_lunch,
+        "participated_in_play": e.participated_in_play,
+        "completed_activities": e.completed_activities,
+        "bathroom_use": e.bathroom_use,
+        "open_observation": e.open_observation,
+        "absence_reason": e.absence_reason,
+        "teacher_name": e.teacher_name,
+        "presence": e.presence,
+        "status": e.status,
+        "source": e.source,
+        "normalized_observation": norm,
+        "created_at": e.created_at.isoformat() if e.created_at else None,
+        "updated_at": e.updated_at.isoformat() if e.updated_at else None,
+    }
 
 
 class DiaryRepository:
-    """
-    Repositório para operações com registros diários de acompanhamento.
-    Fornece métodos CRUD e consultas específicas para análise de padrões.
-    """
-
     def __init__(self, database: Database) -> None:
         self.database = database
 
-    async def add(self, diary: Diary) -> Diary:
-        """Adiciona um novo registro diário ao banco de dados"""
+    async def list_students_with_diary(self) -> list[dict]:
+        """Returns one summary entry per student that has at least one diary entry."""
         async with self.database.session() as session:
-            session.add(diary)
+            # Aggregate per student
+            stmt = (
+                select(
+                    DiaryEntry.student_id,
+                    Student.name.label("student_name"),
+                    func.max(DiaryEntry.diary_date).label("last_entry"),
+                    func.count(DiaryEntry.id).label("total_entries"),
+                )
+                .outerjoin(Student, DiaryEntry.student_id == Student.id)
+                .where(DiaryEntry.deleted == False)
+                .group_by(DiaryEntry.student_id, Student.name)
+                .order_by(Student.name)
+            )
+            
+            result = await session.execute(stmt)
+
+            rows = result.all()
+
+            return [
+                {
+                    "student_id": row.student_id,
+                    "student_name": row.student_name or row.student_id,
+                    "last_entry": row.last_entry.isoformat() if row.last_entry else None,
+                    "total_entries": row.total_entries,
+                }
+                for row in rows
+            ]
+
+    async def list_by_student(
+        self,
+        student_id: str,
+        source: Optional[str] = None,
+        date_from: Optional[date] = None,
+        date_to: Optional[date] = None,
+    ) -> list[dict]:
+        async with self.database.session() as session:
+            filters = [DiaryEntry.student_id == student_id, DiaryEntry.deleted == False]
+            if source:
+                filters.append(DiaryEntry.source == source)
+            if date_from:
+                filters.append(DiaryEntry.diary_date >= date_from)
+            if date_to:
+                filters.append(DiaryEntry.diary_date <= date_to)
+            result = await session.execute(
+                select(DiaryEntry)
+                .where(*filters)
+                .order_by(DiaryEntry.diary_date.desc())
+            )
+            return [_to_dict(e) for e in result.scalars().all()]
+
+    async def get_by_id(self, entry_id: str) -> Optional[dict]:
+        async with self.database.session() as session:
+            result = await session.execute(select(DiaryEntry).where(DiaryEntry.id == entry_id, DiaryEntry.deleted == False))
+
+            e = result.scalars().first()
+
+            return _to_dict(e) if e else None
+
+    async def create(self, data: dict) -> dict:
+        async with self.database.session() as session:
+            entry = DiaryEntry(
+                id=str(uuid.uuid4()),
+                student_id=data.get("student_id"),
+                diary_date=date.fromisoformat(data["diary_date"]) if data.get("diary_date") else None,
+                teacher_attention=data.get("teacher_attention"),
+                followed_agreements=data.get("followed_agreements"),
+                activity_interest=data.get("activity_interest"),
+                had_lunch=data.get("had_lunch"),
+                participated_in_play=data.get("participated_in_play"),
+                completed_activities=data.get("completed_activities"),
+                bathroom_use=data.get("bathroom_use"),
+                open_observation=data.get("open_observation"),
+                absence_reason=data.get("absence_reason"),
+                teacher_name=data.get("teacher_name"),
+                presence=data.get("presence", "Presente"),
+                status="active",
+                source=data.get("source") or "school",
+                anonymized_data=_build_diary_anonymized(data),
+            )
+
+            session.add(entry)
+
             await session.commit()
-            await session.refresh(diary)
-            return diary
 
-    async def verify(self, entity: Diary) -> Diary | None:
-        """Verifica se já existe um registro para o beneficiário na data específica"""
+            await session.refresh(entry)
+
+            return _to_dict(entry)
+
+    async def update(self, entry_id: str, data: dict) -> Optional[dict]:
         async with self.database.session() as session:
-            stmt = select(Diary).filter_by(
-                beneficiary_id=entity.beneficiary_id,
-                diary_date=entity.diary_date,
-            )
-            result = await session.execute(stmt)
-            return result.scalars().first()
+            result = await session.execute(select(DiaryEntry).where(DiaryEntry.id == entry_id, DiaryEntry.deleted == False))
 
-    async def list_all(self) -> list[Diary]:
-        """Lista todos os registros diários"""
+            entry = result.scalars().first()
+
+            if not entry:
+                return None
+            
+            for field in [
+                "diary_date", "teacher_attention", "followed_agreements", "activity_interest",
+                "had_lunch", "participated_in_play", "completed_activities", "bathroom_use",
+                "open_observation", "absence_reason", "teacher_name", "presence",
+            ]:
+                if field in data:
+                    value = data[field]
+                    if field == "diary_date" and value:
+                        value = date.fromisoformat(value)
+                    setattr(entry, field, value)
+
+            # Refresh anonymized_data
+            entry.anonymized_data = _build_diary_anonymized({
+                "student_id": entry.student_id,
+                "diary_date": entry.diary_date.isoformat() if entry.diary_date else "",
+                "presence": entry.presence,
+                "teacher_attention": entry.teacher_attention,
+                "followed_agreements": entry.followed_agreements,
+                "activity_interest": entry.activity_interest,
+                "had_lunch": entry.had_lunch,
+                "participated_in_play": entry.participated_in_play,
+                "completed_activities": entry.completed_activities,
+                "bathroom_use": entry.bathroom_use,
+                "open_observation": entry.open_observation,
+                "absence_reason": entry.absence_reason,
+            })
+            await session.commit()
+
+            await session.refresh(entry)
+
+            return _to_dict(entry)
+
+    async def delete(self, entry_id: str) -> bool:
         async with self.database.session() as session:
-            result = await session.execute(select(Diary))
-            return result.scalars().all()
+            result = await session.execute(select(DiaryEntry).where(DiaryEntry.id == entry_id, DiaryEntry.deleted == False))
 
-    async def get_by_id(self, diary_id: int) -> Diary | None:
-        """Busca um registro diário específico por ID"""
-        async with self.database.session() as session:
-            stmt = select(Diary).filter_by(id=diary_id)
-            result = await session.execute(stmt)
-            return result.scalars().first()
+            entry = result.scalars().first()
 
-    async def get_by_beneficiary(self, beneficiary_id: int) -> list[Diary]:
-        """Lista todos os registros diários de um beneficiário específico"""
-        async with self.database.session() as session:
-            stmt = select(Diary).filter_by(beneficiary_id=beneficiary_id).order_by(Diary.diary_date.desc())
-            result = await session.execute(stmt)
-            return result.scalars().all()
+            if not entry:
+                return False
 
-    async def get_by_beneficiary_date_range(
-        self, beneficiary_id: int, start_date, end_date
-    ) -> list[Diary]:
-        """Lista registros diários de um beneficiário em um período específico"""
+            entry.deleted = True
+
+            await session.commit()
+
+            return True
+
+    async def get_linked_teachers(self, student_id: str) -> list[str]:
+        """Returns list of teacher names linked to the given student."""
         async with self.database.session() as session:
             stmt = (
-                select(Diary)
-                .filter_by(beneficiary_id=beneficiary_id)
-                .filter(Diary.diary_date >= start_date)
-                .filter(Diary.diary_date <= end_date)
-                .order_by(Diary.diary_date.desc())
+                select(Teacher.name)
+                .join(TeacherStudentLink, Teacher.id == TeacherStudentLink.teacher_id)
+                .where(TeacherStudentLink.student_id == student_id)
+                .order_by(Teacher.name)
             )
-            result = await session.execute(stmt)
-            return result.scalars().all()
 
-    async def get_recent_entries(
-        self, beneficiary_id: int, limit: int = 30
-    ) -> list[Diary]:
-        """Busca os registros mais recentes de um beneficiário (útil para análise de padrões)"""
+            result = await session.execute(stmt)
+
+            return [row[0] for row in result.all()]
+
+    async def delete_all_for_student(self, student_id: str) -> int:
         async with self.database.session() as session:
-            stmt = (
-                select(Diary)
-                .filter_by(beneficiary_id=beneficiary_id)
-                .order_by(Diary.diary_date.desc())
-                .limit(limit)
+            from sqlalchemy import update as sa_update
+            result = await session.execute(
+                sa_update(DiaryEntry).where(DiaryEntry.student_id == student_id).values(deleted=True)
             )
-            result = await session.execute(stmt)
-            return result.scalars().all()
 
-    async def get_crisis_entries(self, beneficiary_id: int) -> list[Diary]:
-        """Busca todos os registros onde houve situação de crise"""
+            await session.commit()
+
+            return result.rowcount
+
+    async def save_normalized_observation(self, entry_id: str, normalized: dict) -> None:
+        """Persist the Gemini-normalized observation JSON for a diary entry."""
         async with self.database.session() as session:
-            stmt = (
-                select(Diary)
-                .filter_by(beneficiary_id=beneficiary_id, crisis_occurred=True)
-                .order_by(Diary.diary_date.desc())
+            result = await session.execute(
+                select(DiaryEntry).where(DiaryEntry.id == entry_id, DiaryEntry.deleted == False)
             )
-            result = await session.execute(stmt)
-            return result.scalars().all()
-
-    async def update(self, diary_id: int, **kwargs) -> Diary | None:
-        """Atualiza um registro diário existente"""
-        try:
-            async with self.database.session() as session:
-                stmt = select(Diary).filter_by(id=diary_id)
-                result = await session.execute(stmt)
-                existing_diary = result.scalars().first()
-
-                if not existing_diary:
-                    return None
-
-                for key, value in kwargs.items():
-                    if hasattr(existing_diary, key):
-                        setattr(existing_diary, key, value)
-
+            entry = result.scalars().first()
+            if entry:
+                entry.normalized_observation = json.dumps(normalized, ensure_ascii=False)
                 await session.commit()
-                await session.refresh(existing_diary)
 
-                return existing_diary
-        except Exception as e:
-            raise e
+    # ── Image / media helpers ─────────────────────────────────────────────────
 
-    async def delete(self, diary_id: int) -> bool:
-        """Remove um registro diário"""
-        try:
-            async with self.database.session() as session:
-                stmt = select(Diary).filter_by(id=diary_id)
-                result = await session.execute(stmt)
-                diary = result.scalars().first()
+    async def add_image(
+        self,
+        entry_id: str,
+        bucket: str,
+        object_key: str,
+        original_filename: str,
+        mime_type: str,
+        size_bytes: int,
+        public_url: str,
+    ) -> dict:
+        async with self.database.session() as session:
+            record = ObjectStorageFile(
+                id=str(uuid.uuid4()),
+                doc_type="diary_image",
+                reference_id=str(uuid.uuid4()),
+                bucket=bucket,
+                object_key=object_key,
+                original_filename=original_filename,
+                mime_type=mime_type,
+                size_bytes=size_bytes,
+                diary_entry_id=entry_id,
+                public_url=public_url,
+            )
 
-                if not diary:
-                    return False
+            session.add(record)
 
-                await session.delete(diary)
-                await session.commit()
-                return True
-        except Exception as e:
-            raise e
+            await session.commit()
+
+            await session.refresh(record)
+
+            return self._image_to_dict(record)
+
+    async def list_images(self, entry_id: str) -> list[dict]:
+        async with self.database.session() as session:
+            result = await session.execute(
+                select(ObjectStorageFile).where(
+                    ObjectStorageFile.doc_type == "diary_image",
+                    ObjectStorageFile.diary_entry_id == entry_id,
+                    ObjectStorageFile.deleted == False,
+                ).order_by(ObjectStorageFile.created_at)
+            )
+
+            return [self._image_to_dict(r) for r in result.scalars().all()]
+
+    async def list_images_batch(self, entry_ids: list[str]) -> dict[str, list[dict]]:
+        """Return images for multiple diary entries in a single query."""
+        if not entry_ids:
+            return {}
+        async with self.database.session() as session:
+            result = await session.execute(
+                select(ObjectStorageFile).where(
+                    ObjectStorageFile.doc_type == "diary_image",
+                    ObjectStorageFile.diary_entry_id.in_(entry_ids),
+                    ObjectStorageFile.deleted == False,
+                ).order_by(ObjectStorageFile.created_at)
+            )
+            grouped: dict[str, list[dict]] = {eid: [] for eid in entry_ids}
+            for row in result.scalars().all():
+                if row.diary_entry_id in grouped:
+                    grouped[row.diary_entry_id].append(self._image_to_dict(row))
+            return grouped
+
+    async def get_image(self, file_id: str) -> Optional[dict]:
+        async with self.database.session() as session:
+            obj = await session.get(ObjectStorageFile, file_id)
+
+            if not obj or obj.doc_type != "diary_image":
+                return None
+
+            return self._image_to_dict(obj)
+
+    async def delete_image(self, file_id: str) -> Optional[dict]:
+        async with self.database.session() as session:
+            obj = await session.get(ObjectStorageFile, file_id)
+
+            if not obj or obj.doc_type != "diary_image":
+                return None
+
+            data = self._image_to_dict(obj)
+
+            await session.delete(obj)
+
+            await session.commit()
+
+            return data
+
+    @staticmethod
+    def _image_to_dict(r: ObjectStorageFile) -> dict:
+        return {
+            "id": r.id,
+            "diary_entry_id": r.diary_entry_id,
+            "original_filename": r.original_filename,
+            "mime_type": r.mime_type,
+            "size_bytes": r.size_bytes,
+            "public_url": r.public_url,
+            "object_key": r.object_key,
+            "bucket": r.bucket,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+        }

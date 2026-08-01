@@ -1,58 +1,65 @@
-from datetime import datetime
-from core.kernel.result import Result
-from core.services.jwt_service import JwtService
-from infrastructure.models.users import User
-from infrastructure.repositories.user_repository import UserRepository
-from infrastructure.services.email_service import EmailService
 import logging
+from typing import Optional
+from core.kernel.result import Result
+from core.interfaces.i_user_repository import IUserRepository
+from core.interfaces.i_auth_service import IAuthService
+from core.exceptions.auth_exceptions import AuthException, UserAlreadyExistsError
+from core.permissions.roles import CAN_CREATE_USER, ALL_ROLES
 
 logger = logging.getLogger(__name__)
 
+
 class CreateUserUseCase:
-    def __init__(self, user_repository: UserRepository, jwt_service: JwtService, email_service: EmailService):
+    def __init__(self, user_repository: IUserRepository, auth_service: IAuthService):
         self.user_repository = user_repository
-        self.jwt_service = jwt_service
-        self.email_service = email_service
+        self.auth_service = auth_service
 
-    async def execute(self, user: User):
+    async def execute(
+        self,
+        requester_role: str,
+        username: str,
+        email: str,
+        password: str,
+        full_name: Optional[str],
+        role: str,
+        municipality_id: Optional[str] = None,
+        school_id: Optional[str] = None,
+        teacher_id: Optional[str] = None,
+    ):
         try:
-            check_user = await self.user_repository.get_by_email(user.email)
+            if requester_role not in CAN_CREATE_USER:
+                return Result.unauthorized("Apenas administradores podem cadastrar usuários")
 
-            if check_user:
-                return Result.bad_request("E-mail já cadastrado")
+            if role not in ALL_ROLES:
+                return Result.bad_request(f"Role inválido. Valores aceitos: {', '.join(ALL_ROLES)}")
 
-            user.password = self.jwt_service.hash_password(user.password)
-            user.created_at = datetime.utcnow()
-            user.updated_at = datetime.utcnow()
-            user.email_verified = False
+            existing = await self.user_repository.get_by_username(username)
+            if existing:
+                return Result.bad_request("Nome de usuário já cadastrado")
 
-            # Gerar token de verificação
-            verification_token = self.jwt_service.create_verification_token({"email": user.email})
-            user.verification_token = verification_token
-
-                # Enviar email de verificação em background
             try:
-                self.email_service.send_verification_email(
-                    to_email=check_user.email,
-                    to_name=check_user.name,
-                    verification_token=verification_token
-                )
+                cognito_sub = self.auth_service.admin_create_user(username, password, email, full_name)
+            except UserAlreadyExistsError as e:
+                return Result.bad_request(e.message)
+            except AuthException as e:
+                return Result.bad_request(e.message)
 
-                await self.user_repository.add(user)
-            except Exception as email_error:
-                logger.error(f"Erro ao enviar email de verificação: {str(email_error)}")
-                return Result.error(f"Erro ao cadastrar usuário no sistema")
-
-            token = self.jwt_service.create_access_token({"sub": str(check_user.id)})
-            refresh_token = self.jwt_service.create_refresh_token({"sub": str(check_user.id)})
+            await self.user_repository.add(
+                id=cognito_sub,
+                username=username,
+                full_name=full_name,
+                role=role,
+                municipality_id=municipality_id,
+                school_id=school_id,
+                teacher_id=teacher_id,
+            )
 
             return Result.ok({
-                "access_token": token,
-                "refresh_token": refresh_token,
-                "email_verified": False,
-                "message": "Usuário criado com sucesso. Verifique seu email para ativar sua conta."
+                "message": "Usuário criado com sucesso. As credenciais foram enviadas por e-mail.",
+                "username": username,
+                "user_id": cognito_sub,
             })
 
         except Exception as e:
-            logger.error(f"Erro ao cadastrar usuário: {str(e)}")
-            return Result.error(f"Erro ao cadastrar usuário")
+            logger.error(f"Erro ao cadastrar usuário: {e}")
+            return Result.error("Erro ao cadastrar usuário")
