@@ -80,7 +80,10 @@ async def create_student(
     current_user: dict = Depends(get_current_user_read_write),
     repo: StudentRepository = Depends(Provide[Container.student_repository]),
 ):
-    return await repo.create(body.model_dump())
+    data = body.model_dump()
+    if data.get('grade'): data['grade'] = data['grade'].upper()
+    if data.get('class_name'): data['class_name'] = data['class_name'].upper()
+    return await repo.create(data)
 
 
 @router.put("/{student_id}")
@@ -91,7 +94,10 @@ async def update_student(
     current_user: dict = Depends(get_current_user_read_write),
     repo: StudentRepository = Depends(Provide[Container.student_repository]),
 ):
-    updated = await repo.update(student_id, body.model_dump(exclude_none=True))
+    data = body.model_dump(exclude_none=True)
+    if data.get('grade'): data['grade'] = data['grade'].upper()
+    if data.get('class_name'): data['class_name'] = data['class_name'].upper()
+    updated = await repo.update(student_id, data)
     if not updated:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Aluno não encontrado")
     return updated

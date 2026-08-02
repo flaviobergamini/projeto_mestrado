@@ -15,12 +15,9 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.execute("ALTER TYPE userrole RENAME VALUE 'terapeuta' TO 'therapist'")
-    op.execute("ALTER TYPE userrole RENAME VALUE 'professor' TO 'teacher'")
-    op.execute("ALTER TYPE userrole RENAME VALUE 'pai' TO 'parent'")
+    # Enum já criado com valores em inglês na migration anterior — nada a fazer
+    pass
 
 
 def downgrade() -> None:
-    op.execute("ALTER TYPE userrole RENAME VALUE 'therapist' TO 'terapeuta'")
-    op.execute("ALTER TYPE userrole RENAME VALUE 'teacher' TO 'professor'")
-    op.execute("ALTER TYPE userrole RENAME VALUE 'parent' TO 'pai'")
+    pass
