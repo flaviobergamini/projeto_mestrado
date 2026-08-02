@@ -481,16 +481,23 @@ class RagService:
             "generated_pei": {"available": gpei_count > 0, "count": gpei_count},
         }
 
+    @staticmethod
+    def _fts_query(query: str) -> str:
+        """Sanitize query string for plainto_tsquery."""
+        return " ".join(query.split())
+
     async def search(
         self,
         query: str,
         student_id: str,
-        limit: int = 5,
+        limit: int = 20,
         sources: Optional[list[str]] = None,
+        max_distance: float = 0.5,
     ) -> list[dict]:
-        """Return the most semantically similar chunks for the given student.
+        """Hybrid search: vector similarity + full-text search (tsvector), merged and deduplicated.
 
         sources: subset of ['diary', 'case_study']. Defaults to both when None or empty.
+        max_distance: cosine distance threshold — chunks above this are discarded from vector results.
         """
         active = set(sources) & self.VALID_SOURCES if sources else self.VALID_SOURCES
         if not active:
@@ -507,56 +514,121 @@ class RagService:
             return []
 
         vector_literal = f"[{','.join(str(x) for x in query_vector)}]"
+        fts_query = self._fts_query(query)
 
-        parts = []
+        # ── Vector search ─────────────────────────────────────────────────────
+        vec_parts = []
         if active & {"diary", "family_diary", "therapy_diary"}:
-            parts.append(
-                "SELECT content, meta_data::text AS meta_json,"
+            vec_parts.append(
+                "SELECT id, content, meta_data::text AS meta_json,"
                 " (embedding <=> CAST(:vec AS vector)) AS distance,"
                 " 'diario' AS source"
                 " FROM diary_embedding_gemini WHERE student_id = :sid"
+                " AND (embedding <=> CAST(:vec AS vector)) < :max_dist"
             )
         if "case_study" in active:
-            parts.append(
-                "SELECT content, meta_data::text AS meta_json,"
+            vec_parts.append(
+                "SELECT id, content, meta_data::text AS meta_json,"
                 " (embedding <=> CAST(:vec AS vector)) AS distance,"
                 " 'estudo_caso' AS source"
                 " FROM case_study_embedding_gemini WHERE student_id = :sid"
+                " AND (embedding <=> CAST(:vec AS vector)) < :max_dist"
             )
 
-        union_sql = " UNION ALL ".join(parts) + " ORDER BY distance ASC LIMIT :lim"
+        # ── Keyword search (FTS) ──────────────────────────────────────────────
+        kw_parts = []
+        if active & {"diary", "family_diary", "therapy_diary"}:
+            kw_parts.append(
+                "SELECT id, content, meta_data::text AS meta_json,"
+                " 0.0 AS distance,"
+                " 'diario' AS source"
+                " FROM diary_embedding_gemini WHERE student_id = :sid"
+                " AND to_tsvector('portuguese', content) @@ plainto_tsquery('portuguese', :fts)"
+            )
+        if "case_study" in active:
+            kw_parts.append(
+                "SELECT id, content, meta_data::text AS meta_json,"
+                " 0.0 AS distance,"
+                " 'estudo_caso' AS source"
+                " FROM case_study_embedding_gemini WHERE student_id = :sid"
+                " AND to_tsvector('portuguese', content) @@ plainto_tsquery('portuguese', :fts)"
+            )
 
         async with self._db.session() as session:
-            result = await session.execute(
-                text(union_sql),
-                {"vec": vector_literal, "sid": student_id, "lim": limit},
-            )
-            rows = result.fetchall()
+            vec_rows, kw_rows = [], []
 
-        chunks = []
-        for row in rows:
-            meta = {}
-            try:
-                meta = json.loads(row.meta_json) if row.meta_json else {}
-            except Exception:
-                pass
-            chunks.append({
-                "content": row.content,
-                "source": row.source,
-                "distance": float(row.distance),
-                "meta": meta,
-            })
-        return chunks
+            if vec_parts:
+                vec_sql = " UNION ALL ".join(vec_parts) + " ORDER BY distance ASC LIMIT :lim"
+                res = await session.execute(
+                    text(vec_sql),
+                    {"vec": vector_literal, "sid": student_id, "lim": limit, "max_dist": max_distance},
+                )
+                vec_rows = res.fetchall()
+
+            if kw_parts:
+                # Sem LIMIT: keyword search já está filtrada por student_id,
+                # então o volume é limitado ao histórico do aluno (seguro).
+                kw_sql = " UNION ALL ".join(kw_parts)
+                try:
+                    res = await session.execute(
+                        text(kw_sql),
+                        {"sid": student_id, "fts": fts_query},
+                    )
+                    kw_rows = res.fetchall()
+                except Exception:
+                    # plainto_tsquery pode falhar com queries muito curtas ou inválidas
+                    kw_rows = []
+
+        # ── Merge + deduplicate (vector first, keyword appended) ──────────────
+        seen: set = set()
+        chunks: list[dict] = []
+
+        for row in vec_rows:
+            key = (row.source, row.id)
+            if key not in seen:
+                seen.add(key)
+                meta = {}
+                try:
+                    meta = json.loads(row.meta_json) if row.meta_json else {}
+                except Exception:
+                    pass
+                chunks.append({
+                    "content": row.content,
+                    "source": row.source,
+                    "distance": float(row.distance),
+                    "meta": meta,
+                    "match_type": "vector",
+                })
+
+        for row in kw_rows:
+            key = (row.source, row.id)
+            if key not in seen:
+                seen.add(key)
+                meta = {}
+                try:
+                    meta = json.loads(row.meta_json) if row.meta_json else {}
+                except Exception:
+                    pass
+                chunks.append({
+                    "content": row.content,
+                    "source": row.source,
+                    "distance": float(row.distance),
+                    "meta": meta,
+                    "match_type": "keyword",
+                })
+
+        return chunks[:limit]
 
     async def build_rag_context(
         self,
         query: str,
         student_id: str,
-        limit: int = 5,
+        limit: int = 20,
         sources: Optional[list[str]] = None,
+        max_distance: float = 0.5,
     ) -> str:
         """Returns a ready-to-use anonymised context string for the LLM prompt."""
-        chunks = await self.search(query, student_id, limit=limit, sources=sources)
+        chunks = await self.search(query, student_id, limit=limit, sources=sources, max_distance=max_distance)
         if not chunks:
             return "Não há registros vetorizados para este aluno ainda."
 
