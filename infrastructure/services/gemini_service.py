@@ -31,7 +31,7 @@ class GeminiService:
         self._llm = ChatGoogleGenerativeAI(
             model=self.model_name,
             google_api_key=self.api_key,
-            temperature=0.3,
+            temperature=0.0,
         )
         self._embed_client = glm.GenerativeServiceClient(
             client_options={"api_key": self.api_key}
