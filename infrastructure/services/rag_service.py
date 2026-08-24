@@ -1,6 +1,7 @@
 """RAG service: builds structured JSON, embeds it and persists vectors for
 diary entries and case studies. Also provides similarity search."""
 
+import asyncio
 import json
 import logging
 from typing import Optional
@@ -329,7 +330,9 @@ class RagService:
         obs_normalized = entry.get("normalized_observation")
         if not obs_normalized and raw_obs.strip():
             try:
-                obs_normalized, obs_usage = self._gemini.normalize_diary_observation(raw_obs)
+                obs_normalized, obs_usage = await asyncio.to_thread(
+                    self._gemini.normalize_diary_observation, raw_obs
+                )
                 if self._usage:
                     await self._usage.log(
                         model=obs_usage.model,
@@ -350,7 +353,7 @@ class RagService:
         content = json_to_content(structured)
 
         try:
-            vector, usage = self._gemini.generate_embedding_tracked(content)
+            vector, usage = await asyncio.to_thread(self._gemini.generate_embedding_tracked, content)
             if self._usage:
                 await self._usage.log(model=usage.model, operation="embedding_diary",
                                       input_tokens=usage.input_tokens, output_tokens=0,
@@ -389,7 +392,7 @@ class RagService:
         content = json_to_content(structured)
 
         try:
-            vector, usage = self._gemini.generate_embedding_tracked(content)
+            vector, usage = await asyncio.to_thread(self._gemini.generate_embedding_tracked, content)
             if self._usage:
                 await self._usage.log(model=usage.model, operation="embedding_case_study",
                                       input_tokens=usage.input_tokens, output_tokens=0,
@@ -504,7 +507,7 @@ class RagService:
             return []
 
         try:
-            query_vector, emb_usage = self._gemini.generate_embedding_tracked(query)
+            query_vector, emb_usage = await asyncio.to_thread(self._gemini.generate_embedding_tracked, query)
             if self._usage:
                 await self._usage.log(model=emb_usage.model, operation="embedding_search",
                                       input_tokens=emb_usage.input_tokens, output_tokens=0,

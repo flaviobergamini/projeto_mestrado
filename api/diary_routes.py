@@ -79,7 +79,9 @@ async def transcribe_diary_audio(
                             detail="Áudio muito grande. Máximo: 20 MB.")
 
     try:
-        fields, usage = gemini.transcribe_diary_audio(content, mime_type=normalized_mime)
+        fields, usage = await asyncio.to_thread(
+            gemini.transcribe_diary_audio, content, mime_type=normalized_mime
+        )
         await usage_repo.log(
             model=usage.model,
             operation="diary_audio_transcription",

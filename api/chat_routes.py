@@ -1,3 +1,4 @@
+import asyncio
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import Response
 from dependency_injector.wiring import inject, Provide
@@ -110,7 +111,12 @@ async def send_message(
 
     # Generate AI response (anonymised prompt → Gemini)
     try:
-        raw_answer, usage = gemini.generate_text_tracked(
+        # generate_text_tracked é uma chamada de rede síncrona e bloqueante —
+        # rodar em thread separada evita travar o event loop inteiro (e,
+        # com isso, todas as outras requisições) enquanto o Gemini responde
+        # ou faz retry por rate limit.
+        raw_answer, usage = await asyncio.to_thread(
+            gemini.generate_text_tracked,
             prompt=prompt,
             system_instruction=system_instruction,
         )

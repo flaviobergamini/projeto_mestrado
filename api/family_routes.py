@@ -437,7 +437,9 @@ async def transcribe_family_audio(
     } else "audio/webm"
 
     try:
-        text, usage = gemini.transcribe_audio_verbatim(content, mime_type=mime_type)
+        text, usage = await asyncio.to_thread(
+            gemini.transcribe_audio_verbatim, content, mime_type=mime_type
+        )
         await usage_repo.log(
             model=usage.model,
             operation="family_audio_transcription",

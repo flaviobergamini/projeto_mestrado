@@ -1,5 +1,6 @@
 """PEI generation endpoint — uses anonymised RAG context + Gemini + custom system prompt."""
 
+import asyncio
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import Response
 from pydantic import BaseModel
@@ -79,7 +80,11 @@ Os identificadores no contexto são chaves primárias (UUIDs) — não represent
 Gere o Plano Educacional Individualizado (PEI) completo para este aluno."""
 
     try:
-        raw_pei, usage = gemini.generate_text_tracked(
+        # Chamada síncrona e bloqueante — roda em thread separada para não
+        # travar o event loop (e todas as outras requisições) durante a
+        # geração ou um retry por rate limit do Gemini.
+        raw_pei, usage = await asyncio.to_thread(
+            gemini.generate_text_tracked,
             prompt=prompt,
             system_instruction=system_instruction,
         )

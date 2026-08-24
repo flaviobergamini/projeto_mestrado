@@ -1,4 +1,5 @@
 """Ferramentas MCP para geração e gestão de PEIs (Plano Educacional Individualizado)."""
+import asyncio
 from mcp.server.fastmcp import FastMCP
 from mcp_server.context import (
     get_student_repo,
@@ -86,7 +87,8 @@ Os identificadores no contexto são chaves primárias (UUIDs) — não represent
 Gere o Plano Educacional Individualizado (PEI) completo para este aluno."""
 
         try:
-            raw_pei, usage = gemini.generate_text_tracked(
+            raw_pei, usage = await asyncio.to_thread(
+                gemini.generate_text_tracked,
                 prompt=prompt,
                 system_instruction=system_instruction,
             )
