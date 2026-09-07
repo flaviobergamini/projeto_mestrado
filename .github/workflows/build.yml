@@ -47,6 +47,13 @@ jobs:
         flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --exclude=venv,__pycache__,.git
 
     - name: Verify project imports
+      env:
+        # main.py cria o engine do banco (container.database()) na importação
+        # do módulo — não conecta de fato, só precisa de uma URL sintaticamente
+        # válida para não levantar RuntimeError aqui.
+        DATABASE_URL: postgresql+asyncpg://ci:ci@localhost:5432/ci
+        ENCRYPTION_KEY: MTIzNDU2Nzg5MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTI9
+        JWT_SECRET: ci-import-check-secret
       run: |
         # Tenta importar o módulo principal para verificar se há erros
         python -c "import sys; sys.path.insert(0, '.'); import main; print('✓ Import successful')"
