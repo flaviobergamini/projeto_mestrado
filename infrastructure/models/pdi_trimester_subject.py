@@ -1,9 +1,12 @@
 from datetime import datetime
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 from sqlalchemy import String, Text, Integer, DateTime, ForeignKey, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from infrastructure.database_context.database import Base
 import uuid
+
+if TYPE_CHECKING:
+    from infrastructure.models.pdi import Pdi
 
 
 class PdiTrimesterSubject(Base):

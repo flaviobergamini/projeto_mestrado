@@ -1,8 +1,15 @@
 from datetime import datetime
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 from sqlalchemy import String, Text, Boolean, DateTime, ForeignKey, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from infrastructure.database_context.database import Base
+
+if TYPE_CHECKING:
+    from infrastructure.models.chat_session import ChatSession
+    from infrastructure.models.municipality import Municipality
+    from infrastructure.models.student import Student
+    from infrastructure.models.teacher import Teacher
+    from infrastructure.models.user_profile import UserProfile
 
 
 class School(Base):

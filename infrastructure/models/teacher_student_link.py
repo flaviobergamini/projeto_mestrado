@@ -1,8 +1,13 @@
 from datetime import datetime
+from typing import TYPE_CHECKING
 from sqlalchemy import String, Boolean, DateTime, ForeignKey, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from infrastructure.database_context.database import Base
 import uuid
+
+if TYPE_CHECKING:
+    from infrastructure.models.student import Student
+    from infrastructure.models.teacher import Teacher
 
 
 class TeacherStudentLink(Base):

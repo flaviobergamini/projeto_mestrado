@@ -1,8 +1,13 @@
 from datetime import datetime
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 from sqlalchemy import String, Text, Boolean, DateTime, ForeignKey, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from infrastructure.database_context.database import Base
+
+if TYPE_CHECKING:
+    from infrastructure.models.pdi_trimester_subject import PdiTrimesterSubject
+    from infrastructure.models.pei_embedding_gemini import PdiEmbeddingGemini
+    from infrastructure.models.student import Student
 
 
 class Pdi(Base):
