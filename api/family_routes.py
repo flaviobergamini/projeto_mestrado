@@ -41,14 +41,31 @@ class SetStudentsBody(BaseModel):
 class FamilyDiaryCreate(BaseModel):
     student_id: str
     diary_date: str
-    open_observation: str
+    open_observation: Optional[str] = None
     presence: Optional[str] = "Presente"
     absence_reason: Optional[str] = None
+    # Perguntas pré-prontas (Sim/Não/Parcialmente) para facilitar o preenchimento pelos pais
+    had_lunch: Optional[str] = None
+    participated_in_play: Optional[str] = None
+    teacher_attention: Optional[str] = None
+    activity_interest: Optional[str] = None
+    completed_activities: Optional[str] = None
+    bathroom_use: Optional[str] = None
+    followed_agreements: Optional[str] = None
 
 
 class FamilyDiaryUpdate(BaseModel):
     diary_date: Optional[str] = None
     open_observation: Optional[str] = None
+    presence: Optional[str] = None
+    absence_reason: Optional[str] = None
+    had_lunch: Optional[str] = None
+    participated_in_play: Optional[str] = None
+    teacher_attention: Optional[str] = None
+    activity_interest: Optional[str] = None
+    completed_activities: Optional[str] = None
+    bathroom_use: Optional[str] = None
+    followed_agreements: Optional[str] = None
 
 
 class TherapyDiaryCreate(BaseModel):
