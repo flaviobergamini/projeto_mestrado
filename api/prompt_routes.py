@@ -9,7 +9,7 @@ from infrastructure.repositories.prompt_repository import PromptRepository
 
 router = APIRouter(prefix="/prompts", tags=["Prompts"])
 
-VALID_SCOPES = {"chat", "pei"}
+VALID_SCOPES = {"chat", "pei", "diary_summary"}
 EDITOR_ROLES = {"admin", "coordenacao"}
 
 

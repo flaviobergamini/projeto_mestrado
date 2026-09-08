@@ -347,7 +347,9 @@ async def export_family_diary_pdf(
     )
     entry_ids = [e["id"] for e in entries if e.get("id")]
     images_map = await _fetch_images_map(entry_ids, diary_repo)
-    pdf_bytes = generate_diary_pdf(
+    # síncrona/CPU-bound (ReportLab) — roda em thread separada pra não travar o event loop
+    pdf_bytes = await asyncio.to_thread(
+        generate_diary_pdf,
         entries=entries,
         student_name=(student or {}).get("name", ""),
         diary_label="Diário Familiar",
@@ -393,7 +395,9 @@ async def export_therapy_diary_pdf(
     )
     entry_ids = [e["id"] for e in entries if e.get("id")]
     images_map = await _fetch_images_map(entry_ids, diary_repo)
-    pdf_bytes = generate_diary_pdf(
+    # síncrona/CPU-bound (ReportLab) — roda em thread separada pra não travar o event loop
+    pdf_bytes = await asyncio.to_thread(
+        generate_diary_pdf,
         entries=entries,
         student_name=(student or {}).get("name", ""),
         diary_label="Diário de Terapia",

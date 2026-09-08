@@ -68,8 +68,27 @@ async def generate_pei(
     prompt_data = await prompt_repo.get_active("pei")
     system_instruction = prompt_data["content"]
 
+    # Regra de anonimização embutida no código (não no prompt editável pelo admin) —
+    # sem essa instrução explícita, o Gemini às vezes vê um UUID solto no JSON e, ao
+    # precisar escrever o nome do aluno/escola numa frase, inventa um placeholder tipo
+    # "[Nome do Aluno]" em vez de copiar o ID literalmente — aí a desanonimização
+    # (deanonymize()) não encontra o UUID na resposta pra substituir pelo nome real.
+    # Fica fora de `system_instruction` de propósito: como esse prompt é livremente
+    # editável pelo admin, colocar a regra aqui garante que nunca seja removida por engano.
+    anonymization_rule = (
+        "DADOS DO ALUNO (ANONIMIZADOS) — regra obrigatória: os identificadores abaixo "
+        "substituem o nome real do aluno e da escola (limitação técnica do sistema, não "
+        "ausência de informação). Sempre que for se referir ao aluno ou à escola pelo nome "
+        "no PEI, copie o identificador EXATAMENTE como fornecido abaixo, sem alterá-lo, "
+        "sem tentar adivinhar o nome real e sem usar um placeholder genérico como "
+        '"[Nome do Aluno]" ou "[Nome da Escola]":\n'
+        f"- ID do aluno: {body.student_id}\n"
+        f"- ID da escola: {student.get('school_id') or '(não informado)'}"
+    )
+
     prompt = f"""Com base nos dados anonimizados abaixo, gere o PEI completo.
-Os identificadores no contexto são chaves primárias (UUIDs) — não representam nomes reais.
+
+{anonymization_rule}
 
 === CONTEXTO DO ALUNO (ANONIMIZADO) ===
 {anon_context}
@@ -163,7 +182,9 @@ async def download_pei_pdf(
         student = await student_repo.get_by_id(pei["student_id"])
         student_name = (student or {}).get("name", "") if student else ""
 
-    pdf_bytes = generate_pei_pdf(
+    # síncrona/CPU-bound (ReportLab) — roda em thread separada pra não travar o event loop
+    pdf_bytes = await asyncio.to_thread(
+        generate_pei_pdf,
         pei_text=pei["pei_text"],
         student_name=student_name,
         generated_at=str(pei.get("generated_at", "")),

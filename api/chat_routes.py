@@ -10,6 +10,7 @@ from api.dependencies import get_current_user
 from infrastructure.repositories.chat_repository import ChatRepository
 from infrastructure.repositories.prompt_repository import PromptRepository
 from infrastructure.repositories.ai_usage_repository import AiUsageRepository
+from infrastructure.repositories.student_repository import StudentRepository
 from infrastructure.services.gemini_service import GeminiService
 from infrastructure.services.rag_service import RagService
 from infrastructure.services.anonymization_service import AnonymizationService, deanonymize
@@ -49,6 +50,7 @@ async def send_message(
     prompt_repo: PromptRepository = Depends(Provide[Container.prompt_repository]),
     usage_repo: AiUsageRepository = Depends(Provide[Container.ai_usage_repository]),
     anon_svc: AnonymizationService = Depends(Provide[Container.anonymization_service]),
+    student_repo: StudentRepository = Depends(Provide[Container.student_repository]),
 ):
     """Send a message and receive an AI response with anonymised RAG context."""
     user_id = current_user.get("user_id", "")
@@ -87,7 +89,25 @@ async def send_message(
         sources=body.sources,
     )
 
-    prompt = f"""=== CONTEXTO DO ALUNO (ANONIMIZADO) ===
+    # Regra de anonimização embutida no código (não no prompt editável de Chat) —
+    # mesmo fix aplicado na geração de PEI: sem instrução explícita pra copiar o ID
+    # literalmente, o Gemini inventa um placeholder tipo "[Nome do Aluno]" em vez do
+    # UUID, e a desanonimização (deanonymize()) não acha o que substituir na resposta.
+    student_for_rule = await student_repo.get_by_id(body.student_id)
+    anonymization_rule = (
+        "DADOS DO ALUNO (ANONIMIZADOS) — regra obrigatória: os identificadores abaixo "
+        "substituem o nome real do aluno e da escola (limitação técnica do sistema, não "
+        "ausência de informação). Sempre que for se referir ao aluno ou à escola pelo nome "
+        "na resposta, copie o identificador EXATAMENTE como fornecido abaixo, sem alterá-lo, "
+        "sem tentar adivinhar o nome real e sem usar um placeholder genérico como "
+        '"[Nome do Aluno]" ou "[Nome da Escola]":\n'
+        f"- ID do aluno: {body.student_id}\n"
+        f"- ID da escola: {(student_for_rule or {}).get('school_id') or '(não informado)'}"
+    )
+
+    prompt = f"""{anonymization_rule}
+
+=== CONTEXTO DO ALUNO (ANONIMIZADO) ===
 {anon_context}
 
 === REGISTROS SIMILARES (RAG) ===
@@ -230,7 +250,8 @@ async def export_session_pdf(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sessão não encontrada")
     messages = await chat_repo.list_messages(session_id=session_id)
     title = session.get("title") or f"Chat {session.get('session_date', '')}"
-    pdf_bytes = generate_chat_pdf(messages=messages, title=title)
+    # síncrona/CPU-bound (ReportLab) — roda em thread separada pra não travar o event loop
+    pdf_bytes = await asyncio.to_thread(generate_chat_pdf, messages=messages, title=title)
     filename = f"chat_{session_id[:8]}.pdf"
     return Response(
         content=pdf_bytes,

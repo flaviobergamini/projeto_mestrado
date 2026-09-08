@@ -24,6 +24,8 @@ from api import vinculos_routes
 from api.vinculos_routes import router as vinculos_router
 from api import family_routes
 from api.family_routes import router as family_router
+from api import diary_summary_routes
+from api.diary_summary_routes import router as diary_summary_router
 from api.middleware.audit_middleware import AuditMiddleware
 from core.kernel.container import Container
 
@@ -34,7 +36,7 @@ container.wire(modules=[
     school_routes, teacher_routes, case_study_routes,
     chat_routes, prompt_routes, pei_gen_routes,
     municipality_routes, admin_routes, ai_usage_routes, vinculos_routes,
-    family_routes,
+    family_routes, diary_summary_routes,
 ])
 
 app = FastAPI(
@@ -70,6 +72,7 @@ app.include_router(admin_router)
 app.include_router(ai_usage_router)
 app.include_router(vinculos_router)
 app.include_router(family_router)
+app.include_router(diary_summary_router)
 
 
 @app.get("/health", tags=["Health"])

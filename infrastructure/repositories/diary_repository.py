@@ -103,6 +103,27 @@ class DiaryRepository:
             )
             return [_to_dict(e) for e in result.scalars().all()]
 
+    async def count_entries_by_student_in_range(
+        self,
+        source: str,
+        date_from: Optional[date] = None,
+        date_to: Optional[date] = None,
+    ) -> dict[str, int]:
+        """Returns {student_id: count} of non-deleted entries of a given source in the date range."""
+        async with self.database.session() as session:
+            filters = [DiaryEntry.deleted == False, DiaryEntry.source == source, DiaryEntry.student_id.isnot(None)]
+            if date_from:
+                filters.append(DiaryEntry.diary_date >= date_from)
+            if date_to:
+                filters.append(DiaryEntry.diary_date <= date_to)
+            stmt = (
+                select(DiaryEntry.student_id, func.count(DiaryEntry.id))
+                .where(*filters)
+                .group_by(DiaryEntry.student_id)
+            )
+            result = await session.execute(stmt)
+            return {row[0]: row[1] for row in result.all()}
+
     async def get_by_id(self, entry_id: str) -> Optional[dict]:
         async with self.database.session() as session:
             result = await session.execute(select(DiaryEntry).where(DiaryEntry.id == entry_id, DiaryEntry.deleted == False))
