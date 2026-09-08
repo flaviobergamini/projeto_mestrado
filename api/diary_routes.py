@@ -224,13 +224,19 @@ async def _fetch_images_map(entry_ids: list[str], diary_repo: DiaryRepository) -
 
     async def _download(client: httpx.AsyncClient, entry_id: str, url: str) -> tuple[str, bytes | None]:
         try:
-            resp = await client.get(url)
+            # O timeout do próprio httpx.AsyncClient nem sempre é respeitado em
+            # alguns downloads (caso raro visto na prática — leitura da resposta
+            # trava indefinidamente mesmo com timeout=30 configurado). O
+            # asyncio.wait_for garante um limite duro independente disso: se um
+            # download travar, ele é cancelado e tratado como "sem imagem" em
+            # vez de travar a exportação inteira do PDF pra sempre.
+            resp = await asyncio.wait_for(client.get(url), timeout=20)
             return (entry_id, resp.content if resp.status_code == 200 else None)
         except Exception:
             return (entry_id, None)
 
     tasks = []
-    async with httpx.AsyncClient(timeout=30) as client:
+    async with httpx.AsyncClient(timeout=20) as client:
         for entry_id, recs in grouped.items():
             for rec in recs:
                 url = signed_map.get(rec.get("object_key", "")) or rec.get("public_url", "")

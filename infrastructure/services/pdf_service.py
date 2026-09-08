@@ -6,6 +6,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
+from PIL import Image as PILImage
+
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_LEFT
 from reportlab.lib.pagesizes import A4
@@ -466,8 +468,18 @@ def generate_diary_pdf(
                 img_row = []
                 for raw in img_bytes_list:
                     try:
-                        img_buf = io.BytesIO(raw)
-                        rl_img = Image(img_buf, width=4.5 * cm, height=4.5 * cm)
+                        # As fotos vêm em resolução de câmera/celular (vários MB) mas são
+                        # exibidas a 4.5cm no PDF — decodificar e renderizar o arquivo
+                        # inteiro via ReportLab é lento e escala mal com várias imagens
+                        # por entrada. Reduzimos com Pillow para no máximo 600px antes de
+                        # embutir, o que corta drasticamente o tempo de geração.
+                        pil_img = PILImage.open(io.BytesIO(raw))
+                        pil_img = pil_img.convert("RGB")
+                        pil_img.thumbnail((600, 600), PILImage.LANCZOS)
+                        thumb_buf = io.BytesIO()
+                        pil_img.save(thumb_buf, format="JPEG", quality=80)
+                        thumb_buf.seek(0)
+                        rl_img = Image(thumb_buf, width=4.5 * cm, height=4.5 * cm)
                         rl_img.hAlign = "LEFT"
                         img_row.append(rl_img)
                     except Exception:
