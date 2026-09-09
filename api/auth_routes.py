@@ -20,7 +20,9 @@ from api.dependencies import require_roles, get_current_user
 from domain.schema import (
     UserRegister, UserLogin, ConfirmEmail, ResendConfirmation,
     ForgotPassword, ConfirmResetPassword, RefreshToken, UpdateRoleRequest,
+    UpdateOwnDemographics,
 )
+from infrastructure.repositories.user_repository import UserRepository
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
@@ -172,6 +174,42 @@ async def list_users(
         return JSONResponse(status_code=HTTP_200_OK, content=result.value)
     except Exception:
         return JSONResponse(status_code=HTTP_500_INTERNAL_SERVER_ERROR, content={"error": "Erro interno"})
+
+
+@router.get("/me")
+@inject
+async def get_own_profile(
+    current_user: dict = Depends(get_current_user),
+    repo: UserRepository = Depends(Provide[Container.user_repository]),
+):
+    """Retorna o perfil do usuário autenticado (inclui a demografia autodeclarada, quando houver)."""
+    profile = await repo.get_by_id(current_user["user_id"])
+    if not profile:
+        return JSONResponse(status_code=HTTP_404_NOT_FOUND, content={"error": "Usuário não encontrado"})
+    return JSONResponse(status_code=HTTP_200_OK, content=profile)
+
+
+@router.put("/me/demographics")
+@inject
+async def update_own_demographics(
+    request: UpdateOwnDemographics,
+    current_user: dict = Depends(require_roles("parent")),
+    repo: UserRepository = Depends(Provide[Container.user_repository]),
+):
+    """Responsável preenche sua própria demografia (idade, faixa de renda,
+    monoparentalidade, nº de filhos e de filhos neurodivergentes) para as
+    métricas de adesão do painel administrativo. Requer consentimento
+    explícito (`consent: true`) — nenhum campo é salvo sem ele."""
+    if not request.consent:
+        return JSONResponse(
+            status_code=HTTP_400_BAD_REQUEST,
+            content={"error": "É necessário consentir com o uso desses dados para salvá-los."},
+        )
+    data = request.model_dump(exclude={"consent"}, exclude_none=True)
+    updated = await repo.update_demographics(current_user["user_id"], data)
+    if not updated:
+        return JSONResponse(status_code=HTTP_404_NOT_FOUND, content={"error": "Usuário não encontrado"})
+    return JSONResponse(status_code=HTTP_200_OK, content=updated)
 
 
 @router.patch("/users/{user_id}/role")

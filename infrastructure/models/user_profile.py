@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional
-from sqlalchemy import String, Boolean, DateTime, ForeignKey, func
+from sqlalchemy import String, Boolean, DateTime, Integer, ForeignKey, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from infrastructure.database_context.database import Base
 
@@ -30,6 +30,16 @@ class UserProfile(Base):
         String(64), ForeignKey("teachers.id", ondelete="CASCADE", onupdate="CASCADE"), nullable=True
     )
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # Demografia do responsável (role="parent") — usada nas métricas de nível de
+    # adesão do painel administrativo. Só faz sentido preenchido pra pais; nula
+    # pros demais roles. birth_year (não a data completa) e faixa de renda (não o
+    # valor exato) reduzem a sensibilidade do dado coletado. Requer consentimento
+    # explícito do responsável no cadastro (LGPD) — ver core/constants/demographics.py.
+    birth_year: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    income_bracket: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+    single_parent: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    children_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    neurodivergent_children_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     deleted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())

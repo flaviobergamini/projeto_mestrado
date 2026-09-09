@@ -1,13 +1,26 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import Optional
 from dependency_injector.wiring import inject, Provide
 
 from api.dependencies import get_current_user, get_current_user_read_write
 from core.kernel.container import Container
+from core.constants.demographics import GENDERS, TEACHER_ROLES
 from infrastructure.repositories.teacher_repository import TeacherRepository
 
 router = APIRouter(prefix="/teachers", tags=["Teachers"])
+
+
+def _validate_gender(v: Optional[str]) -> Optional[str]:
+    if v is not None and v not in GENDERS:
+        raise ValueError(f"gender deve ser um de: {sorted(GENDERS)}")
+    return v
+
+
+def _validate_teacher_role(v: Optional[str]) -> Optional[str]:
+    if v is not None and v not in TEACHER_ROLES:
+        raise ValueError(f"teacher_role deve ser um de: {sorted(TEACHER_ROLES)}")
+    return v
 
 
 class TeacherCreate(BaseModel):
@@ -17,6 +30,12 @@ class TeacherCreate(BaseModel):
     email: Optional[str] = None
     phone: Optional[str] = None
     notes: Optional[str] = None
+    birth_year: Optional[int] = None
+    gender: Optional[str] = None
+    teacher_role: Optional[str] = None
+
+    _validate_gender = field_validator("gender")(_validate_gender)
+    _validate_teacher_role = field_validator("teacher_role")(_validate_teacher_role)
 
 
 class TeacherUpdate(BaseModel):
@@ -26,6 +45,12 @@ class TeacherUpdate(BaseModel):
     email: Optional[str] = None
     phone: Optional[str] = None
     notes: Optional[str] = None
+    birth_year: Optional[int] = None
+    gender: Optional[str] = None
+    teacher_role: Optional[str] = None
+
+    _validate_gender = field_validator("gender")(_validate_gender)
+    _validate_teacher_role = field_validator("teacher_role")(_validate_teacher_role)
 
 
 @router.get("")

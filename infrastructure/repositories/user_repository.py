@@ -17,6 +17,11 @@ def _to_dict(u: UserProfile) -> dict:
         "municipality_id": u.municipality_id,
         "school_id": u.school_id,
         "teacher_id": u.teacher_id,
+        "birth_year": u.birth_year,
+        "income_bracket": u.income_bracket,
+        "single_parent": u.single_parent,
+        "children_count": u.children_count,
+        "neurodivergent_children_count": u.neurodivergent_children_count,
         "created_at": u.created_at.isoformat() if u.created_at else None,
     }
 
@@ -93,6 +98,22 @@ class UserRepository(IUserRepository):
                 user.role = role
             if is_active is not None:
                 user.is_active = is_active
+            await session.commit()
+            await session.refresh(user)
+            return _to_dict(user)
+
+    async def update_demographics(self, user_id: str, data: dict) -> Optional[dict]:
+        """Atualiza a demografia autodeclarada do responsável (role="parent"), usada
+        nas métricas de nível de adesão do painel administrativo. Preenchida pelo
+        próprio responsável, com consentimento explícito, nunca por um admin."""
+        async with self.database.session() as session:
+            result = await session.execute(select(UserProfile).where(UserProfile.id == user_id, UserProfile.deleted == False))
+            user = result.scalars().first()
+            if not user:
+                return None
+            for field in ("birth_year", "income_bracket", "single_parent", "children_count", "neurodivergent_children_count"):
+                if field in data:
+                    setattr(user, field, data[field])
             await session.commit()
             await session.refresh(user)
             return _to_dict(user)
