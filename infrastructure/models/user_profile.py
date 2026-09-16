@@ -27,7 +27,7 @@ class UserProfile(Base):
         String(64), ForeignKey("schools.id", ondelete="CASCADE", onupdate="CASCADE"), nullable=True, index=True
     )
     teacher_id: Mapped[Optional[str]] = mapped_column(
-        String(64), ForeignKey("teachers.id", ondelete="CASCADE", onupdate="CASCADE"), nullable=True
+        String(64), ForeignKey("teachers.id", ondelete="CASCADE", onupdate="CASCADE"), nullable=True, index=True
     )
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     # Demografia do responsável (role="parent") — usada nas métricas de nível de
