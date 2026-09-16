@@ -14,14 +14,22 @@ class RefreshTokenUseCase:
 
     async def execute(self, username: str, refresh_token: str):
         try:
-            try:
-                tokens = self.auth_service.refresh_token(username, refresh_token)
-            except AuthException as e:
-                return Result.unauthorized(e.message)
-
             user = await self.user_repository.get_by_username(username)
             if not user:
                 return Result.not_found("Usuário não encontrado")
+
+            try:
+                # O SECRET_HASH do fluxo REFRESH_TOKEN_AUTH é verificado pelo
+                # Cognito contra o Username CANÔNICO (o sub — um UUID), não
+                # contra o e-mail, mesmo num pool com UsernameAttributes=email.
+                # USER_PASSWORD_AUTH (login) aceita e-mail como alias e valida
+                # o SECRET_HASH computado com ele, mas REFRESH_TOKEN_AUTH não —
+                # sempre falha com "Unable to verify secret hash" se passarmos
+                # o e-mail aqui. user["id"] é o sub (ver CreateUserUseCase:
+                # id=cognito_sub), então é isso que precisa ir pro SECRET_HASH.
+                tokens = self.auth_service.refresh_token(user["id"], refresh_token)
+            except AuthException as e:
+                return Result.unauthorized(e.message)
 
             return Result.ok({
                 **tokens,

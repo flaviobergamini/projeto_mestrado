@@ -30,6 +30,7 @@ from infrastructure.models.diary_entry import DiaryEntry
 from infrastructure.models.pdi import Pdi
 from infrastructure.models.generated_pei import GeneratedPei
 from infrastructure.models.case_study_submission import CaseStudySubmission
+from infrastructure.models.pei_kanban_card import PeiKanbanCard
 
 logger = logging.getLogger(__name__)
 
@@ -184,6 +185,7 @@ class AnonymizationService:
         include_therapy_diary = include_all or "therapy_diary" in sources
         include_pdi = include_all or "pdi" in sources
         include_generated_pei = include_all or "generated_pei" in sources
+        include_kanban_progress = include_all or "kanban_progress" in sources
 
         async with self._db.session() as session:
             # ── Student ──────────────────────────────────────────────────────
@@ -411,6 +413,28 @@ class AnonymizationService:
                         "generated_at": str(gp.generated_at),
                     })
 
+            # ── Progresso do quadro Kanban de execução do PEI ──────────────────
+            # Retroalimentação pedida pelo orientador: o que o professor marcou
+            # como concluído/tentado em sala (e as observações que digitou) vira
+            # contexto pro próximo PEI — "o que funcionou" deixa de ser um
+            # improviso do professor e passa a constar no documento oficial.
+            kanban_progress_list: list[dict] = []
+            if include_kanban_progress:
+                kanban_result = await session.execute(
+                    select(PeiKanbanCard)
+                    .where(PeiKanbanCard.student_id == student_id,
+                           PeiKanbanCard.deleted == False)
+                    .order_by(PeiKanbanCard.updated_at.desc())
+                    .limit(30)
+                )
+                for card in kanban_result.scalars().all():
+                    kanban_progress_list.append({
+                        "titulo": card.title,
+                        "status": card.status,  # todo | doing | done
+                        "observacao_professor": (card.description or "")[:1500] or None,
+                        "reacao_aluno_1a5": card.reaction,
+                    })
+
         # ── De-anonymization map ──────────────────────────────────────────────
         deanon_map = build_deanon_map(student_dict, school_dict, teacher_dicts)
 
@@ -455,6 +479,13 @@ class AnonymizationService:
                 "sem o texto completo) ==="
             )
             sections.append(json.dumps(prev_pei_list, ensure_ascii=False, indent=2))
+
+        if kanban_progress_list:
+            sections.append(
+                f"=== PROGRESSO DE EXECUÇÃO DO PEI (quadro Kanban, {len(kanban_progress_list)} "
+                "cards mais recentes atualizados pelo professor) ==="
+            )
+            sections.append(json.dumps(kanban_progress_list, ensure_ascii=False, indent=2))
 
         context_str = "\n\n".join(sections)
         return context_str, deanon_map

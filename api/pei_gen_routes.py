@@ -13,10 +13,12 @@ from infrastructure.repositories.prompt_repository import PromptRepository
 from infrastructure.repositories.generated_pei_repository import GeneratedPeiRepository
 from infrastructure.repositories.ai_usage_repository import AiUsageRepository
 from infrastructure.repositories.student_repository import StudentRepository
+from infrastructure.repositories.pei_kanban_repository import PeiKanbanRepository
 from infrastructure.services.rag_service import RagService
 from infrastructure.services.gemini_service import GeminiService
 from infrastructure.services.anonymization_service import AnonymizationService, deanonymize
 from infrastructure.services.pdf_service import generate_pei_pdf
+from infrastructure.utils.pei_sections import parse_pei_sections
 
 router = APIRouter(prefix="/pei-gen", tags=["PEI Generation"])
 
@@ -44,6 +46,7 @@ async def generate_pei(
     pei_repo: GeneratedPeiRepository = Depends(Provide[Container.generated_pei_repository]),
     usage_repo: AiUsageRepository = Depends(Provide[Container.ai_usage_repository]),
     anon_svc: AnonymizationService = Depends(Provide[Container.anonymization_service]),
+    kanban_repo: PeiKanbanRepository = Depends(Provide[Container.pei_kanban_repository]),
 ):
     student = await student_repo.get_by_id(body.student_id)
     if not student:
@@ -139,6 +142,21 @@ Gere o Plano Educacional Individualizado (PEI) completo para este aluno."""
         sources_used=body.sources,
         generated_by=generated_by,
     )
+
+    # Um card de execução por seção do PEI recém-gerado, todos em "A fazer" —
+    # é o que vira o quadro Kanban de acompanhamento na sala de aula. Falha
+    # aqui não deve derrubar a geração do PEI em si (já salvo com sucesso).
+    try:
+        sections = parse_pei_sections(pei_text)
+        if sections:
+            await kanban_repo.create_many_from_pei(
+                student_id=body.student_id,
+                pei_id=saved["id"],
+                sections=sections,
+                created_by=generated_by,
+            )
+    except Exception:
+        pass
 
     return {
         "id": saved["id"],
