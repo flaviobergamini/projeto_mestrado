@@ -1,19 +1,24 @@
-app = "smartpei-backend"
-primary_region = "gru" # São Paulo — mesma região do Supabase (sa-east-1)
+# fly.toml app configuration file generated for projeto-mestrado on 2026-09-16T23:19:41Z
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'projeto-mestrado'
+primary_region = 'gru'
 
 [build]
 
 [env]
-  PORT = "8000"
+  PORT = '8000'
 
 [http_service]
   internal_port = 8000
   force_https = true
-  auto_stop_machines = "stop"
+  auto_stop_machines = 'stop'
   auto_start_machines = true
   min_machines_running = 0
 
 [[vm]]
-  cpu_kind = "shared"
+  cpu_kind = 'shared'
   cpus = 1
   memory_mb = 512
