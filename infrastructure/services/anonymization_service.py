@@ -29,6 +29,7 @@ from infrastructure.models.teacher_student_link import TeacherStudentLink
 from infrastructure.models.diary_entry import DiaryEntry
 from infrastructure.models.pdi import Pdi
 from infrastructure.models.generated_pei import GeneratedPei
+from infrastructure.models.case_study_submission import CaseStudySubmission
 
 logger = logging.getLogger(__name__)
 
@@ -96,11 +97,16 @@ def anon_diary_entry(entry: dict, school_id: str = "") -> dict:
     return data
 
 
+CASE_STUDY_PII_KEYS = {
+    "studentName", "schoolName", "mainTeacher", "supportTeacher",
+    "nomeAluno", "nomeEscola",
+}
+
+
 def anon_case_study(case: dict) -> dict:
     """Strip PII answer fields from a case study. Kept: student_id, behavioral/pedagogical answers."""
     answers = case.get("answers") or {}
-    PII_KEYS = {"studentName", "schoolName", "mainTeacher", "supportTeacher"}
-    clean_answers = {k: v for k, v in answers.items() if k not in PII_KEYS}
+    clean_answers = {k: v for k, v in answers.items() if k not in CASE_STUDY_PII_KEYS and v not in (None, "", [], {})}
     return {
         "student_id": case.get("student_id") or "",
         "submitted_at": (case.get("submitted_at") or "")[:10],
@@ -168,6 +174,7 @@ class AnonymizationService:
         include_student = include_all or "student" in sources
         include_school = include_all or "school" in sources
         include_teacher = include_all or "teacher" in sources
+        include_case_study = include_all or "case_study" in sources
         include_diary = include_all or "diary" in sources
         include_family_diary = include_all or "family_diary" in sources
         include_therapy_diary = include_all or "therapy_diary" in sources
@@ -225,6 +232,29 @@ class AnonymizationService:
                               "specialization": t.specialization}
                         teacher_dicts.append(td)
                         teachers_anon.append(anon_teacher(td))
+
+            # ── Estudo de caso (respostas de questionário, anonimizadas) ────────
+            # As respostas do formulário de estudo de caso enriquecem o contexto
+            # do PEI/Chat além dos campos estruturados do aluno (ex.: perfil
+            # sensorial, comunicação, rotina) — antes só entravam via RAG.
+            case_study_anon: dict = {}
+            if include_case_study:
+                case_result = await session.execute(
+                    select(CaseStudySubmission)
+                    .where(
+                        CaseStudySubmission.student_id == student_id,
+                        CaseStudySubmission.deleted == False,
+                    )
+                    .order_by(CaseStudySubmission.submitted_at.desc())
+                    .limit(1)
+                )
+                case_row = case_result.scalars().first()
+                if case_row:
+                    case_study_anon = anon_case_study({
+                        "student_id": case_row.student_id,
+                        "submitted_at": case_row.submitted_at.isoformat() if case_row.submitted_at else "",
+                        "answers": case_row.answers or {},
+                    })
 
             # ── Recent diary entries ─────────────────────────────────────────
             school_id = student_row.school_id or ""
@@ -387,6 +417,10 @@ class AnonymizationService:
         if teachers_anon:
             sections.append("=== DOCENTES VINCULADOS (ANONIMIZADOS) ===")
             sections.append(json.dumps(teachers_anon, ensure_ascii=False, indent=2))
+
+        if case_study_anon.get("answers"):
+            sections.append("=== ESTUDO DE CASO — respostas do questionário (ANONIMIZADO) ===")
+            sections.append(json.dumps(case_study_anon, ensure_ascii=False, indent=2))
 
         if diary_anon_list:
             sections.append(f"=== DIÁRIO ESCOLAR (últimas {len(diary_anon_list)} entradas, ANONIMIZADO) ===")

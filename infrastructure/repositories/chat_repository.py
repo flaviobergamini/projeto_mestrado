@@ -25,6 +25,7 @@ class ChatRepository:
         student_id: Optional[str] = None,
         student_name: Optional[str] = None,
         school_name: Optional[str] = None,
+        title: Optional[str] = None,
     ) -> dict:
         async with self._db.session() as session:
             obj = ChatSession(
@@ -36,6 +37,7 @@ class ChatRepository:
                 student_id=student_id,
                 student_name=student_name,
                 school_name=school_name,
+                title=title,
             )
 
             session.add(obj)

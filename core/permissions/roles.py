@@ -77,6 +77,12 @@ CAN_WRITE_FAMILY_DIARY = {ADMIN, PARENT}
 # Quem pode registrar diário de terapia
 CAN_WRITE_THERAPY_DIARY = {ADMIN, THERAPIST}
 
+# Quem pode gerar Resumo Diário (chat com IA + salvar)
+CAN_GENERATE_DIARY_SUMMARY = {ADMIN}
+
+# Quem pode visualizar Resumos Diários já salvos
+CAN_VIEW_DIARY_SUMMARY = {ADMIN, COORDENACAO, PROFESSOR, PARENT}
+
 
 # ------------------------------------------------------------------ #
 # Helpers                                                             #

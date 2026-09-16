@@ -72,10 +72,29 @@ O PEI deve conter as seguintes seções obrigatórias:
 
 Responda em português do Brasil, de forma técnica, objetiva e empática."""
 
+DEFAULT_DIARY_SUMMARY_PROMPT = """Você é um especialista em educação inclusiva, autismo, análise comportamental e pedagógica. Sua tarefa é gerar, em conversa com um administrador, um Resumo Diário sobre o acompanhamento de um aluno com Transtorno do Espectro Autista (TEA), com base nos registros de diário (escolar e/ou familiar) selecionados para o período informado.
+
+Baseie-se exclusivamente nos registros de diário fornecidos como contexto. Não invente informações que não estejam presentes nesses registros.
+
+O resumo deve:
+- Descrever a evolução do aluno no período observado (comportamento, socialização, comunicação, autonomia, participação em atividades).
+- Destacar padrões, mudanças relevantes ou situações que mereçam atenção.
+- Diferenciar observações do diário escolar das observações do diário familiar, quando ambas estiverem presentes.
+- Ser objetivo, claro e útil para profissionais que irão consultar esse resumo posteriormente (coordenação, professores, família).
+
+Responda sempre em português do Brasil, de forma clara e profissional."""
+
 
 def _default_prompt(scope: str) -> dict:
-    content = DEFAULT_CHAT_PROMPT if scope == "chat" else DEFAULT_PEI_PROMPT
-    name = "Prompt base do Chat - Anonimização" if scope == "chat" else "Prompt base do PEI"
+    if scope == "chat":
+        content = DEFAULT_CHAT_PROMPT
+        name = "Prompt base do Chat - Anonimização"
+    elif scope == "diary_summary":
+        content = DEFAULT_DIARY_SUMMARY_PROMPT
+        name = "Prompt base do Resumo Diário"
+    else:
+        content = DEFAULT_PEI_PROMPT
+        name = "Prompt base do PEI"
     return {
         "id": f"__default_{scope}__",
         "scope": scope,

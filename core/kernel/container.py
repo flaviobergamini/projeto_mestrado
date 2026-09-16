@@ -29,6 +29,9 @@ from infrastructure.repositories.municipality_repository import MunicipalityRepo
 from infrastructure.repositories.audit_repository import AuditRepository
 from infrastructure.repositories.ai_usage_repository import AiUsageRepository
 from infrastructure.repositories.vinculos_repository import VinculosRepository
+from infrastructure.repositories.diary_summary_repository import DiarySummaryRepository
+from infrastructure.repositories.metrics_repository import MetricsRepository
+from infrastructure.repositories.skill_repository import SkillRepository
 from infrastructure.services.anonymization_service import AnonymizationService
 from infrastructure.services.cognito_service import CognitoService
 from infrastructure.services.gemini_service import GeminiService
@@ -43,7 +46,8 @@ class Container(containers.DeclarativeContainer):
             "api.school_routes", "api.teacher_routes", "api.case_study_routes",
             "api.chat_routes", "api.prompt_routes", "api.pei_gen_routes",
             "api.municipality_routes", "api.admin_routes", "api.ai_usage_routes",
-            "api.vinculos_routes", "api.family_routes",
+            "api.vinculos_routes", "api.family_routes", "api.diary_summary_routes",
+            "api.metrics_routes", "api.skill_routes",
         ],
     )
 
@@ -91,6 +95,12 @@ class Container(containers.DeclarativeContainer):
     ai_usage_repository = providers.Factory(AiUsageRepository, database=database)
 
     vinculos_repository = providers.Factory(VinculosRepository, database=database)
+
+    diary_summary_repository = providers.Factory(DiarySummaryRepository, database=database)
+
+    metrics_repository = providers.Factory(MetricsRepository, database=database)
+
+    skill_repository = providers.Factory(SkillRepository, database=database)
 
     anonymization_service = providers.Factory(AnonymizationService, database=database)
 

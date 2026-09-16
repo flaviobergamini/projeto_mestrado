@@ -1,4 +1,5 @@
 """Ferramentas MCP para Chat RAG com contexto de alunos."""
+import asyncio
 from mcp.server.fastmcp import FastMCP
 from mcp_server.context import (
     get_chat_repo,
@@ -113,7 +114,8 @@ Os identificadores no contexto são UUIDs — não representam nomes reais.
 Responda com base nos dados fornecidos."""
 
         try:
-            raw_resposta, usage = gemini.generate_text_tracked(
+            raw_resposta, usage = await asyncio.to_thread(
+                gemini.generate_text_tracked,
                 prompt=prompt,
                 system_instruction=system_instruction,
             )

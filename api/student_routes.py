@@ -4,12 +4,21 @@ from typing import Optional
 from dependency_injector.wiring import inject, Provide
 from sqlalchemy import select
 
+from pydantic import field_validator
+
 from api.dependencies import get_current_user, get_current_user_read_write
 from core.kernel.container import Container
+from core.constants.demographics import AUTISM_SUPPORT_LEVELS
 from infrastructure.repositories.student_repository import StudentRepository
 from infrastructure.models.school import School
 
 router = APIRouter(prefix="/students", tags=["Students"])
+
+
+def _validate_support_level(v: Optional[str]) -> Optional[str]:
+    if v is not None and v not in AUTISM_SUPPORT_LEVELS:
+        raise ValueError(f"autism_support_level deve ser um de: {sorted(AUTISM_SUPPORT_LEVELS)}")
+    return v
 
 
 class StudentCreate(BaseModel):
@@ -22,6 +31,9 @@ class StudentCreate(BaseModel):
     guardians: Optional[list[str]] = None
     diagnosis: Optional[str] = None
     notes: Optional[str] = None
+    autism_support_level: Optional[str] = None
+
+    _validate_autism_support_level = field_validator("autism_support_level")(_validate_support_level)
 
 
 class StudentUpdate(BaseModel):
@@ -34,6 +46,9 @@ class StudentUpdate(BaseModel):
     guardians: Optional[list[str]] = None
     diagnosis: Optional[str] = None
     notes: Optional[str] = None
+    autism_support_level: Optional[str] = None
+
+    _validate_autism_support_level = field_validator("autism_support_level")(_validate_support_level)
 
 
 @router.get("/schools-list")
