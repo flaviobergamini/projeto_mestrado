@@ -7,12 +7,26 @@ trazer milhares de diary_entries pra memória a cada carregamento do painel.
 Faixas etárias e de renda são calculadas a partir de birth_year/age (não de datas
 completas), reduzindo a granularidade do dado sensível sem perder a métrica.
 """
-from datetime import date
+from datetime import date, timedelta
 from typing import Optional
 from sqlalchemy import select, text
 from infrastructure.database_context.database import Database
 from infrastructure.models.diary_entry import DiaryEntry
 from infrastructure.models.student import Student
+
+# Painel de métricas carregava o histórico inteiro de diary_entries por
+# padrão (sem date_from/date_to informados) — full scan a cada abertura da
+# página, mesmo pros gráficos que só fazem sentido olhando um recorte recente.
+# Sem filtro explícito do usuário, a própria query no banco já limita à última
+# semana, em vez de escanear tudo e limitar depois em Python.
+_DEFAULT_WINDOW_DAYS = 7
+
+
+def _default_window(date_from: Optional[date], date_to: Optional[date]) -> tuple[date, date]:
+    if date_from is None and date_to is None:
+        today = date.today()
+        return today - timedelta(days=_DEFAULT_WINDOW_DAYS), today
+    return date_from, date_to
 
 # Bucket de idade reutilizado nas queries de aluno (coluna students.age, string livre).
 _STUDENT_AGE_BUCKET_SQL = """
@@ -50,6 +64,7 @@ class MetricsRepository:
         self, date_from: Optional[date] = None, date_to: Optional[date] = None,
         source: str = "school",
     ) -> list[dict]:
+        date_from, date_to = _default_window(date_from, date_to)
         query = text(f"""
             SELECT
                 m.name AS municipality_name,
@@ -80,6 +95,7 @@ class MetricsRepository:
         self, date_from: Optional[date] = None, date_to: Optional[date] = None,
         source: str = "school",
     ) -> list[dict]:
+        date_from, date_to = _default_window(date_from, date_to)
         query = text("""
             SELECT
                 COALESCE(s.autism_support_level, 'nao_informado') AS support_level,
@@ -106,6 +122,7 @@ class MetricsRepository:
         self, date_from: Optional[date] = None, date_to: Optional[date] = None,
         school_id: Optional[str] = None,
     ) -> list[dict]:
+        date_from, date_to = _default_window(date_from, date_to)
         query = text("""
             SELECT
                 sc.name AS school_name,
@@ -178,6 +195,7 @@ class MetricsRepository:
     async def diary_fill_by_teacher_attributes(
         self, date_from: Optional[date] = None, date_to: Optional[date] = None,
     ) -> list[dict]:
+        date_from, date_to = _default_window(date_from, date_to)
         query = text(f"""
             SELECT
                 COALESCE(t.teacher_role, 'nao_informado') AS teacher_role,
@@ -206,6 +224,7 @@ class MetricsRepository:
     async def diary_fill_by_parent_profile(
         self, date_from: Optional[date] = None, date_to: Optional[date] = None,
     ) -> list[dict]:
+        date_from, date_to = _default_window(date_from, date_to)
         query = text(f"""
             SELECT
                 COALESCE(up.income_bracket, 'nao_informado') AS income_bracket,
@@ -245,6 +264,7 @@ class MetricsRepository:
     async def behavior_by_support_level(
         self, date_from: Optional[date] = None, date_to: Optional[date] = None,
     ) -> list[dict]:
+        date_from, date_to = _default_window(date_from, date_to)
         # As respostas do diário (had_lunch, participated_in_play, etc.) são
         # EncryptedText — Fernet usa IV aleatório, então duas respostas 'Sim'
         # nunca têm o mesmo ciphertext. Um `WHERE d.had_lunch = 'Sim'` em SQL

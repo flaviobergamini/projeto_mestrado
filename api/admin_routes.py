@@ -1,5 +1,6 @@
 """Admin endpoints: user CRUD, pre-registration summary, audit logs."""
 
+import asyncio
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from typing import Optional
@@ -123,40 +124,35 @@ async def delete_user(
 
 # ── Pre-registration summary ────────────────────────────────────────────────────
 
-@router.get("/pre-registrations")
-@inject
-async def pre_registrations(
-    current_user: dict = Depends(require_roles("admin")),
-    database: Database = Depends(Provide[Container.database]),
-):
-    """Returns paginated lists of schools, teachers and students with municipality context."""
+async def _fetch_schools(database: Database) -> list[dict]:
     async with database.session() as session:
-        # Schools with municipality name
-        school_rows = await session.execute(
+        rows = await session.execute(
             select(School, Municipality.name.label("municipality_name"))
             .outerjoin(Municipality, School.municipality_id == Municipality.id)
             .where(School.deleted == False)  # noqa: E712
             .order_by(School.name)
         )
-        schools = [
+        return [
             {
                 "id": s.id,
                 "name": s.name,
                 "municipality_id": s.municipality_id,
                 "municipality_name": mname,
             }
-            for s, mname in school_rows.all()
+            for s, mname in rows.all()
         ]
 
-        # Teachers with school + municipality
-        teacher_rows = await session.execute(
+
+async def _fetch_teachers(database: Database) -> list[dict]:
+    async with database.session() as session:
+        rows = await session.execute(
             select(Teacher, School.name.label("school_name"), Municipality.name.label("municipality_name"))
             .outerjoin(School, Teacher.school_id == School.id)
             .outerjoin(Municipality, School.municipality_id == Municipality.id)
             .where(Teacher.deleted == False)  # noqa: E712
             .order_by(Teacher.name)
         )
-        teachers = [
+        return [
             {
                 "id": t.id,
                 "name": t.name,
@@ -164,17 +160,19 @@ async def pre_registrations(
                 "school_name": sname,
                 "municipality_name": mname,
             }
-            for t, sname, mname in teacher_rows.all()
+            for t, sname, mname in rows.all()
         ]
 
-        # Students with school name
-        student_rows = await session.execute(
+
+async def _fetch_students(database: Database) -> list[dict]:
+    async with database.session() as session:
+        rows = await session.execute(
             select(Student, School.name.label("school_name"))
             .outerjoin(School, Student.school_id == School.id)
             .where(Student.deleted == False)  # noqa: E712
             .order_by(Student.name)
         )
-        students = [
+        return [
             {
                 "id": s.id,
                 "name": s.name,
@@ -182,9 +180,27 @@ async def pre_registrations(
                 "school_name": sname,
                 "grade": s.grade,
             }
-            for s, sname in student_rows.all()
+            for s, sname in rows.all()
         ]
 
+
+@router.get("/pre-registrations")
+@inject
+async def pre_registrations(
+    current_user: dict = Depends(require_roles("admin")),
+    database: Database = Depends(Provide[Container.database]),
+):
+    """Returns paginated lists of schools, teachers and students with municipality context.
+
+    As três consultas não dependem uma da outra — cada uma abre sua própria
+    sessão (uma AsyncSession não pode ser usada por queries concorrentes) e
+    roda em paralelo via asyncio.gather, em vez de esperar uma terminar pra
+    começar a próxima."""
+    schools, teachers, students = await asyncio.gather(
+        _fetch_schools(database),
+        _fetch_teachers(database),
+        _fetch_students(database),
+    )
     return {"schools": schools, "teachers": teachers, "students": students}
 
 
