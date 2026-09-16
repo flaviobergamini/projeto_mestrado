@@ -388,6 +388,14 @@ class AnonymizationService:
                     })
 
             # ── PEIs gerados anteriormente ───────────────────────────────────
+            # Só metadados — NUNCA o pei_text, igual a PoC (app.py::_build_anonymized_
+            # student_context, seção "PEIs anteriores"). Dois motivos: (1) um PEI salvo
+            # já foi desanonimizado (tem nome real do aluno), reenviar o texto pra IA
+            # vazaria PII que o resto do pipeline trabalha duro pra não expor; (2) um
+            # PEI corrompido (ex.: por um loop de repetição do próprio Gemini) virava
+            # contexto "envenenado" que realimentava e piorava a próxima geração —
+            # causa raiz confirmada de PEIs de até 1,8M caracteres pra alunos com
+            # histórico grande de diário.
             prev_pei_list: list[dict] = []
             if include_generated_pei:
                 gpei_result = await session.execute(
@@ -400,7 +408,6 @@ class AnonymizationService:
                 for gp in gpei_result.scalars().all():
                     prev_pei_list.append({
                         "id": gp.id,
-                        "pei_text": gp.pei_text[:3000],  # truncate to avoid huge prompts
                         "generated_at": str(gp.generated_at),
                     })
 
@@ -443,7 +450,10 @@ class AnonymizationService:
             sections.append(json.dumps(pdi_anon_list, ensure_ascii=False, indent=2))
 
         if prev_pei_list:
-            sections.append(f"=== PEIs GERADOS ANTERIORMENTE (últimos {len(prev_pei_list)}) ===")
+            sections.append(
+                f"=== PEIs GERADOS ANTERIORMENTE (últimos {len(prev_pei_list)} — apenas metadados, "
+                "sem o texto completo) ==="
+            )
             sections.append(json.dumps(prev_pei_list, ensure_ascii=False, indent=2))
 
         context_str = "\n\n".join(sections)
