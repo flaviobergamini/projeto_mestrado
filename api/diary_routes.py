@@ -79,7 +79,9 @@ async def transcribe_diary_audio(
                             detail="Áudio muito grande. Máximo: 20 MB.")
 
     try:
-        fields, usage = gemini.transcribe_diary_audio(content, mime_type=normalized_mime)
+        fields, usage = await asyncio.to_thread(
+            gemini.transcribe_diary_audio, content, mime_type=normalized_mime
+        )
         await usage_repo.log(
             model=usage.model,
             operation="diary_audio_transcription",
@@ -206,7 +208,11 @@ async def delete_all_for_student(
 
 
 async def _fetch_images_map(entry_ids: list[str], diary_repo: DiaryRepository) -> dict[str, list[bytes]]:
-    """Download image bytes for a list of diary entry IDs."""
+    """Download image bytes for a list of diary entry IDs.
+
+    Baixa todas as imagens em paralelo (asyncio.gather) em vez de uma por vez —
+    com N imagens a ~1-2s cada, sequencial custava N segundos; em paralelo custa
+    ~o tempo do download mais lento, já que é tudo I/O de rede (não CPU)."""
     if not entry_ids:
         return {}
     grouped = await diary_repo.list_images_batch(entry_ids)
@@ -215,21 +221,33 @@ async def _fetch_images_map(entry_ids: list[str], diary_repo: DiaryRepository) -
         return {}
     storage = StorageService()
     signed_map = await storage.create_signed_urls_batch_async(all_keys)
-    result: dict[str, list[bytes]] = {}
-    async with httpx.AsyncClient(timeout=30) as client:
+
+    async def _download(client: httpx.AsyncClient, entry_id: str, url: str) -> tuple[str, bytes | None]:
+        try:
+            # O timeout do próprio httpx.AsyncClient nem sempre é respeitado em
+            # alguns downloads (caso raro visto na prática — leitura da resposta
+            # trava indefinidamente mesmo com timeout=30 configurado). O
+            # asyncio.wait_for garante um limite duro independente disso: se um
+            # download travar, ele é cancelado e tratado como "sem imagem" em
+            # vez de travar a exportação inteira do PDF pra sempre.
+            resp = await asyncio.wait_for(client.get(url), timeout=20)
+            return (entry_id, resp.content if resp.status_code == 200 else None)
+        except Exception:
+            return (entry_id, None)
+
+    tasks = []
+    async with httpx.AsyncClient(timeout=20) as client:
         for entry_id, recs in grouped.items():
-            imgs: list[bytes] = []
             for rec in recs:
                 url = signed_map.get(rec.get("object_key", "")) or rec.get("public_url", "")
                 if url:
-                    try:
-                        resp = await client.get(url)
-                        if resp.status_code == 200:
-                            imgs.append(resp.content)
-                    except Exception:
-                        pass
-            if imgs:
-                result[entry_id] = imgs
+                    tasks.append(_download(client, entry_id, url))
+        downloaded = await asyncio.gather(*tasks) if tasks else []
+
+    result: dict[str, list[bytes]] = {}
+    for entry_id, content in downloaded:
+        if content:
+            result.setdefault(entry_id, []).append(content)
     return result
 
 
@@ -260,7 +278,10 @@ async def export_diary_pdf(
     entry_ids = [e["id"] for e in entries if e.get("id")]
     images_map = await _fetch_images_map(entry_ids, repo)
 
-    pdf_bytes = generate_diary_pdf(
+    # generate_diary_pdf é síncrona/CPU-bound (ReportLab) — rodar em thread separada
+    # evita travar o event loop (e todas as outras requisições) durante a renderização.
+    pdf_bytes = await asyncio.to_thread(
+        generate_diary_pdf,
         entries=entries,
         student_name=student.get("name", ""),
         diary_label="Diário Escolar",

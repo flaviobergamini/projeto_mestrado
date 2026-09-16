@@ -20,6 +20,9 @@ class TeacherRepository:
             "email": t.email,
             "phone": t.phone,
             "notes": t.notes,
+            "birth_year": t.birth_year,
+            "gender": t.gender,
+            "teacher_role": t.teacher_role,
             "created_at": t.created_at.isoformat() if t.created_at else None,
             "updated_at": t.updated_at.isoformat() if t.updated_at else None,
         }
@@ -52,6 +55,9 @@ class TeacherRepository:
                 email=data.get("email"),
                 phone=data.get("phone"),
                 notes=data.get("notes"),
+                birth_year=data.get("birth_year"),
+                gender=data.get("gender"),
+                teacher_role=data.get("teacher_role"),
             )
 
             session.add(teacher)
@@ -69,6 +75,9 @@ class TeacherRepository:
                 "email": teacher.email,
                 "phone": teacher.phone,
                 "notes": teacher.notes,
+                "birth_year": teacher.birth_year,
+                "gender": teacher.gender,
+                "teacher_role": teacher.teacher_role,
                 "created_at": teacher.created_at.isoformat() if teacher.created_at else None,
                 "updated_at": teacher.updated_at.isoformat() if teacher.updated_at else None,
             }
@@ -84,7 +93,8 @@ class TeacherRepository:
             if not teacher:
                 return None
             
-            for field in ("name", "school_id", "specialization", "email", "phone", "notes"):
+            for field in ("name", "school_id", "specialization", "email", "phone", "notes",
+                          "birth_year", "gender", "teacher_role"):
                 if field in data:
                     setattr(teacher, field, data[field] or None if field == "school_id" else data[field])
 

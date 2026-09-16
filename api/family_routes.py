@@ -41,14 +41,31 @@ class SetStudentsBody(BaseModel):
 class FamilyDiaryCreate(BaseModel):
     student_id: str
     diary_date: str
-    open_observation: str
+    open_observation: Optional[str] = None
     presence: Optional[str] = "Presente"
     absence_reason: Optional[str] = None
+    # Perguntas pré-prontas (Sim/Não/Parcialmente) para facilitar o preenchimento pelos pais
+    had_lunch: Optional[str] = None
+    participated_in_play: Optional[str] = None
+    teacher_attention: Optional[str] = None
+    activity_interest: Optional[str] = None
+    completed_activities: Optional[str] = None
+    bathroom_use: Optional[str] = None
+    followed_agreements: Optional[str] = None
 
 
 class FamilyDiaryUpdate(BaseModel):
     diary_date: Optional[str] = None
     open_observation: Optional[str] = None
+    presence: Optional[str] = None
+    absence_reason: Optional[str] = None
+    had_lunch: Optional[str] = None
+    participated_in_play: Optional[str] = None
+    teacher_attention: Optional[str] = None
+    activity_interest: Optional[str] = None
+    completed_activities: Optional[str] = None
+    bathroom_use: Optional[str] = None
+    followed_agreements: Optional[str] = None
 
 
 class TherapyDiaryCreate(BaseModel):
@@ -347,7 +364,9 @@ async def export_family_diary_pdf(
     )
     entry_ids = [e["id"] for e in entries if e.get("id")]
     images_map = await _fetch_images_map(entry_ids, diary_repo)
-    pdf_bytes = generate_diary_pdf(
+    # síncrona/CPU-bound (ReportLab) — roda em thread separada pra não travar o event loop
+    pdf_bytes = await asyncio.to_thread(
+        generate_diary_pdf,
         entries=entries,
         student_name=(student or {}).get("name", ""),
         diary_label="Diário Familiar",
@@ -393,7 +412,9 @@ async def export_therapy_diary_pdf(
     )
     entry_ids = [e["id"] for e in entries if e.get("id")]
     images_map = await _fetch_images_map(entry_ids, diary_repo)
-    pdf_bytes = generate_diary_pdf(
+    # síncrona/CPU-bound (ReportLab) — roda em thread separada pra não travar o event loop
+    pdf_bytes = await asyncio.to_thread(
+        generate_diary_pdf,
         entries=entries,
         student_name=(student or {}).get("name", ""),
         diary_label="Diário de Terapia",
@@ -437,7 +458,9 @@ async def transcribe_family_audio(
     } else "audio/webm"
 
     try:
-        text, usage = gemini.transcribe_audio_verbatim(content, mime_type=mime_type)
+        text, usage = await asyncio.to_thread(
+            gemini.transcribe_audio_verbatim, content, mime_type=mime_type
+        )
         await usage_repo.log(
             model=usage.model,
             operation="family_audio_transcription",

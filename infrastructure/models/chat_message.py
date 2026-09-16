@@ -1,9 +1,13 @@
 from datetime import datetime
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 from sqlalchemy import String, Integer, Text, DateTime, ForeignKey, JSON, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from infrastructure.database_context.database import Base
 from infrastructure.utils.encryption import EncryptedText
+
+if TYPE_CHECKING:
+    from infrastructure.models.chat_session import ChatSession
+    from infrastructure.models.user_profile import UserProfile
 
 
 class ChatMessage(Base):

@@ -1,9 +1,12 @@
 from datetime import datetime
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 from sqlalchemy import String, Boolean, DateTime, JSON, ForeignKey, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from infrastructure.database_context.database import Base
 from infrastructure.utils.encryption import EncryptedText, EncryptedJSON
+
+if TYPE_CHECKING:
+    from infrastructure.models.student import Student
 
 
 class CaseStudySubmission(Base):

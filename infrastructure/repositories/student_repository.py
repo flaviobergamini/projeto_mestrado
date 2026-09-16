@@ -36,6 +36,7 @@ def _to_dict(s: Student, school_name: Optional[str] = None) -> dict:
         "guardians": guardians,
         "diagnosis": s.diagnosis,
         "notes": s.notes,
+        "autism_support_level": s.autism_support_level,
         "created_at": s.created_at.isoformat() if s.created_at else None,
         "updated_at": s.updated_at.isoformat() if s.updated_at else None,
     }
@@ -86,6 +87,7 @@ class StudentRepository:
                 guardians=json.dumps(guardians, ensure_ascii=False) if guardians else None,
                 diagnosis=data.get("diagnosis"),
                 notes=data.get("notes"),
+                autism_support_level=data.get("autism_support_level"),
                 anonymized_data=_build_anonymized_data(
                     sid, data.get("school_id"), data.get("age"),
                     data.get("grade"), data.get("class_name"), data.get("diagnosis"),
@@ -121,6 +123,8 @@ class StudentRepository:
                 student.diagnosis = data["diagnosis"]
             if "notes" in data:
                 student.notes = data["notes"]
+            if "autism_support_level" in data:
+                student.autism_support_level = data["autism_support_level"]
             # Refresh anonymized_data whenever non-PII fields change
             student.anonymized_data = _build_anonymized_data(
                 student.id, student.school_id, student.age,
