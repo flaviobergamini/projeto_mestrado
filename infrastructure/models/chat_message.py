@@ -21,7 +21,7 @@ class ChatMessage(Base):
     role: Mapped[str] = mapped_column(String(32), nullable=False)
     content: Mapped[str] = mapped_column(EncryptedText, nullable=False)
     user_id: Mapped[Optional[str]] = mapped_column(
-        String(64), ForeignKey("user_profiles.id", ondelete="CASCADE", onupdate="CASCADE"), nullable=True
+        String(64), ForeignKey("user_profiles.id", ondelete="CASCADE", onupdate="CASCADE"), nullable=True, index=True
     )
     username: Mapped[Optional[str]] = mapped_column(EncryptedText, nullable=True)
     sources: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
