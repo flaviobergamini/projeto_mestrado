@@ -158,6 +158,10 @@ class AnonymizationService:
         sources: list[str] | None = None,
         diary_date_from: str | None = None,
         diary_date_to: str | None = None,
+        family_diary_date_from: str | None = None,
+        family_diary_date_to: str | None = None,
+        therapy_diary_date_from: str | None = None,
+        therapy_diary_date_to: str | None = None,
     ) -> tuple[str, dict[str, str]]:
         """Return (anonymized_context_str, deanon_map).
 
@@ -312,10 +316,10 @@ class AnonymizationService:
                     DiaryEntry.deleted == False,
                     DiaryEntry.source == "family",
                 ]
-                if diary_date_from:
-                    fam_filters.append(DiaryEntry.diary_date >= date_type.fromisoformat(diary_date_from))
-                if diary_date_to:
-                    fam_filters.append(DiaryEntry.diary_date <= date_type.fromisoformat(diary_date_to))
+                if family_diary_date_from:
+                    fam_filters.append(DiaryEntry.diary_date >= date_type.fromisoformat(family_diary_date_from))
+                if family_diary_date_to:
+                    fam_filters.append(DiaryEntry.diary_date <= date_type.fromisoformat(family_diary_date_to))
                 fam_result = await session.execute(
                     select(DiaryEntry).where(*fam_filters)
                     .order_by(DiaryEntry.diary_date.desc())
@@ -343,10 +347,10 @@ class AnonymizationService:
                     DiaryEntry.deleted == False,
                     DiaryEntry.source == "therapy",
                 ]
-                if diary_date_from:
-                    ther_filters.append(DiaryEntry.diary_date >= date_type.fromisoformat(diary_date_from))
-                if diary_date_to:
-                    ther_filters.append(DiaryEntry.diary_date <= date_type.fromisoformat(diary_date_to))
+                if therapy_diary_date_from:
+                    ther_filters.append(DiaryEntry.diary_date >= date_type.fromisoformat(therapy_diary_date_from))
+                if therapy_diary_date_to:
+                    ther_filters.append(DiaryEntry.diary_date <= date_type.fromisoformat(therapy_diary_date_to))
                 ther_result = await session.execute(
                     select(DiaryEntry).where(*ther_filters)
                     .order_by(DiaryEntry.diary_date.desc())

@@ -24,8 +24,12 @@ router = APIRouter(prefix="/pei-gen", tags=["PEI Generation"])
 class GeneratePEIRequest(BaseModel):
     student_id: str
     sources: Optional[list[str]] = None
-    diary_date_from: Optional[str] = None  # YYYY-MM-DD
+    diary_date_from: Optional[str] = None  # YYYY-MM-DD — diário escolar
     diary_date_to: Optional[str] = None    # YYYY-MM-DD
+    family_diary_date_from: Optional[str] = None
+    family_diary_date_to: Optional[str] = None
+    therapy_diary_date_from: Optional[str] = None
+    therapy_diary_date_to: Optional[str] = None
 
 
 @router.post("/generate")
@@ -48,21 +52,27 @@ async def generate_pei(
     student_name = student.get("name", "")
     generated_by = current_user.get("user_id")
 
-    # Build anonymised student context (sections filtered by selected sources)
-    anon_context, deanon_map = await anon_svc.build_context(
-        body.student_id,
-        diary_limit=15,
-        sources=body.sources,
-        diary_date_from=body.diary_date_from,
-        diary_date_to=body.diary_date_to,
-    )
-
-    # RAG: semantically similar chunks (anonymised embeddings)
-    rag_context = await rag.build_rag_context(
-        query="perfil completo do aluno: comportamento, socialização, habilidades, dificuldades, histórico escolar, família",
-        student_id=body.student_id,
-        limit=10,
-        sources=body.sources,
+    # Contexto anonimizado (queries estruturadas) e busca RAG (embedding + vetorial)
+    # não dependem um do outro — cada um abre sua própria sessão de DB, então
+    # rodar em paralelo corta o tempo de espera ao invés de somar os dois.
+    (anon_context, deanon_map), rag_context = await asyncio.gather(
+        anon_svc.build_context(
+            body.student_id,
+            diary_limit=15,
+            sources=body.sources,
+            diary_date_from=body.diary_date_from,
+            diary_date_to=body.diary_date_to,
+            family_diary_date_from=body.family_diary_date_from,
+            family_diary_date_to=body.family_diary_date_to,
+            therapy_diary_date_from=body.therapy_diary_date_from,
+            therapy_diary_date_to=body.therapy_diary_date_to,
+        ),
+        rag.build_rag_context(
+            query="perfil completo do aluno: comportamento, socialização, habilidades, dificuldades, histórico escolar, família",
+            student_id=body.student_id,
+            limit=10,
+            sources=body.sources,
+        ),
     )
 
     prompt_data = await prompt_repo.get_active("pei")
