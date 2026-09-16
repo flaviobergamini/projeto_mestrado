@@ -102,6 +102,21 @@ class UserRepository(IUserRepository):
             await session.refresh(user)
             return _to_dict(user)
 
+    async def update_username(self, user_id: str, new_username: str) -> Optional[dict]:
+        """Atualiza o e-mail de login armazenado localmente (username == email).
+        Chamar SEMPRE depois de IAuthService.update_email ter sucesso no Cognito —
+        senão o perfil local fica com um e-mail que o Cognito não reconhece mais
+        pra login (get_by_username em login_user_use_case não acharia o perfil)."""
+        async with self.database.session() as session:
+            result = await session.execute(select(UserProfile).where(UserProfile.id == user_id, UserProfile.deleted == False))
+            user = result.scalars().first()
+            if not user:
+                return None
+            user.username = new_username
+            await session.commit()
+            await session.refresh(user)
+            return _to_dict(user)
+
     async def update_demographics(self, user_id: str, data: dict) -> Optional[dict]:
         """Atualiza a demografia autodeclarada do responsável (role="parent"), usada
         nas métricas de nível de adesão do painel administrativo. Preenchida pelo

@@ -9,6 +9,8 @@ from sqlalchemy import select, func
 from api.dependencies import require_roles
 from core.kernel.container import Container
 from core.interfaces.i_auth_service import IAuthService
+from core.exceptions.auth_exceptions import AuthException
+from domain.schema import UpdateOwnDemographics
 from infrastructure.database_context.database import Database
 from infrastructure.repositories.user_repository import UserRepository
 from infrastructure.repositories.audit_repository import AuditRepository
@@ -24,6 +26,7 @@ class UserUpdateBody(BaseModel):
     full_name: Optional[str] = None
     role: Optional[str] = None
     is_active: Optional[bool] = None
+    email: Optional[str] = None
 
 
 # ── Users ──────────────────────────────────────────────────────────────────────
@@ -56,8 +59,45 @@ async def update_user(
     body: UserUpdateBody,
     current_user: dict = Depends(require_roles("admin")),
     user_repo: UserRepository = Depends(Provide[Container.user_repository]),
+    auth_service: IAuthService = Depends(Provide[Container.cognito_service]),
 ):
+    if body.email:
+        existing = await user_repo.get_by_id(user_id)
+        if not existing:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuário não encontrado.")
+        new_email = body.email.strip().lower()
+        if new_email != existing["username"]:
+            # Cognito primeiro: se o e-mail já estiver em uso (AliasExistsException),
+            # falha aqui e o perfil local fica intacto — sem essa ordem, um e-mail
+            # duplicado deixaria o perfil local apontando pra um login que o
+            # Cognito não reconhece.
+            try:
+                auth_service.update_email(existing["username"], new_email)
+            except AuthException as e:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=e.message)
+            await user_repo.update_username(user_id, new_email)
+
     updated = await user_repo.update(user_id, full_name=body.full_name, role=body.role, is_active=body.is_active)
+    if not updated:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuário não encontrado.")
+    return updated
+
+
+@router.put("/users/{user_id}/demographics")
+@inject
+async def update_user_demographics(
+    user_id: str,
+    body: UpdateOwnDemographics,
+    current_user: dict = Depends(require_roles("admin")),
+    user_repo: UserRepository = Depends(Provide[Container.user_repository]),
+):
+    """Admin preenche a demografia do responsável (faixa de renda, monoparentalidade,
+    faixa etária, nº de filhos) em nome dele — ex.: coleta feita presencialmente ou
+    por telefone. Mesmos campos de PUT /auth/me/demographics (autodeclaração do
+    próprio pai), mas sem exigir `consent`: aqui a responsabilidade de ter obtido
+    consentimento do responsável é de quem está preenchendo (o admin)."""
+    data = body.model_dump(exclude={"consent"}, exclude_unset=True)
+    updated = await user_repo.update_demographics(user_id, data)
     if not updated:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuário não encontrado.")
     return updated
@@ -95,6 +135,7 @@ async def pre_registrations(
         school_rows = await session.execute(
             select(School, Municipality.name.label("municipality_name"))
             .outerjoin(Municipality, School.municipality_id == Municipality.id)
+            .where(School.deleted == False)  # noqa: E712
             .order_by(School.name)
         )
         schools = [
@@ -112,6 +153,7 @@ async def pre_registrations(
             select(Teacher, School.name.label("school_name"), Municipality.name.label("municipality_name"))
             .outerjoin(School, Teacher.school_id == School.id)
             .outerjoin(Municipality, School.municipality_id == Municipality.id)
+            .where(Teacher.deleted == False)  # noqa: E712
             .order_by(Teacher.name)
         )
         teachers = [
@@ -129,6 +171,7 @@ async def pre_registrations(
         student_rows = await session.execute(
             select(Student, School.name.label("school_name"))
             .outerjoin(School, Student.school_id == School.id)
+            .where(Student.deleted == False)  # noqa: E712
             .order_by(Student.name)
         )
         students = [
