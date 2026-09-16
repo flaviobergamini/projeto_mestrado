@@ -7,10 +7,26 @@ trazer milhares de diary_entries pra memória a cada carregamento do painel.
 Faixas etárias e de renda são calculadas a partir de birth_year/age (não de datas
 completas), reduzindo a granularidade do dado sensível sem perder a métrica.
 """
-from datetime import date
+from datetime import date, timedelta
 from typing import Optional
-from sqlalchemy import text
+from sqlalchemy import select, text
 from infrastructure.database_context.database import Database
+from infrastructure.models.diary_entry import DiaryEntry
+from infrastructure.models.student import Student
+
+# Painel de métricas carregava o histórico inteiro de diary_entries por
+# padrão (sem date_from/date_to informados) — full scan a cada abertura da
+# página, mesmo pros gráficos que só fazem sentido olhando um recorte recente.
+# Sem filtro explícito do usuário, a própria query no banco já limita à última
+# semana, em vez de escanear tudo e limitar depois em Python.
+_DEFAULT_WINDOW_DAYS = 7
+
+
+def _default_window(date_from: Optional[date], date_to: Optional[date]) -> tuple[date, date]:
+    if date_from is None and date_to is None:
+        today = date.today()
+        return today - timedelta(days=_DEFAULT_WINDOW_DAYS), today
+    return date_from, date_to
 
 # Bucket de idade reutilizado nas queries de aluno (coluna students.age, string livre).
 _STUDENT_AGE_BUCKET_SQL = """
@@ -48,6 +64,7 @@ class MetricsRepository:
         self, date_from: Optional[date] = None, date_to: Optional[date] = None,
         source: str = "school",
     ) -> list[dict]:
+        date_from, date_to = _default_window(date_from, date_to)
         query = text(f"""
             SELECT
                 m.name AS municipality_name,
@@ -78,6 +95,7 @@ class MetricsRepository:
         self, date_from: Optional[date] = None, date_to: Optional[date] = None,
         source: str = "school",
     ) -> list[dict]:
+        date_from, date_to = _default_window(date_from, date_to)
         query = text("""
             SELECT
                 COALESCE(s.autism_support_level, 'nao_informado') AS support_level,
@@ -104,6 +122,7 @@ class MetricsRepository:
         self, date_from: Optional[date] = None, date_to: Optional[date] = None,
         school_id: Optional[str] = None,
     ) -> list[dict]:
+        date_from, date_to = _default_window(date_from, date_to)
         query = text("""
             SELECT
                 sc.name AS school_name,
@@ -176,6 +195,7 @@ class MetricsRepository:
     async def diary_fill_by_teacher_attributes(
         self, date_from: Optional[date] = None, date_to: Optional[date] = None,
     ) -> list[dict]:
+        date_from, date_to = _default_window(date_from, date_to)
         query = text(f"""
             SELECT
                 COALESCE(t.teacher_role, 'nao_informado') AS teacher_role,
@@ -204,6 +224,7 @@ class MetricsRepository:
     async def diary_fill_by_parent_profile(
         self, date_from: Optional[date] = None, date_to: Optional[date] = None,
     ) -> list[dict]:
+        date_from, date_to = _default_window(date_from, date_to)
         query = text(f"""
             SELECT
                 COALESCE(up.income_bracket, 'nao_informado') AS income_bracket,
@@ -235,30 +256,63 @@ class MetricsRepository:
     # (perguntas fechadas Sim/Não/Parcialmente do diário escolar — % de "Sim" por
     # pergunta, agrupado por nível de suporte, pra buscar correlação comportamental.)
 
+    _BEHAVIOR_QUESTIONS = (
+        "had_lunch", "participated_in_play", "teacher_attention", "activity_interest",
+        "completed_activities", "bathroom_use", "followed_agreements",
+    )
+
     async def behavior_by_support_level(
         self, date_from: Optional[date] = None, date_to: Optional[date] = None,
     ) -> list[dict]:
-        query = text("""
-            SELECT
-                COALESCE(s.autism_support_level, 'nao_informado') AS support_level,
-                COUNT(d.id) AS entry_count,
-                ROUND(100.0 * COUNT(*) FILTER (WHERE d.had_lunch = 'Sim') / NULLIF(COUNT(d.had_lunch), 0), 1) AS pct_had_lunch,
-                ROUND(100.0 * COUNT(*) FILTER (WHERE d.participated_in_play = 'Sim') / NULLIF(COUNT(d.participated_in_play), 0), 1) AS pct_participated_in_play,
-                ROUND(100.0 * COUNT(*) FILTER (WHERE d.teacher_attention = 'Sim') / NULLIF(COUNT(d.teacher_attention), 0), 1) AS pct_teacher_attention,
-                ROUND(100.0 * COUNT(*) FILTER (WHERE d.activity_interest = 'Sim') / NULLIF(COUNT(d.activity_interest), 0), 1) AS pct_activity_interest,
-                ROUND(100.0 * COUNT(*) FILTER (WHERE d.completed_activities = 'Sim') / NULLIF(COUNT(d.completed_activities), 0), 1) AS pct_completed_activities,
-                ROUND(100.0 * COUNT(*) FILTER (WHERE d.bathroom_use = 'Sim') / NULLIF(COUNT(d.bathroom_use), 0), 1) AS pct_bathroom_use,
-                ROUND(100.0 * COUNT(*) FILTER (WHERE d.followed_agreements = 'Sim') / NULLIF(COUNT(d.followed_agreements), 0), 1) AS pct_followed_agreements
-            FROM diary_entries d
-            JOIN students s ON s.id = d.student_id AND s.deleted = false
-            WHERE d.deleted = false
-                AND d.source = 'school'
-                AND d.presence = 'Presente'
-                AND (CAST(:date_from AS date) IS NULL OR d.diary_date >= :date_from)
-                AND (CAST(:date_to AS date) IS NULL OR d.diary_date <= :date_to)
-            GROUP BY support_level
-            ORDER BY support_level
-        """)
+        date_from, date_to = _default_window(date_from, date_to)
+        # As respostas do diário (had_lunch, participated_in_play, etc.) são
+        # EncryptedText — Fernet usa IV aleatório, então duas respostas 'Sim'
+        # nunca têm o mesmo ciphertext. Um `WHERE d.had_lunch = 'Sim'` em SQL
+        # bruto compara contra o valor cifrado e nunca bate com nada (sempre
+        # 0%) — precisa carregar via ORM pra decriptar e agregar em Python.
+        stmt = (
+            select(DiaryEntry, Student.autism_support_level)
+            .join(Student, Student.id == DiaryEntry.student_id)
+            .where(
+                Student.deleted == False,  # noqa: E712
+                DiaryEntry.deleted == False,  # noqa: E712
+                DiaryEntry.source == "school",
+                DiaryEntry.presence == "Presente",
+            )
+        )
+        if date_from is not None:
+            stmt = stmt.where(DiaryEntry.diary_date >= date_from)
+        if date_to is not None:
+            stmt = stmt.where(DiaryEntry.diary_date <= date_to)
+
         async with self.database.session() as session:
-            result = await session.execute(query, {"date_from": date_from, "date_to": date_to})
-            return [dict(row._mapping) for row in result.all()]
+            rows = (await session.execute(stmt)).all()
+
+        buckets: dict[str, dict] = {}
+        for entry, support_level in rows:
+            level = support_level or "nao_informado"
+            bucket = buckets.setdefault(level, {
+                "entry_count": 0,
+                **{q: {"yes": 0, "answered": 0} for q in self._BEHAVIOR_QUESTIONS},
+            })
+            bucket["entry_count"] += 1
+            for q in self._BEHAVIOR_QUESTIONS:
+                answer = getattr(entry, q)
+                if answer is not None:
+                    bucket[q]["answered"] += 1
+                    if answer == "Sim":
+                        bucket[q]["yes"] += 1
+
+        def _pct(counts: dict) -> Optional[float]:
+            if not counts["answered"]:
+                return None
+            return round(100.0 * counts["yes"] / counts["answered"], 1)
+
+        return [
+            {
+                "support_level": level,
+                "entry_count": bucket["entry_count"],
+                **{f"pct_{q}": _pct(bucket[q]) for q in self._BEHAVIOR_QUESTIONS},
+            }
+            for level, bucket in sorted(buckets.items())
+        ]

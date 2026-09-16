@@ -30,6 +30,7 @@ from infrastructure.models.diary_entry import DiaryEntry
 from infrastructure.models.pdi import Pdi
 from infrastructure.models.generated_pei import GeneratedPei
 from infrastructure.models.case_study_submission import CaseStudySubmission
+from infrastructure.models.pei_kanban_card import PeiKanbanCard
 
 logger = logging.getLogger(__name__)
 
@@ -158,6 +159,10 @@ class AnonymizationService:
         sources: list[str] | None = None,
         diary_date_from: str | None = None,
         diary_date_to: str | None = None,
+        family_diary_date_from: str | None = None,
+        family_diary_date_to: str | None = None,
+        therapy_diary_date_from: str | None = None,
+        therapy_diary_date_to: str | None = None,
     ) -> tuple[str, dict[str, str]]:
         """Return (anonymized_context_str, deanon_map).
 
@@ -180,6 +185,7 @@ class AnonymizationService:
         include_therapy_diary = include_all or "therapy_diary" in sources
         include_pdi = include_all or "pdi" in sources
         include_generated_pei = include_all or "generated_pei" in sources
+        include_kanban_progress = include_all or "kanban_progress" in sources
 
         async with self._db.session() as session:
             # ── Student ──────────────────────────────────────────────────────
@@ -312,10 +318,10 @@ class AnonymizationService:
                     DiaryEntry.deleted == False,
                     DiaryEntry.source == "family",
                 ]
-                if diary_date_from:
-                    fam_filters.append(DiaryEntry.diary_date >= date_type.fromisoformat(diary_date_from))
-                if diary_date_to:
-                    fam_filters.append(DiaryEntry.diary_date <= date_type.fromisoformat(diary_date_to))
+                if family_diary_date_from:
+                    fam_filters.append(DiaryEntry.diary_date >= date_type.fromisoformat(family_diary_date_from))
+                if family_diary_date_to:
+                    fam_filters.append(DiaryEntry.diary_date <= date_type.fromisoformat(family_diary_date_to))
                 fam_result = await session.execute(
                     select(DiaryEntry).where(*fam_filters)
                     .order_by(DiaryEntry.diary_date.desc())
@@ -343,10 +349,10 @@ class AnonymizationService:
                     DiaryEntry.deleted == False,
                     DiaryEntry.source == "therapy",
                 ]
-                if diary_date_from:
-                    ther_filters.append(DiaryEntry.diary_date >= date_type.fromisoformat(diary_date_from))
-                if diary_date_to:
-                    ther_filters.append(DiaryEntry.diary_date <= date_type.fromisoformat(diary_date_to))
+                if therapy_diary_date_from:
+                    ther_filters.append(DiaryEntry.diary_date >= date_type.fromisoformat(therapy_diary_date_from))
+                if therapy_diary_date_to:
+                    ther_filters.append(DiaryEntry.diary_date <= date_type.fromisoformat(therapy_diary_date_to))
                 ther_result = await session.execute(
                     select(DiaryEntry).where(*ther_filters)
                     .order_by(DiaryEntry.diary_date.desc())
@@ -384,6 +390,14 @@ class AnonymizationService:
                     })
 
             # ── PEIs gerados anteriormente ───────────────────────────────────
+            # Só metadados — NUNCA o pei_text, igual a PoC (app.py::_build_anonymized_
+            # student_context, seção "PEIs anteriores"). Dois motivos: (1) um PEI salvo
+            # já foi desanonimizado (tem nome real do aluno), reenviar o texto pra IA
+            # vazaria PII que o resto do pipeline trabalha duro pra não expor; (2) um
+            # PEI corrompido (ex.: por um loop de repetição do próprio Gemini) virava
+            # contexto "envenenado" que realimentava e piorava a próxima geração —
+            # causa raiz confirmada de PEIs de até 1,8M caracteres pra alunos com
+            # histórico grande de diário.
             prev_pei_list: list[dict] = []
             if include_generated_pei:
                 gpei_result = await session.execute(
@@ -396,8 +410,29 @@ class AnonymizationService:
                 for gp in gpei_result.scalars().all():
                     prev_pei_list.append({
                         "id": gp.id,
-                        "pei_text": gp.pei_text[:3000],  # truncate to avoid huge prompts
                         "generated_at": str(gp.generated_at),
+                    })
+
+            # ── Progresso do quadro Kanban de execução do PEI ──────────────────
+            # Retroalimentação pedida pelo orientador: o que o professor marcou
+            # como concluído/tentado em sala (e as observações que digitou) vira
+            # contexto pro próximo PEI — "o que funcionou" deixa de ser um
+            # improviso do professor e passa a constar no documento oficial.
+            kanban_progress_list: list[dict] = []
+            if include_kanban_progress:
+                kanban_result = await session.execute(
+                    select(PeiKanbanCard)
+                    .where(PeiKanbanCard.student_id == student_id,
+                           PeiKanbanCard.deleted == False)
+                    .order_by(PeiKanbanCard.updated_at.desc())
+                    .limit(30)
+                )
+                for card in kanban_result.scalars().all():
+                    kanban_progress_list.append({
+                        "titulo": card.title,
+                        "status": card.status,  # todo | doing | done
+                        "observacao_professor": (card.description or "")[:1500] or None,
+                        "reacao_aluno_1a5": card.reaction,
                     })
 
         # ── De-anonymization map ──────────────────────────────────────────────
@@ -439,8 +474,18 @@ class AnonymizationService:
             sections.append(json.dumps(pdi_anon_list, ensure_ascii=False, indent=2))
 
         if prev_pei_list:
-            sections.append(f"=== PEIs GERADOS ANTERIORMENTE (últimos {len(prev_pei_list)}) ===")
+            sections.append(
+                f"=== PEIs GERADOS ANTERIORMENTE (últimos {len(prev_pei_list)} — apenas metadados, "
+                "sem o texto completo) ==="
+            )
             sections.append(json.dumps(prev_pei_list, ensure_ascii=False, indent=2))
+
+        if kanban_progress_list:
+            sections.append(
+                f"=== PROGRESSO DE EXECUÇÃO DO PEI (quadro Kanban, {len(kanban_progress_list)} "
+                "cards mais recentes atualizados pelo professor) ==="
+            )
+            sections.append(json.dumps(kanban_progress_list, ensure_ascii=False, indent=2))
 
         context_str = "\n\n".join(sections)
         return context_str, deanon_map

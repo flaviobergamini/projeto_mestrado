@@ -44,3 +44,8 @@ class IAuthService(ABC):
     def get_username_from_token(self, access_token: str) -> str:
         """Valida o token e retorna o username. Lança AuthException se inválido."""
         ...
+
+    @abstractmethod
+    def update_email(self, username: str, new_email: str) -> None:
+        """Troca o e-mail de login do usuário identificado por `username` (email atual)."""
+        ...

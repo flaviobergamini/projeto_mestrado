@@ -16,6 +16,10 @@ logger = logging.getLogger(__name__)
 
 _COGNITO_ERROR_MAP = {
     "UsernameExistsException": UserAlreadyExistsError,
+    # Pool usa UsernameAttributes=['email']: trocar o atributo email pra um
+    # valor já usado por OUTRO usuário levanta AliasExistsException, não
+    # UsernameExistsException (essa é só pra criação de usuário novo).
+    "AliasExistsException": UserAlreadyExistsError,
     "UserNotFoundException": UserNotFoundError,
     "NotAuthorizedException": InvalidCredentialsError,
     "UserNotConfirmedException": UserNotConfirmedError,
@@ -27,6 +31,7 @@ _COGNITO_ERROR_MAP = {
 
 _COGNITO_MESSAGES = {
     "UsernameExistsException": "Usuário já cadastrado",
+    "AliasExistsException": "Este e-mail já está em uso por outro usuário",
     "InvalidPasswordException": "Senha inválida — use ao menos 8 caracteres, letras maiúsculas, minúsculas, números e símbolos",
     "UserNotFoundException": "Usuário não encontrado",
     "NotAuthorizedException": "Usuário ou senha inválidos",
@@ -182,6 +187,24 @@ class CognitoService(IAuthService):
                 Username=username,
                 ConfirmationCode=code,
                 Password=new_password,
+            )
+        except ClientError as e:
+            raise _to_domain_exception(e)
+
+    def update_email(self, username: str, new_email: str) -> None:
+        """Troca o e-mail de login de um usuário existente. O pool usa
+        UsernameAttributes=['email'] (confirmado via describe_user_pool) — o
+        Cognito sincroniza automaticamente quem o usuário deve digitar pra
+        logar com o novo valor do atributo `email`, sem precisar recriar a
+        conta. `username` é o identificador atual (email antigo) do usuário."""
+        try:
+            self.client.admin_update_user_attributes(
+                UserPoolId=self.user_pool_id,
+                Username=username,
+                UserAttributes=[
+                    {"Name": "email", "Value": new_email},
+                    {"Name": "email_verified", "Value": "true"},
+                ],
             )
         except ClientError as e:
             raise _to_domain_exception(e)

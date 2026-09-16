@@ -472,6 +472,12 @@ class RagService:
             )
             therapy_count = int(therapy_result.scalar() or 0)
 
+            kanban_result = await session.execute(
+                text("SELECT COUNT(*) FROM pei_kanban_cards WHERE student_id = :sid AND deleted = false"),
+                {"sid": student_id},
+            )
+            kanban_count = int(kanban_result.scalar() or 0)
+
         return {
             "student": {"available": student_row is not None, "count": 1 if student_row else 0},
             "diary": {"available": diary_count > 0, "count": diary_count},
@@ -482,6 +488,7 @@ class RagService:
             "teacher": {"available": teacher_count > 0, "count": teacher_count},
             "pdi": {"available": pdi_count > 0, "count": pdi_count},
             "generated_pei": {"available": gpei_count > 0, "count": gpei_count},
+            "kanban_progress": {"available": kanban_count > 0, "count": kanban_count},
         }
 
     @staticmethod
