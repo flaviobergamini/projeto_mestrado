@@ -19,7 +19,7 @@ class ChatSession(Base):
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     session_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True, index=True)
     created_by_user_id: Mapped[str] = mapped_column(
-        String(64), ForeignKey("user_profiles.id", ondelete="CASCADE", onupdate="CASCADE"), nullable=False
+        String(64), ForeignKey("user_profiles.id", ondelete="CASCADE", onupdate="CASCADE"), nullable=False, index=True
     )
     created_by_username: Mapped[str] = mapped_column(String(120), nullable=False)
     created_by_role: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -30,7 +30,7 @@ class ChatSession(Base):
         String(64), ForeignKey("schools.id", ondelete="CASCADE", onupdate="CASCADE"), nullable=True, index=True
     )
     teacher_id: Mapped[Optional[str]] = mapped_column(
-        String(64), ForeignKey("teachers.id", ondelete="CASCADE", onupdate="CASCADE"), nullable=True
+        String(64), ForeignKey("teachers.id", ondelete="CASCADE", onupdate="CASCADE"), nullable=True, index=True
     )
     student_id: Mapped[Optional[str]] = mapped_column(
         String(64), ForeignKey("students.id", ondelete="CASCADE", onupdate="CASCADE"), nullable=True, index=True
