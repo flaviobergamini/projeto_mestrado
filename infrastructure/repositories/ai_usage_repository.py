@@ -10,20 +10,26 @@ from infrastructure.models.ai_usage_log import AiUsageLog
 logger = logging.getLogger(__name__)
 
 # ── Pricing table (USD per token) ────────────────────────────────────────────
-# Source: ai.google.dev/gemini-api/docs/pricing (checked 2026-07)
+# Source: ai.google.dev/gemini-api/docs/pricing (checked 2026-09-16)
+# "input_audio" é o preço cobrado quando a entrada é áudio (transcrição de
+# diário/família) — mais caro que texto/imagem/vídeo na tabela do Gemini.
 PRICING: dict[str, dict[str, float]] = {
-    "gemini-2.5-flash": {"input": 0.30 / 1_000_000, "output": 2.50 / 1_000_000},
-    "gemini-2.5-flash-preview-05-20": {"input": 0.30 / 1_000_000, "output": 2.50 / 1_000_000},
-    "gemini-2.0-flash": {"input": 0.10 / 1_000_000, "output": 0.40 / 1_000_000},
-    "gemini-1.5-flash": {"input": 0.075 / 1_000_000, "output": 0.30 / 1_000_000},
+    "gemini-2.5-flash": {"input": 0.30 / 1_000_000, "input_audio": 1.00 / 1_000_000, "output": 2.50 / 1_000_000},
+    "gemini-2.5-flash-preview-05-20": {"input": 0.30 / 1_000_000, "input_audio": 1.00 / 1_000_000, "output": 2.50 / 1_000_000},
+    "gemini-2.0-flash": {"input": 0.10 / 1_000_000, "input_audio": 0.70 / 1_000_000, "output": 0.40 / 1_000_000},
+    "gemini-1.5-flash": {"input": 0.075 / 1_000_000, "input_audio": 0.25 / 1_000_000, "output": 0.30 / 1_000_000},
     "gemini-embedding-001": {"input": 0.15 / 1_000_000, "output": 0.0},
     "models/gemini-embedding-001": {"input": 0.15 / 1_000_000, "output": 0.0},
 }
 
-PRICING_REF_DATE = "2026-07-12"
+PRICING_REF_DATE = "2026-09-16"
+
+# Operações cujo input é áudio (não texto) — usam a tarifa "input_audio" em
+# vez da tarifa padrão de entrada.
+AUDIO_INPUT_OPERATIONS = {"diary_audio_transcription", "family_audio_transcription"}
 
 
-def _calc_cost(model: str, input_tokens: int, output_tokens: int) -> float:
+def _calc_cost(model: str, input_tokens: int, output_tokens: int, is_audio_input: bool = False) -> float:
     """Calculate cost in USD based on the pricing table."""
     p = None
     for key, prices in PRICING.items():
@@ -32,8 +38,9 @@ def _calc_cost(model: str, input_tokens: int, output_tokens: int) -> float:
             break
     if p is None:
         # Fallback to gemini-2.0-flash pricing for unknown models
-        p = {"input": 0.10 / 1_000_000, "output": 0.40 / 1_000_000}
-    return round(input_tokens * p["input"] + output_tokens * p["output"], 8)
+        p = {"input": 0.10 / 1_000_000, "input_audio": 0.70 / 1_000_000, "output": 0.40 / 1_000_000}
+    input_price = p.get("input_audio", p["input"]) if is_audio_input else p["input"]
+    return round(input_tokens * input_price + output_tokens * p["output"], 8)
 
 
 class AiUsageRepository:
@@ -51,7 +58,7 @@ class AiUsageRepository:
         user_id: str | None = None,
         username: str | None = None,
     ) -> None:
-        cost = _calc_cost(model, input_tokens, output_tokens)
+        cost = _calc_cost(model, input_tokens, output_tokens, is_audio_input=operation in AUDIO_INPUT_OPERATIONS)
         if total_tokens is None:
             total_tokens = input_tokens + output_tokens
         try:

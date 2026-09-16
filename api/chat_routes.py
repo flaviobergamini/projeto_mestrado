@@ -24,8 +24,12 @@ class SendMessageRequest(BaseModel):
     session_id: Optional[str] = None
     message: str
     sources: Optional[list[str]] = None
-    diary_date_from: Optional[str] = None  # YYYY-MM-DD
+    diary_date_from: Optional[str] = None  # YYYY-MM-DD — diário escolar
     diary_date_to: Optional[str] = None    # YYYY-MM-DD
+    family_diary_date_from: Optional[str] = None
+    family_diary_date_to: Optional[str] = None
+    therapy_diary_date_from: Optional[str] = None
+    therapy_diary_date_to: Optional[str] = None
 
 
 class RenameSessionRequest(BaseModel):
@@ -73,20 +77,26 @@ async def send_message(
         )
         session_id = new_session["id"]
 
-    # Build anonymised student context (sections filtered by selected sources)
-    anon_context, deanon_map = await anon_svc.build_context(
-        body.student_id,
-        sources=body.sources,
-        diary_date_from=body.diary_date_from,
-        diary_date_to=body.diary_date_to,
-    )
-
-    # RAG: semantically similar chunks (already anonymised — no PII in embeddings)
-    rag_context = await rag.build_rag_context(
-        query=body.message,
-        student_id=body.student_id,
-        limit=5,
-        sources=body.sources,
+    # Contexto anonimizado e busca RAG não dependem um do outro — cada um abre
+    # sua própria sessão de DB, então rodar em paralelo corta o tempo de espera
+    # ao invés de somar os dois.
+    (anon_context, deanon_map), rag_context = await asyncio.gather(
+        anon_svc.build_context(
+            body.student_id,
+            sources=body.sources,
+            diary_date_from=body.diary_date_from,
+            diary_date_to=body.diary_date_to,
+            family_diary_date_from=body.family_diary_date_from,
+            family_diary_date_to=body.family_diary_date_to,
+            therapy_diary_date_from=body.therapy_diary_date_from,
+            therapy_diary_date_to=body.therapy_diary_date_to,
+        ),
+        rag.build_rag_context(
+            query=body.message,
+            student_id=body.student_id,
+            limit=5,
+            sources=body.sources,
+        ),
     )
 
     # Regra de anonimização embutida no código (não no prompt editável de Chat) —

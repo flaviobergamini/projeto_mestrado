@@ -13,10 +13,12 @@ from infrastructure.repositories.prompt_repository import PromptRepository
 from infrastructure.repositories.generated_pei_repository import GeneratedPeiRepository
 from infrastructure.repositories.ai_usage_repository import AiUsageRepository
 from infrastructure.repositories.student_repository import StudentRepository
+from infrastructure.repositories.pei_kanban_repository import PeiKanbanRepository
 from infrastructure.services.rag_service import RagService
 from infrastructure.services.gemini_service import GeminiService
 from infrastructure.services.anonymization_service import AnonymizationService, deanonymize
 from infrastructure.services.pdf_service import generate_pei_pdf
+from infrastructure.utils.pei_sections import parse_pei_sections
 
 router = APIRouter(prefix="/pei-gen", tags=["PEI Generation"])
 
@@ -24,8 +26,12 @@ router = APIRouter(prefix="/pei-gen", tags=["PEI Generation"])
 class GeneratePEIRequest(BaseModel):
     student_id: str
     sources: Optional[list[str]] = None
-    diary_date_from: Optional[str] = None  # YYYY-MM-DD
+    diary_date_from: Optional[str] = None  # YYYY-MM-DD — diário escolar
     diary_date_to: Optional[str] = None    # YYYY-MM-DD
+    family_diary_date_from: Optional[str] = None
+    family_diary_date_to: Optional[str] = None
+    therapy_diary_date_from: Optional[str] = None
+    therapy_diary_date_to: Optional[str] = None
 
 
 @router.post("/generate")
@@ -40,6 +46,7 @@ async def generate_pei(
     pei_repo: GeneratedPeiRepository = Depends(Provide[Container.generated_pei_repository]),
     usage_repo: AiUsageRepository = Depends(Provide[Container.ai_usage_repository]),
     anon_svc: AnonymizationService = Depends(Provide[Container.anonymization_service]),
+    kanban_repo: PeiKanbanRepository = Depends(Provide[Container.pei_kanban_repository]),
 ):
     student = await student_repo.get_by_id(body.student_id)
     if not student:
@@ -48,21 +55,27 @@ async def generate_pei(
     student_name = student.get("name", "")
     generated_by = current_user.get("user_id")
 
-    # Build anonymised student context (sections filtered by selected sources)
-    anon_context, deanon_map = await anon_svc.build_context(
-        body.student_id,
-        diary_limit=15,
-        sources=body.sources,
-        diary_date_from=body.diary_date_from,
-        diary_date_to=body.diary_date_to,
-    )
-
-    # RAG: semantically similar chunks (anonymised embeddings)
-    rag_context = await rag.build_rag_context(
-        query="perfil completo do aluno: comportamento, socialização, habilidades, dificuldades, histórico escolar, família",
-        student_id=body.student_id,
-        limit=10,
-        sources=body.sources,
+    # Contexto anonimizado (queries estruturadas) e busca RAG (embedding + vetorial)
+    # não dependem um do outro — cada um abre sua própria sessão de DB, então
+    # rodar em paralelo corta o tempo de espera ao invés de somar os dois.
+    (anon_context, deanon_map), rag_context = await asyncio.gather(
+        anon_svc.build_context(
+            body.student_id,
+            diary_limit=15,
+            sources=body.sources,
+            diary_date_from=body.diary_date_from,
+            diary_date_to=body.diary_date_to,
+            family_diary_date_from=body.family_diary_date_from,
+            family_diary_date_to=body.family_diary_date_to,
+            therapy_diary_date_from=body.therapy_diary_date_from,
+            therapy_diary_date_to=body.therapy_diary_date_to,
+        ),
+        rag.build_rag_context(
+            query="perfil completo do aluno: comportamento, socialização, habilidades, dificuldades, histórico escolar, família",
+            student_id=body.student_id,
+            limit=10,
+            sources=body.sources,
+        ),
     )
 
     prompt_data = await prompt_repo.get_active("pei")
@@ -129,6 +142,21 @@ Gere o Plano Educacional Individualizado (PEI) completo para este aluno."""
         sources_used=body.sources,
         generated_by=generated_by,
     )
+
+    # Um card de execução por seção do PEI recém-gerado, todos em "A fazer" —
+    # é o que vira o quadro Kanban de acompanhamento na sala de aula. Falha
+    # aqui não deve derrubar a geração do PEI em si (já salvo com sucesso).
+    try:
+        sections = parse_pei_sections(pei_text)
+        if sections:
+            await kanban_repo.create_many_from_pei(
+                student_id=body.student_id,
+                pei_id=saved["id"],
+                sections=sections,
+                created_by=generated_by,
+            )
+    except Exception:
+        pass
 
     return {
         "id": saved["id"],

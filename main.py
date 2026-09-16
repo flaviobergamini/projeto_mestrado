@@ -30,6 +30,8 @@ from api import metrics_routes
 from api.metrics_routes import router as metrics_router
 from api import skill_routes
 from api.skill_routes import router as skill_router
+from api import pei_kanban_routes
+from api.pei_kanban_routes import router as pei_kanban_router
 from api.middleware.audit_middleware import AuditMiddleware
 from core.kernel.container import Container
 
@@ -41,6 +43,7 @@ container.wire(modules=[
     chat_routes, prompt_routes, pei_gen_routes,
     municipality_routes, admin_routes, ai_usage_routes, vinculos_routes,
     family_routes, diary_summary_routes, metrics_routes, skill_routes,
+    pei_kanban_routes,
 ])
 
 app = FastAPI(
@@ -79,6 +82,7 @@ app.include_router(family_router)
 app.include_router(diary_summary_router)
 app.include_router(metrics_router)
 app.include_router(skill_router)
+app.include_router(pei_kanban_router)
 
 
 @app.get("/health", tags=["Health"])
