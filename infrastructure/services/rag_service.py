@@ -14,6 +14,9 @@ from infrastructure.models.diary_embedding_gemini import DiaryEmbeddingGemini
 from infrastructure.models.case_study_embedding_gemini import CaseStudyEmbeddingGemini
 from infrastructure.services.gemini_service import GeminiService
 from infrastructure.repositories.ai_usage_repository import AiUsageRepository
+from infrastructure.utils.case_study_answers import (
+    SIM, NAO, PARCIALMENTE, CANONICAL_VALUES, normalize_closed_answer,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -246,19 +249,21 @@ def _case_study_to_text(d: dict) -> str:
 
     social = d.get("aspectos_socioemocionais", {})
     if social:
-        positivos = [k for k, v in social.items() if v is True]
-        negativos = [k for k, v in social.items() if v is False]
+        positivos, negativos, parciais = _split_closed_answers(social)
         if positivos:
             lines.append(f"Pontos positivos socioemocionais: {', '.join(positivos)}.")
+        if parciais:
+            lines.append(f"Aspectos socioemocionais parcialmente desenvolvidos: {', '.join(parciais)}.")
         if negativos:
             lines.append(f"Aspectos a desenvolver: {', '.join(negativos)}.")
 
     motor = d.get("aspectos_motores", {})
     if motor:
-        positivos = [k for k, v in motor.items() if v is True]
-        negativos = [k for k, v in motor.items() if v is False]
+        positivos, negativos, parciais = _split_closed_answers(motor)
         if positivos:
             lines.append(f"Aspectos motores positivos: {', '.join(positivos)}.")
+        if parciais:
+            lines.append(f"Aspectos motores parcialmente desenvolvidos: {', '.join(parciais)}.")
         if negativos:
             lines.append(f"Aspectos motores a desenvolver: {', '.join(negativos)}.")
 
@@ -270,9 +275,9 @@ def _case_study_to_text(d: dict) -> str:
     if familia:
         if "expectativas_familia" in familia:
             lines.append(f"Expectativas da família: {familia['expectativas_familia']}")
-        bool_familia = {k: v for k, v in familia.items() if isinstance(v, bool)}
-        if bool_familia:
-            lines.append(f"Comunicação escola-família: {json.dumps(bool_familia, ensure_ascii=False)}")
+        respostas_familia = {k: v for k, v in familia.items() if v in CANONICAL_VALUES}
+        if respostas_familia:
+            lines.append(f"Comunicação escola-família: {json.dumps(respostas_familia, ensure_ascii=False)}")
 
     return "\n".join(lines)
 
@@ -294,11 +299,21 @@ def _pick_bool(target: dict, source: dict, mapping: dict) -> None:
 
 
 def _pick_simno(target: dict, source: dict, mapping: dict) -> None:
-    """Maps 'Sim'/'Não' string answers to True/False booleans."""
+    """Copia respostas fechadas (Sim/Não/Parcialmente/...) já no valor canônico
+    em português — inclusive respostas legadas salvas em inglês ("Yes"/"No").
+    Antes só "Sim"/"Não" viravam booleanos e qualquer outro valor era descartado."""
     for dest, src in mapping.items():
-        v = source.get(src)
-        if v in ("Sim", "Não"):
-            target[dest] = v == "Sim"
+        v = normalize_closed_answer(source.get(src))
+        if v is not None:
+            target[dest] = v
+
+
+def _split_closed_answers(section: dict) -> tuple[list[str], list[str], list[str]]:
+    """Chaves respondidas 'Sim', 'Não' e 'Parcialmente' de uma seção, nessa ordem."""
+    yes = [k for k, v in section.items() if v == SIM]
+    no = [k for k, v in section.items() if v == NAO]
+    partial = [k for k, v in section.items() if v == PARCIALMENTE]
+    return yes, no, partial
 
 
 # ── RagService ────────────────────────────────────────────────────────────────

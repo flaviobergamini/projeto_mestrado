@@ -31,6 +31,7 @@ from infrastructure.models.pdi import Pdi
 from infrastructure.models.generated_pei import GeneratedPei
 from infrastructure.models.case_study_submission import CaseStudySubmission
 from infrastructure.models.pei_kanban_card import PeiKanbanCard
+from infrastructure.utils.case_study_answers import normalize_answers
 
 logger = logging.getLogger(__name__)
 
@@ -106,7 +107,9 @@ CASE_STUDY_PII_KEYS = {
 
 def anon_case_study(case: dict) -> dict:
     """Strip PII answer fields from a case study. Kept: student_id, behavioral/pedagogical answers."""
-    answers = case.get("answers") or {}
+    # Normaliza respostas fechadas legadas ("Yes"/"No" salvas com a UI em inglês)
+    # pro valor canônico em português, pra IA sempre ver o mesmo vocabulário.
+    answers = normalize_answers(case.get("answers") or {})
     clean_answers = {k: v for k, v in answers.items() if k not in CASE_STUDY_PII_KEYS and v not in (None, "", [], {})}
     return {
         "student_id": case.get("student_id") or "",
