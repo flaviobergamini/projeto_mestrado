@@ -10,6 +10,31 @@ _HEADER_RE = re.compile(r'^(#{2,3})\s+(.+)$', re.MULTILINE)
 _SKIP_TITLE_KEYWORDS = ("identificação", "assinatura", "base legal", "vigência", "elaboração")
 
 
+# Seções de objetivos viram um card por item (item de lista de primeiro nível),
+# pra cada objetivo ser acompanhado/arrastado individualmente no Kanban.
+_SPLIT_TITLE_KEYWORDS = ("objetivo",)
+_ITEM_RE = re.compile(r'^(?:[-*•]|\d+[.)])\s+(.+)$')
+_TITLE_MAX = 80
+
+
+def _split_items(section_title: str, body: str) -> list[dict]:
+    items: list[list[str]] = []
+    for line in body.splitlines():
+        m = _ITEM_RE.match(line)  # sem indentação => item de primeiro nível
+        if m:
+            items.append([m.group(1).strip()])
+        elif items and line.strip():
+            items[-1].append(line.strip())
+    if len(items) < 2:
+        return []
+    out = []
+    for lines in items:
+        head = re.sub(r'[*_`]+', '', lines[0]).strip()
+        short = head if len(head) <= _TITLE_MAX else head[:_TITLE_MAX].rsplit(' ', 1)[0] + '…'
+        out.append({"title": f"{section_title}: {short}", "description": "\n".join(lines)})
+    return out
+
+
 def parse_pei_sections(pei_text: str) -> list[dict]:
     """Retorna uma lista de {"title": str, "description": str}, uma por seção
     de nível 3 (###) do PEI — cai para nível 2 (##) se não houver nenhuma ###."""
@@ -30,6 +55,12 @@ def parse_pei_sections(pei_text: str) -> list[dict]:
         start = m.end()
         end = use[i + 1].start() if i + 1 < len(use) else len(pei_text)
         body = pei_text[start:end].strip()
-        if body:
-            sections.append({"title": title, "description": body})
+        if not body:
+            continue
+        if any(kw in title.lower() for kw in _SPLIT_TITLE_KEYWORDS):
+            split = _split_items(title, body)
+            if split:
+                sections.extend(split)
+                continue
+        sections.append({"title": title, "description": body})
     return sections

@@ -33,6 +33,7 @@ from infrastructure.repositories.diary_summary_repository import DiarySummaryRep
 from infrastructure.repositories.metrics_repository import MetricsRepository
 from infrastructure.repositories.skill_repository import SkillRepository
 from infrastructure.repositories.pei_kanban_repository import PeiKanbanRepository
+from infrastructure.repositories.saved_skill_result_repository import SavedSkillResultRepository
 from infrastructure.services.anonymization_service import AnonymizationService
 from infrastructure.services.cognito_service import CognitoService
 from infrastructure.services.gemini_service import GeminiService
@@ -48,7 +49,7 @@ class Container(containers.DeclarativeContainer):
             "api.chat_routes", "api.prompt_routes", "api.pei_gen_routes",
             "api.municipality_routes", "api.admin_routes", "api.ai_usage_routes",
             "api.vinculos_routes", "api.family_routes", "api.diary_summary_routes",
-            "api.metrics_routes", "api.skill_routes", "api.pei_kanban_routes",
+            "api.metrics_routes", "api.skill_routes", "api.pei_kanban_routes", "api.saved_skill_routes",
         ],
     )
 
@@ -104,6 +105,8 @@ class Container(containers.DeclarativeContainer):
     skill_repository = providers.Factory(SkillRepository, database=database)
 
     pei_kanban_repository = providers.Factory(PeiKanbanRepository, database=database)
+
+    saved_skill_result_repository = providers.Factory(SavedSkillResultRepository, database=database)
 
     anonymization_service = providers.Factory(AnonymizationService, database=database)
 

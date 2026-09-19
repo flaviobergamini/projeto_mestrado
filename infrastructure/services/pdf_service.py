@@ -141,7 +141,10 @@ def _parse_markdown(text: str, styles: dict) -> list:
 _BRT = timezone(timedelta(hours=-3))
 
 
-def _build_header(student_name: str, generated_at: str, styles: dict) -> list:
+def _build_header(
+    student_name: str, generated_at: str, styles: dict,
+    subtitle: str = "Plano Educacional Individualizado — PEI",
+) -> list:
     """Return flowables for the letterhead header."""
     elements = []
 
@@ -159,7 +162,7 @@ def _build_header(student_name: str, generated_at: str, styles: dict) -> list:
         'Autism.iA<br/>'
         '<font size="9" color="#757575">'
         'Sistema de Geração de Planos Educacionais Individualizados via IA<br/>'
-        'Plano Educacional Individualizado — PEI'
+        f'{_escape(subtitle)}'
         '</font>',
         styles["header_name"],
     )
@@ -273,6 +276,44 @@ def generate_pei_pdf(
         "Este documento foi gerado automaticamente pelo sistema Autism.iA com base em dados "
         "anonimizados do aluno. Deve ser revisado por profissionais habilitados antes de ser "
         "implementado.",
+        styles["confidential"],
+    ))
+
+    doc.build(story, onFirstPage=_footer_canvas, onLaterPages=_footer_canvas)
+    return buf.getvalue()
+
+
+def generate_skill_result_pdf(
+    skill_title: str,
+    response: str,
+    student_name: str,
+    generated_at: str,
+) -> bytes:
+    """PDF timbrado com o resultado de uma skill (resposta da IA) de um aluno."""
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf,
+        pagesize=A4,
+        leftMargin=2.2 * cm,
+        rightMargin=2.2 * cm,
+        topMargin=2.2 * cm,
+        bottomMargin=2.8 * cm,
+        title=f"{skill_title} — {student_name}",
+        author="Autism.iA",
+        subject="Resultado de skill",
+    )
+
+    styles = _build_styles()
+    story: list = []
+    story.extend(_build_header(student_name, generated_at, styles, subtitle=f"Skill — {skill_title}"))
+    story.extend(_parse_markdown(response, styles))
+    story.append(Spacer(1, 16))
+    story.append(HRFlowable(width="100%", thickness=0.5,
+                             color=colors.HexColor("#bdbdbd"), spaceAfter=6))
+    story.append(Paragraph(
+        "Este documento foi gerado automaticamente pelo sistema Autism.iA com base em dados "
+        "anonimizados do aluno. Deve ser revisado por profissionais habilitados antes de ser "
+        "utilizado.",
         styles["confidential"],
     ))
 
