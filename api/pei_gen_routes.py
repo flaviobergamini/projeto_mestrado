@@ -1,6 +1,7 @@
 """PEI generation endpoint — uses anonymised RAG context + Gemini + custom system prompt."""
 
 import asyncio
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import Response
 from pydantic import BaseModel
@@ -19,6 +20,11 @@ from infrastructure.services.gemini_service import GeminiService
 from infrastructure.services.anonymization_service import AnonymizationService, deanonymize
 from infrastructure.services.pdf_service import generate_pei_pdf
 from infrastructure.utils.pei_sections import parse_pei_sections
+from infrastructure.utils.llm_guards import (
+    TABLE_FORMAT_RULE, RETRY_NOTE, has_degenerate_output, collapse_padding,
+)
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/pei-gen", tags=["PEI Generation"])
 
@@ -109,28 +115,51 @@ async def generate_pei(
 === REGISTROS SIMILARES (RAG) ===
 {rag_context}
 
+{TABLE_FORMAT_RULE}
+
 Gere o Plano Educacional Individualizado (PEI) completo para este aluno."""
 
     try:
         # Chamada síncrona e bloqueante — roda em thread separada para não
         # travar o event loop (e todas as outras requisições) durante a
         # geração ou um retry por rate limit do Gemini.
-        raw_pei, usage = await asyncio.to_thread(
-            gemini.generate_text_tracked,
-            prompt=prompt,
-            system_instruction=system_instruction,
-        )
-        await usage_repo.log(
-            model=usage.model,
-            operation="pei_generation",
-            input_tokens=usage.input_tokens,
-            output_tokens=usage.output_tokens,
-            total_tokens=usage.total_tokens,
-            duration_ms=usage.duration_ms,
-            user_id=generated_by,
-        )
+        # Até 2 tentativas: o Gemini às vezes entra num loop de espaços em branco
+        # dentro de uma tabela (ver llm_guards) e devolve um PEI cortado no meio.
+        raw_pei = ""
+        for attempt in range(2):
+            attempt_prompt = prompt if attempt == 0 else prompt + RETRY_NOTE
+            raw_pei, usage = await asyncio.to_thread(
+                gemini.generate_text_tracked,
+                prompt=attempt_prompt,
+                system_instruction=system_instruction,
+            )
+            await usage_repo.log(
+                model=usage.model,
+                operation="pei_generation",
+                input_tokens=usage.input_tokens,
+                output_tokens=usage.output_tokens,
+                total_tokens=usage.total_tokens,
+                duration_ms=usage.duration_ms,
+                user_id=generated_by,
+            )
+            if not has_degenerate_output(raw_pei):
+                break
+            logger.warning(
+                "PEI com loop de repetição (student_id=%s, tentativa %d, %d chars)",
+                body.student_id, attempt + 1, len(raw_pei),
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="A IA não conseguiu completar o PEI (resposta incompleta). Tente gerar novamente.",
+            )
+    except HTTPException:
+        raise
     except Exception as e:
+        logger.exception("Falha ao gerar PEI (student_id=%s)", body.student_id)
         raise HTTPException(status_code=500, detail=f"Erro ao gerar PEI: {str(e)}")
+
+    raw_pei = collapse_padding(raw_pei)
 
     # De-anonymise: replace UUIDs with real names in the generated PEI
     pei_text = deanonymize(raw_pei, deanon_map)

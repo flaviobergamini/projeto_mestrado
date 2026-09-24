@@ -102,7 +102,14 @@ class GeminiService:
         duration_ms = int((time.monotonic() - t0) * 1000)
 
         usage = _usage_from_metadata(self.model_name, getattr(response, "usage_metadata", None), duration_ms, prompt)
-        return response.text, usage
+        text = response.text
+        if not text or not text.strip():
+            # Resposta vazia (bloqueio de segurança, orçamento de tokens gasto só
+            # pensando, etc.) — falha explícita em vez de devolver None adiante.
+            candidates = getattr(response, "candidates", None) or []
+            reason = getattr(candidates[0], "finish_reason", None) if candidates else None
+            raise ValueError(f"Gemini retornou resposta vazia (finish_reason={reason})")
+        return text, usage
 
     # ── Embeddings ───────────────────────────────────────────────────────────
 
