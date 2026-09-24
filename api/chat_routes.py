@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import Response
 from dependency_injector.wiring import inject, Provide
@@ -15,6 +16,33 @@ from infrastructure.services.gemini_service import GeminiService
 from infrastructure.services.rag_service import RagService
 from infrastructure.services.anonymization_service import AnonymizationService, deanonymize
 from infrastructure.services.pdf_service import generate_chat_pdf
+
+logger = logging.getLogger(__name__)
+
+# Memória curta da conversa: só as últimas mensagens da sessão entram no prompt
+# (o contexto do aluno já é grande — histórico longo aumentaria custo e latência).
+MEMORY_MAX_MESSAGES = 6
+MEMORY_MAX_CHARS_PER_MESSAGE = 1200
+
+
+def _reanonymize(text: str, name_map: dict[str, str]) -> str:
+    """Inverso de deanonymize(): mensagens salvas têm nomes reais; antes de
+    voltarem pro Gemini, trocam pelo identificador anonimizado."""
+    for uuid, real_name in name_map.items():
+        if real_name:
+            text = text.replace(real_name, uuid)
+    return text
+
+
+def _format_history(messages: list[dict], name_map: dict[str, str]) -> str:
+    lines = []
+    for m in messages[-MEMORY_MAX_MESSAGES:]:
+        who = "Usuário" if m["role"] == "user" else "Assistente"
+        content = _reanonymize((m.get("content") or "").strip(), name_map)
+        if len(content) > MEMORY_MAX_CHARS_PER_MESSAGE:
+            content = content[:MEMORY_MAX_CHARS_PER_MESSAGE] + "…"
+        lines.append(f"{who}: {content}")
+    return "\n".join(lines)
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
 
@@ -113,7 +141,21 @@ async def send_message(
         '"[Nome do Aluno]" ou "[Nome da Escola]":\n'
         f"- ID do aluno: {body.student_id}\n"
         f"- ID da escola: {(student_for_rule or {}).get('school_id') or '(não informado)'}"
+        "\n\nNOTA SOBRE OS DIÁRIOS: é normal existir mais de um registro de diário na mesma data "
+        "para o mesmo aluno — eles vêm de autores diferentes (ex.: professor regente e professor "
+        "de apoio ou coordenação) e têm conteúdos distintos. Isso NÃO é duplicidade nem erro; "
+        "não aponte como problema e considere todos os registros da data."
     )
+
+    # Memória curta: histórico da sessão ANTES desta mensagem (só em sessão existente)
+    history_block = ""
+    if body.session_id:
+        previous = await chat_repo.list_messages(session_id)
+        if previous:
+            history_block = (
+                "=== CONVERSA ATÉ AGORA (memória curta; use apenas para entender o que a "
+                "pergunta atual retoma) ===\n" + _format_history(previous, deanon_map) + "\n\n"
+            )
 
     prompt = f"""{anonymization_rule}
 
@@ -123,7 +165,7 @@ async def send_message(
 === REGISTROS SIMILARES (RAG) ===
 {rag_context}
 
-=== PERGUNTA ===
+{history_block}=== PERGUNTA ===
 {body.message}"""
 
     # Save user message
@@ -161,6 +203,9 @@ async def send_message(
             username=username,
         )
     except Exception:
+        # Sem este log a causa real (timeout, 429/503 do Gemini, resposta vazia...)
+        # ficava invisível — o usuário só via a mensagem genérica abaixo.
+        logger.exception("Falha ao gerar resposta do chat (student_id=%s)", body.student_id)
         raw_answer = "Desculpe, ocorreu um erro ao processar sua pergunta. Tente novamente."
         deanon_map = {}
 
