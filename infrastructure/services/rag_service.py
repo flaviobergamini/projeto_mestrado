@@ -434,6 +434,8 @@ class RagService:
     # ── search ────────────────────────────────────────────────────────────────
 
     VALID_SOURCES = {"diary", "case_study", "family_diary", "therapy_diary"}
+    # fonte do chat → valor de diary_entries.source
+    _DIARY_KIND = {"diary": "school", "family_diary": "family", "therapy_diary": "therapy"}
 
     async def get_sources_preview(self, student_id: str) -> dict:
         """Return available source counts for a student."""
@@ -528,6 +530,16 @@ class RagService:
         if not active:
             return []
 
+        # Os embeddings de diário escolar, familiar e de terapia ficam na MESMA
+        # tabela; o tipo vem de diary_entries.source. Sem este filtro, marcar só
+        # "Diário Escolar" também trazia trechos do diário familiar/terapia pro
+        # prompt. Linhas sem source (legado) contam como escolar.
+        diary_kinds = sorted(
+            {self._DIARY_KIND[k] for k in active if k in self._DIARY_KIND}
+        )
+        diary_join = "LEFT JOIN diary_entries d ON d.id = de.diary_entry_id"
+        diary_kind_filter = "COALESCE(d.source, 'school') = ANY(CAST(:kinds AS text[]))"
+
         try:
             query_vector, emb_usage = await asyncio.to_thread(self._gemini.generate_embedding_tracked, query)
             if self._usage:
@@ -543,13 +555,15 @@ class RagService:
 
         # ── Vector search ─────────────────────────────────────────────────────
         vec_parts = []
-        if active & {"diary", "family_diary", "therapy_diary"}:
+        if diary_kinds:
             vec_parts.append(
-                "SELECT id, content, meta_data::text AS meta_json,"
-                " (embedding <=> CAST(:vec AS vector)) AS distance,"
+                "SELECT de.id, de.content, de.meta_data::text AS meta_json,"
+                " (de.embedding <=> CAST(:vec AS vector)) AS distance,"
                 " 'diario' AS source"
-                " FROM diary_embedding_gemini WHERE student_id = :sid"
-                " AND (embedding <=> CAST(:vec AS vector)) < :max_dist"
+                f" FROM diary_embedding_gemini de {diary_join}"
+                " WHERE de.student_id = :sid"
+                f" AND {diary_kind_filter}"
+                " AND (de.embedding <=> CAST(:vec AS vector)) < :max_dist"
             )
         if "case_study" in active:
             vec_parts.append(
@@ -562,13 +576,15 @@ class RagService:
 
         # ── Keyword search (FTS) ──────────────────────────────────────────────
         kw_parts = []
-        if active & {"diary", "family_diary", "therapy_diary"}:
+        if diary_kinds:
             kw_parts.append(
-                "SELECT id, content, meta_data::text AS meta_json,"
+                "SELECT de.id, de.content, de.meta_data::text AS meta_json,"
                 " 0.0 AS distance,"
                 " 'diario' AS source"
-                " FROM diary_embedding_gemini WHERE student_id = :sid"
-                " AND to_tsvector('portuguese', content) @@ plainto_tsquery('portuguese', :fts)"
+                f" FROM diary_embedding_gemini de {diary_join}"
+                " WHERE de.student_id = :sid"
+                f" AND {diary_kind_filter}"
+                " AND to_tsvector('portuguese', de.content) @@ plainto_tsquery('portuguese', :fts)"
             )
         if "case_study" in active:
             kw_parts.append(
@@ -586,7 +602,8 @@ class RagService:
                 vec_sql = " UNION ALL ".join(vec_parts) + " ORDER BY distance ASC LIMIT :lim"
                 res = await session.execute(
                     text(vec_sql),
-                    {"vec": vector_literal, "sid": student_id, "lim": limit, "max_dist": max_distance},
+                    {"vec": vector_literal, "sid": student_id, "lim": limit, "max_dist": max_distance,
+                     **({"kinds": diary_kinds} if diary_kinds else {})},
                 )
                 vec_rows = res.fetchall()
 
@@ -597,7 +614,8 @@ class RagService:
                 try:
                     res = await session.execute(
                         text(kw_sql),
-                        {"sid": student_id, "fts": fts_query},
+                        {"sid": student_id, "fts": fts_query,
+                         **({"kinds": diary_kinds} if diary_kinds else {})},
                     )
                     kw_rows = res.fetchall()
                 except Exception:
