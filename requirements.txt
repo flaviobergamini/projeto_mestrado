@@ -42,6 +42,9 @@ numpy>=2.2.0,<2.4.0
 supabase==2.23.2
 python-multipart==0.0.18
 
+# Compressão de imagens no upload (redimensiona + JPEG antes de ir pro Storage)
+Pillow==11.3.0
+
 # HTTP Client (usado em diary_routes e family_routes para transcrição de áudio)
 httpx==0.28.1
 
