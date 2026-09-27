@@ -48,6 +48,19 @@ class GeneratedPeiRepository:
             row = result.scalar_one_or_none()
             return self._to_dict(row) if row else None
 
+    async def update_text(self, pei_id: str, pei_text: str) -> dict | None:
+        async with self._db.session() as session:
+            result = await session.execute(
+                select(GeneratedPei).where(GeneratedPei.id == pei_id, GeneratedPei.deleted == False)
+            )
+            row = result.scalar_one_or_none()
+            if not row:
+                return None
+            row.pei_text = pei_text
+            await session.commit()
+            await session.refresh(row)
+            return self._to_dict(row)
+
     async def delete(self, pei_id: str) -> bool:
         async with self._db.session() as session:
             result = await session.execute(

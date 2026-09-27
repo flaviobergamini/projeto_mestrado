@@ -3,6 +3,9 @@ usado para criar um card de Kanban por seção quando um PEI é gerado."""
 import re
 
 _HEADER_RE = re.compile(r'^(#{2,3})\s+(.+)$', re.MULTILINE)
+# O Gemini às vezes formata os títulos das seções como linha em negrito
+# (**1. Título**) em vez de cabeçalho markdown (### 1. Título).
+_BOLD_HEADER_RE = re.compile(r'^\*\*(\d{1,2})\.\s+(.+?)\*\*\s*$', re.MULTILINE)
 
 # Cards de execução não fazem sentido pra seções puramente burocráticas
 # (identificação do aluno, assinaturas, base legal) — só as que descrevem
@@ -44,16 +47,21 @@ def parse_pei_sections(pei_text: str) -> list[dict]:
     matches = list(_HEADER_RE.finditer(pei_text))
     h3_matches = [m for m in matches if m.group(1) == '###']
     use = h3_matches if h3_matches else matches
-    if not use:
+    # (título, início do cabeçalho, fim do cabeçalho)
+    heads = [(m.group(2), m.start(), m.end()) for m in use]
+    bold = [(f"{m.group(1)}. {m.group(2)}", m.start(), m.end()) for m in _BOLD_HEADER_RE.finditer(pei_text)]
+    if len(bold) >= 3 and len(bold) > len(heads):
+        heads = bold
+    if not heads:
         return [{"title": "PEI Completo", "description": pei_text.strip()}]
 
     sections: list[dict] = []
-    for i, m in enumerate(use):
-        title = m.group(2).strip().lstrip('*').strip()
+    for i, (raw_title, _h_start, h_end) in enumerate(heads):
+        title = raw_title.strip().lstrip('*').strip()
         if any(kw in title.lower() for kw in _SKIP_TITLE_KEYWORDS):
             continue
-        start = m.end()
-        end = use[i + 1].start() if i + 1 < len(use) else len(pei_text)
+        start = h_end
+        end = heads[i + 1][1] if i + 1 < len(heads) else len(pei_text)
         body = pei_text[start:end].strip()
         if not body:
             continue

@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from typing import Optional
 from dependency_injector.wiring import inject, Provide
 
-from api.dependencies import get_current_user
+from api.dependencies import get_current_user, require_roles
 from core.kernel.container import Container
 from infrastructure.repositories.prompt_repository import PromptRepository
 from infrastructure.repositories.generated_pei_repository import GeneratedPeiRepository
@@ -27,6 +27,10 @@ from infrastructure.utils.llm_guards import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/pei-gen", tags=["PEI Generation"])
+
+
+class UpdatePeiTextRequest(BaseModel):
+    pei_text: str
 
 
 class GeneratePEIRequest(BaseModel):
@@ -219,6 +223,23 @@ async def get_saved_pei(
     if not pei:
         raise HTTPException(status_code=404, detail="PEI não encontrado.")
     return pei
+
+
+@router.put("/saved/{pei_id}")
+@inject
+async def update_saved_pei(
+    pei_id: str,
+    body: UpdatePeiTextRequest,
+    current_user: dict = Depends(require_roles("admin", "coordenacao")),
+    pei_repo: GeneratedPeiRepository = Depends(Provide[Container.generated_pei_repository]),
+):
+    """Atualiza o texto de um PEI salvo (edição de seção na página de PEI estruturado)."""
+    if not body.pei_text.strip():
+        raise HTTPException(status_code=422, detail="O texto do PEI não pode ficar vazio.")
+    updated = await pei_repo.update_text(pei_id, body.pei_text)
+    if not updated:
+        raise HTTPException(status_code=404, detail="PEI não encontrado.")
+    return updated
 
 
 @router.get("/pdf/{pei_id}")
