@@ -263,6 +263,7 @@ class MetricsRepository:
 
     async def behavior_by_support_level(
         self, date_from: Optional[date] = None, date_to: Optional[date] = None,
+        school_id: Optional[str] = None, student_id: Optional[str] = None,
     ) -> list[dict]:
         date_from, date_to = _default_window(date_from, date_to)
         # As respostas do diário (had_lunch, participated_in_play, etc.) são
@@ -284,6 +285,10 @@ class MetricsRepository:
             stmt = stmt.where(DiaryEntry.diary_date >= date_from)
         if date_to is not None:
             stmt = stmt.where(DiaryEntry.diary_date <= date_to)
+        if school_id:
+            stmt = stmt.where(Student.school_id == school_id)
+        if student_id:
+            stmt = stmt.where(DiaryEntry.student_id == student_id)
 
         async with self.database.session() as session:
             rows = (await session.execute(stmt)).all()
