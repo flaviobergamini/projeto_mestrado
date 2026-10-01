@@ -14,6 +14,7 @@ from infrastructure.repositories.diary_repository import DiaryRepository
 from infrastructure.repositories.student_repository import StudentRepository
 from infrastructure.repositories.ai_usage_repository import AiUsageRepository
 from infrastructure.services.storage_service import StorageService
+from infrastructure.utils.image_compression import compress_image, InvalidImageError
 from infrastructure.services.rag_service import RagService
 from infrastructure.services.gemini_service import GeminiService
 from infrastructure.services.pdf_service import generate_diary_pdf
@@ -326,20 +327,32 @@ async def upload_image(
         raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
                             detail="Imagem muito grande. Máximo permitido: 10 MB.")
 
-    ext = (file.filename or "image").rsplit(".", 1)[-1].lower()
-    object_key = f"diary/{entry_id}/{uuid.uuid4()}.{ext}"
+    # Foto de celular tem 3-6 MB e o storage encheu: redimensiona (máx. 1920x1080,
+    # sem ampliar) e converte pra JPEG 80% antes de guardar. CPU-bound (Pillow) —
+    # thread separada pra não travar o event loop.
+    try:
+        compressed = await asyncio.to_thread(compress_image, content)
+    except InvalidImageError:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            detail="Arquivo de imagem inválido ou corrompido.")
+
+    # Sempre JPEG depois da compressão — a extensão acompanha o formato real.
+    object_key = f"diary/{entry_id}/{uuid.uuid4()}.jpg"
 
     storage = StorageService()
 
-    public_url = storage.upload(object_key, content, file.content_type)
+    public_url = await asyncio.to_thread(storage.upload, object_key, compressed.content, compressed.mime_type)
+
+    original_name = file.filename or object_key
+    stem = original_name.rsplit(".", 1)[0] if "." in original_name else original_name
 
     return await repo.add_image(
         entry_id=entry_id,
         bucket=storage.bucket,
         object_key=object_key,
-        original_filename=file.filename or object_key,
-        mime_type=file.content_type,
-        size_bytes=len(content),
+        original_filename=f"{stem}.jpg",
+        mime_type=compressed.mime_type,
+        size_bytes=compressed.size,
         public_url=public_url,
     )
 

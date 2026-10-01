@@ -49,3 +49,8 @@ class IAuthService(ABC):
     def update_email(self, username: str, new_email: str) -> None:
         """Troca o e-mail de login do usuário identificado por `username` (email atual)."""
         ...
+
+    @abstractmethod
+    def admin_set_password(self, username: str, new_password: str) -> None:
+        """Define a senha do usuário diretamente (via admin), sem código de confirmação."""
+        ...

@@ -169,15 +169,19 @@ class UserRepository(IUserRepository):
             )
             return [_to_dict(u) for u in result.scalars().all()]
 
-    async def list_paginated(self, page: int = 1, page_size: int = 20) -> dict:
+    async def list_paginated(self, page: int = 1, page_size: int = 20, role: str | None = None) -> dict:
         offset = (page - 1) * page_size
         async with self.database.session() as session:
-            total_result = await session.execute(select(func.count()).select_from(UserProfile).where(UserProfile.deleted == False))
+            filters = [UserProfile.deleted == False]
+            if role:
+                filters.append(UserProfile.role == role)
+
+            total_result = await session.execute(select(func.count()).select_from(UserProfile).where(*filters))
             total = total_result.scalar() or 0
 
             result = await session.execute(
                 select(UserProfile)
-                .where(UserProfile.deleted == False)
+                .where(*filters)
                 .order_by(UserProfile.username)
                 .offset(offset)
                 .limit(page_size)

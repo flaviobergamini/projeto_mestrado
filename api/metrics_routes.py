@@ -111,9 +111,12 @@ async def diary_fill_by_parent_profile(
 async def behavior_by_support_level(
     date_from: Optional[_date] = None,
     date_to: Optional[_date] = None,
+    school_id: Optional[str] = None,
+    student_id: Optional[str] = None,
     current_user: dict = Depends(require_roles("admin", "coordenacao")),
     repo: MetricsRepository = Depends(Provide[Container.metrics_repository]),
 ):
     """% de respostas 'Sim' em cada pergunta fechada do diário escolar, por nível de suporte do
-    autismo — busca correlação entre nível de suporte e comportamentos registrados."""
-    return await repo.behavior_by_support_level(date_from, date_to)
+    autismo — busca correlação entre nível de suporte e comportamentos registrados.
+    Filtros opcionais por escola e por aluno."""
+    return await repo.behavior_by_support_level(date_from, date_to, school_id=school_id, student_id=student_id)
