@@ -4,6 +4,7 @@ diary entries and case studies. Also provides similarity search."""
 import asyncio
 import json
 import logging
+from datetime import date
 from typing import Optional
 
 from sqlalchemy import select, delete, text
@@ -495,6 +496,12 @@ class RagService:
             )
             kanban_count = int(kanban_result.scalar() or 0)
 
+            diary_summary_result = await session.execute(
+                text("SELECT COUNT(*) FROM diary_summaries WHERE student_id = :sid AND deleted = false"),
+                {"sid": student_id},
+            )
+            diary_summary_count = int(diary_summary_result.scalar() or 0)
+
         return {
             "student": {"available": student_row is not None, "count": 1 if student_row else 0},
             "diary": {"available": diary_count > 0, "count": diary_count},
@@ -506,6 +513,7 @@ class RagService:
             "pdi": {"available": pdi_count > 0, "count": pdi_count},
             "generated_pei": {"available": gpei_count > 0, "count": gpei_count},
             "kanban_progress": {"available": kanban_count > 0, "count": kanban_count},
+            "diary_summary": {"available": diary_summary_count > 0, "count": diary_summary_count},
         }
 
     @staticmethod
@@ -520,11 +528,19 @@ class RagService:
         limit: int = 20,
         sources: Optional[list[str]] = None,
         max_distance: float = 0.5,
+        date_from: Optional[str] = None,
+        date_to: Optional[str] = None,
     ) -> list[dict]:
         """Hybrid search: vector similarity + full-text search (tsvector), merged and deduplicated.
 
         sources: subset of ['diary', 'case_study']. Defaults to both when None or empty.
         max_distance: cosine distance threshold — chunks above this are discarded from vector results.
+        date_from/date_to: restringe os chunks de DIÁRIO (vetorial e por palavra-chave) a
+        diary_entries.diary_date dentro do intervalo. Sem isso, a busca por similaridade
+        semântica ignorava completamente o período escolhido na tela — um "Registros
+        Similares" podia trazer entradas de anos antes do filtro, mesmo o contexto
+        estruturado (anonymization_service) respeitando a data corretamente. Não se aplica
+        a estudo de caso, que não tem data.
         """
         active = set(sources) & self.VALID_SOURCES if sources else self.VALID_SOURCES
         if not active:
@@ -539,6 +555,15 @@ class RagService:
         )
         diary_join = "LEFT JOIN diary_entries d ON d.id = de.diary_entry_id"
         diary_kind_filter = "COALESCE(d.source, 'school') = ANY(CAST(:kinds AS text[]))"
+        diary_date_filter = ""
+        # asyncpg exige um datetime.date nativo pro tipo `date` — não aceita a
+        # string ISO direto, mesmo com CAST(... AS date) na query.
+        date_from_obj = date.fromisoformat(date_from) if date_from else None
+        date_to_obj = date.fromisoformat(date_to) if date_to else None
+        if date_from_obj:
+            diary_date_filter += " AND d.diary_date >= :date_from"
+        if date_to_obj:
+            diary_date_filter += " AND d.diary_date <= :date_to"
 
         try:
             query_vector, emb_usage = await asyncio.to_thread(self._gemini.generate_embedding_tracked, query)
@@ -563,6 +588,7 @@ class RagService:
                 f" FROM diary_embedding_gemini de {diary_join}"
                 " WHERE de.student_id = :sid"
                 f" AND {diary_kind_filter}"
+                f"{diary_date_filter}"
                 " AND (de.embedding <=> CAST(:vec AS vector)) < :max_dist"
             )
         if "case_study" in active:
@@ -584,6 +610,7 @@ class RagService:
                 f" FROM diary_embedding_gemini de {diary_join}"
                 " WHERE de.student_id = :sid"
                 f" AND {diary_kind_filter}"
+                f"{diary_date_filter}"
                 " AND to_tsvector('portuguese', de.content) @@ plainto_tsquery('portuguese', :fts)"
             )
         if "case_study" in active:
@@ -603,7 +630,9 @@ class RagService:
                 res = await session.execute(
                     text(vec_sql),
                     {"vec": vector_literal, "sid": student_id, "lim": limit, "max_dist": max_distance,
-                     **({"kinds": diary_kinds} if diary_kinds else {})},
+                     **({"kinds": diary_kinds} if diary_kinds else {}),
+                     **({"date_from": date_from_obj} if date_from_obj else {}),
+                     **({"date_to": date_to_obj} if date_to_obj else {})},
                 )
                 vec_rows = res.fetchall()
 
@@ -615,7 +644,9 @@ class RagService:
                     res = await session.execute(
                         text(kw_sql),
                         {"sid": student_id, "fts": fts_query,
-                         **({"kinds": diary_kinds} if diary_kinds else {})},
+                         **({"kinds": diary_kinds} if diary_kinds else {}),
+                         **({"date_from": date_from_obj} if date_from_obj else {}),
+                         **({"date_to": date_to_obj} if date_to_obj else {})},
                     )
                     kw_rows = res.fetchall()
                 except Exception:
@@ -669,9 +700,14 @@ class RagService:
         limit: int = 20,
         sources: Optional[list[str]] = None,
         max_distance: float = 0.5,
+        date_from: Optional[str] = None,
+        date_to: Optional[str] = None,
     ) -> str:
         """Returns a ready-to-use anonymised context string for the LLM prompt."""
-        chunks = await self.search(query, student_id, limit=limit, sources=sources, max_distance=max_distance)
+        chunks = await self.search(
+            query, student_id, limit=limit, sources=sources, max_distance=max_distance,
+            date_from=date_from, date_to=date_to,
+        )
         if not chunks:
             return "Não há registros vetorizados para este aluno ainda."
 

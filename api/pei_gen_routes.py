@@ -20,6 +20,7 @@ from infrastructure.services.gemini_service import GeminiService
 from infrastructure.services.anonymization_service import AnonymizationService, deanonymize
 from infrastructure.services.pdf_service import generate_pei_pdf
 from infrastructure.utils.pei_sections import parse_pei_sections
+from infrastructure.utils.date_range import broadest_date_from, broadest_date_to
 from infrastructure.utils.llm_guards import (
     TABLE_FORMAT_RULE, RETRY_NOTE, has_degenerate_output, collapse_padding,
 )
@@ -85,6 +86,8 @@ async def generate_pei(
             student_id=body.student_id,
             limit=10,
             sources=body.sources,
+            date_from=broadest_date_from(body),
+            date_to=broadest_date_to(body),
         ),
     )
 

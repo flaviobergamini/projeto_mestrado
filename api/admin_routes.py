@@ -47,10 +47,11 @@ async def list_users_by_role(
 async def list_users_paginated(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
+    role: Optional[str] = Query(None),
     current_user: dict = Depends(require_roles("admin")),
     user_repo: UserRepository = Depends(Provide[Container.user_repository]),
 ):
-    return await user_repo.list_paginated(page=page, page_size=page_size)
+    return await user_repo.list_paginated(page=page, page_size=page_size, role=role)
 
 
 @router.patch("/users/{user_id}")
@@ -82,6 +83,29 @@ async def update_user(
     if not updated:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuário não encontrado.")
     return updated
+
+
+class UserPasswordBody(BaseModel):
+    new_password: str
+
+
+@router.put("/users/{user_id}/password")
+@inject
+async def set_user_password(
+    user_id: str,
+    body: UserPasswordBody,
+    current_user: dict = Depends(require_roles("admin")),
+    user_repo: UserRepository = Depends(Provide[Container.user_repository]),
+    auth_service: IAuthService = Depends(Provide[Container.cognito_service]),
+):
+    existing = await user_repo.get_by_id(user_id)
+    if not existing:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuário não encontrado.")
+    try:
+        auth_service.admin_set_password(existing["username"], body.new_password)
+    except AuthException as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=e.message)
+    return {"success": True}
 
 
 @router.put("/users/{user_id}/demographics")
