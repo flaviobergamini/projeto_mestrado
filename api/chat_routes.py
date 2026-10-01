@@ -8,6 +8,7 @@ from typing import Optional
 
 from core.kernel.container import Container
 from api.dependencies import get_current_user
+from infrastructure.utils.date_range import broadest_date_from, broadest_date_to
 from infrastructure.repositories.chat_repository import ChatRepository
 from infrastructure.repositories.prompt_repository import PromptRepository
 from infrastructure.repositories.ai_usage_repository import AiUsageRepository
@@ -124,6 +125,8 @@ async def send_message(
             student_id=body.student_id,
             limit=5,
             sources=body.sources,
+            date_from=broadest_date_from(body),
+            date_to=broadest_date_to(body),
         ),
     )
 

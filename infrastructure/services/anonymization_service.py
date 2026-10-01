@@ -31,6 +31,7 @@ from infrastructure.models.pdi import Pdi
 from infrastructure.models.generated_pei import GeneratedPei
 from infrastructure.models.case_study_submission import CaseStudySubmission
 from infrastructure.models.pei_kanban_card import PeiKanbanCard
+from infrastructure.models.diary_summary import DiarySummary
 from infrastructure.utils.case_study_answers import normalize_answers
 
 logger = logging.getLogger(__name__)
@@ -147,6 +148,18 @@ def deanonymize(text: str, name_map: dict[str, str]) -> str:
     return text
 
 
+def reanonymize(text: str, name_map: dict[str, str]) -> str:
+    """Inverso de deanonymize(): troca nomes reais pelo identificador anonimizado.
+
+    Usado para conteúdo que já foi salvo com nome real (ex.: Resumo Diário — o
+    chat que o gera não passa pelo pipeline de anonimização) antes de reenviá-lo
+    como contexto para o Chat/PEI, que precisa ficar anonimizado."""
+    for uuid, real_name in name_map.items():
+        if real_name:
+            text = text.replace(real_name, uuid)
+    return text
+
+
 # ── Service class ─────────────────────────────────────────────────────────────
 
 class AnonymizationService:
@@ -189,6 +202,7 @@ class AnonymizationService:
         include_pdi = include_all or "pdi" in sources
         include_generated_pei = include_all or "generated_pei" in sources
         include_kanban_progress = include_all or "kanban_progress" in sources
+        include_diary_summary = include_all or "diary_summary" in sources
 
         async with self._db.session() as session:
             # ── Student ──────────────────────────────────────────────────────
@@ -438,8 +452,33 @@ class AnonymizationService:
                         "reacao_aluno_1a5": card.reaction,
                     })
 
+            # ── Resumos Diários salvos ───────────────────────────────────────
+            # O chat que gera o Resumo Diário (diary_summary_routes.py) não passa
+            # pelo pipeline de anonimização — o texto salvo tem o nome real do
+            # aluno. Reanonimiza (nome real → ID) antes de reenviar como contexto,
+            # igual é feito para a memória curta do Chat.
+            diary_summary_list: list[dict] = []
+            if include_diary_summary:
+                summary_result = await session.execute(
+                    select(DiarySummary)
+                    .where(DiarySummary.student_id == student_id, DiarySummary.deleted == False)
+                    .order_by(DiarySummary.created_at.desc())
+                    .limit(5)
+                )
+                for sm in summary_result.scalars().all():
+                    diary_summary_list.append({
+                        "id": sm.id,
+                        "period_start": sm.period_start,
+                        "period_end": sm.period_end,
+                        "created_at": str(sm.created_at) if sm.created_at else None,
+                        "texto": sm.summary_text or "",
+                    })
+
         # ── De-anonymization map ──────────────────────────────────────────────
         deanon_map = build_deanon_map(student_dict, school_dict, teacher_dicts)
+        if diary_summary_list:
+            for item in diary_summary_list:
+                item["texto"] = reanonymize(item["texto"], deanon_map)
 
         # ── Assemble context string ───────────────────────────────────────────
         sections: list[str] = []
@@ -489,6 +528,13 @@ class AnonymizationService:
                 "cards mais recentes atualizados pelo professor) ==="
             )
             sections.append(json.dumps(kanban_progress_list, ensure_ascii=False, indent=2))
+
+        if diary_summary_list:
+            sections.append(
+                f"=== RESUMOS DIÁRIOS SALVOS (últimos {len(diary_summary_list)}, gerados anteriormente "
+                "pela equipe a partir dos diários) ==="
+            )
+            sections.append(json.dumps(diary_summary_list, ensure_ascii=False, indent=2))
 
         context_str = "\n\n".join(sections)
         return context_str, deanon_map
