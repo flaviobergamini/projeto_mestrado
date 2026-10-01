@@ -209,6 +209,20 @@ class CognitoService(IAuthService):
         except ClientError as e:
             raise _to_domain_exception(e)
 
+    def admin_set_password(self, username: str, new_password: str) -> None:
+        """Define a senha do usuário diretamente, como permanente — sem código de
+        confirmação ou e-mail de reset (diferente de forgot_password/confirm_forgot_password,
+        que são o fluxo self-service do próprio usuário)."""
+        try:
+            self.client.admin_set_user_password(
+                UserPoolId=self.user_pool_id,
+                Username=username,
+                Password=new_password,
+                Permanent=True,
+            )
+        except ClientError as e:
+            raise _to_domain_exception(e)
+
     def delete_user(self, username: str) -> None:
         """Remove o usuário do Cognito User Pool pelo username (email)."""
         try:
