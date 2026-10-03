@@ -4,6 +4,7 @@ from .teacher import Teacher
 from .student import Student
 from .teacher_student_link import TeacherStudentLink
 from .teacher_school import TeacherSchool
+from .user_school import UserSchool
 from .diary_entry import DiaryEntry
 from .pdi import Pdi
 from .pdi_trimester_subject import PdiTrimesterSubject
@@ -23,6 +24,7 @@ __all__ = [
     "Student",
     "TeacherStudentLink",
     "TeacherSchool",
+    "UserSchool",
     "DiaryEntry",
     "Pdi",
     "PdiTrimesterSubject",

@@ -7,7 +7,8 @@ class IUserRepository(ABC):
     @abstractmethod
     async def add(self, id: str, username: str, full_name: Optional[str], role: str,
                   municipality_id: Optional[str], school_id: Optional[str],
-                  teacher_id: Optional[str], is_active: bool) -> dict:
+                  teacher_id: Optional[str], is_active: bool,
+                  school_ids: Optional[list[str]] = None) -> dict:
         ...
 
     @abstractmethod

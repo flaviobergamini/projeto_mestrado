@@ -25,6 +25,7 @@ class CreateUserUseCase:
         municipality_id: Optional[str] = None,
         school_id: Optional[str] = None,
         teacher_id: Optional[str] = None,
+        school_ids: Optional[list[str]] = None,
     ):
         try:
             if requester_role not in CAN_CREATE_USER:
@@ -51,6 +52,7 @@ class CreateUserUseCase:
                 role=role,
                 municipality_id=municipality_id,
                 school_id=school_id,
+                school_ids=school_ids,
                 teacher_id=teacher_id,
             )
 

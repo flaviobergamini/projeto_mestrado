@@ -46,7 +46,7 @@ class StudentRepository:
     def __init__(self, database: Database) -> None:
         self.database = database
 
-    async def list_all(self, school_id: Optional[str] = None) -> list[dict]:
+    async def list_all(self, school_id: Optional[str] = None, school_ids: Optional[list[str]] = None) -> list[dict]:
         async with self.database.session() as session:
             stmt = (
                 select(Student, School.name.label("school_name"))
@@ -56,6 +56,8 @@ class StudentRepository:
             )
             if school_id:
                 stmt = stmt.where(Student.school_id == school_id)
+            elif school_ids is not None:
+                stmt = stmt.where(Student.school_id.in_(school_ids))
             result = await session.execute(stmt)
             rows = result.all()
             return [_to_dict(row.Student, row.school_name) for row in rows]

@@ -70,9 +70,13 @@ async def list_students(
     current_user: dict = Depends(get_current_user),
     repo: StudentRepository = Depends(Provide[Container.student_repository]),
 ):
-    user_school = current_user.get("school_id")
-    filter_school = school_id or (user_school if current_user["role"] not in ("admin", "secretaria", "pesquisador") else None)
-    return await repo.list_all(school_id=filter_school)
+    restricted = current_user["role"] not in ("admin", "secretaria", "pesquisador")
+    if school_id:
+        return await repo.list_all(school_id=school_id)
+    user_schools = current_user.get("school_ids", [])
+    if restricted and user_schools:
+        return await repo.list_all(school_ids=user_schools)
+    return await repo.list_all()
 
 
 @router.get("/{student_id}")
