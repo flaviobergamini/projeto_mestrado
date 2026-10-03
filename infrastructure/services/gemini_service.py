@@ -200,8 +200,14 @@ Ouça o áudio e preencha o JSON abaixo com base no que o professor relatou.
 Regras:
 - Para os campos de atividade use SOMENTE: "Sim", "Não", "Parcialmente" ou null (se não mencionado).
 - Para "presence" use SOMENTE: "Presente", "Falta Justificada" ou "Falta Injustificada".
-- "open_observation": texto livre com observações adicionais mencionadas, ou null.
-- "absence_reason": motivo da falta se for Falta Justificada, ou null.
+- "open_observation": o RELATO DETALHADO do professor, o mais próximo possível do que foi dito no áudio. Registre
+  tudo o que foi falado além das respostas fechadas: situações ocorridas, falas e reações da criança, contexto,
+  momentos do dia, intensidade e frequência dos comportamentos, estratégias usadas e como o aluno respondeu.
+  Inclua também os detalhes e justificativas sobre as atividades (por exemplo, por que algo foi "Parcialmente").
+  NÃO resuma, NÃO generalize e NÃO omita detalhes: preserve as informações e o vocabulário do professor, apenas
+  corrigindo a pontuação e organizando em frases ou parágrafos. Quanto mais longo e detalhado o áudio, mais longa
+  deve ser a observação. Use null só se o professor não disse nada além das respostas fechadas.
+- "absence_reason": motivo da falta se for Falta Justificada, com os detalhes ditos, ou null.
 - Não invente informações que não foram ditas no áudio. Use null para campos não mencionados.
 
 Retorne APENAS o JSON, sem explicações, sem markdown, sem ```json.
