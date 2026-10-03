@@ -10,9 +10,12 @@ from infrastructure.models.teacher_student_link import TeacherStudentLink
 from infrastructure.models.teacher import Teacher
 from infrastructure.models.object_storage_file import ObjectStorageFile
 from infrastructure.services.anonymization_service import anon_diary_entry
+from infrastructure.utils.diary_custom import parse_custom_answers
 
 
 def _build_diary_anonymized(entry_data: dict) -> str:
+    custom, labels = parse_custom_answers(entry_data.get("custom_answers") if isinstance(entry_data.get("custom_answers"), str) else None)
+    entry_data = {**entry_data, "custom_answers": custom, "question_labels": labels}
     return json.dumps(anon_diary_entry(entry_data), ensure_ascii=False)
 
 
@@ -23,9 +26,12 @@ def _to_dict(e: DiaryEntry) -> dict:
             norm = json.loads(e.normalized_observation)
         except Exception:
             pass
+    custom, labels = parse_custom_answers(e.custom_answers)
     return {
         "id": e.id,
         "student_id": e.student_id,
+        "custom_answers": custom,
+        "question_labels": labels,
         "diary_date": e.diary_date.isoformat() if e.diary_date else None,
         "teacher_attention": e.teacher_attention,
         "followed_agreements": e.followed_agreements,
@@ -146,6 +152,7 @@ class DiaryRepository:
                 completed_activities=data.get("completed_activities"),
                 bathroom_use=data.get("bathroom_use"),
                 open_observation=data.get("open_observation"),
+                custom_answers=data.get("custom_answers"),
                 absence_reason=data.get("absence_reason"),
                 teacher_name=data.get("teacher_name"),
                 presence=data.get("presence", "Presente"),
@@ -174,7 +181,7 @@ class DiaryRepository:
             for field in [
                 "diary_date", "teacher_attention", "followed_agreements", "activity_interest",
                 "had_lunch", "participated_in_play", "completed_activities", "bathroom_use",
-                "open_observation", "absence_reason", "teacher_name", "presence",
+                "open_observation", "absence_reason", "teacher_name", "presence", "custom_answers",
             ]:
                 if field in data:
                     value = data[field]
@@ -196,6 +203,7 @@ class DiaryRepository:
                 "bathroom_use": entry.bathroom_use,
                 "open_observation": entry.open_observation,
                 "absence_reason": entry.absence_reason,
+                "custom_answers": entry.custom_answers,
             })
             await session.commit()
 

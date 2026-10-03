@@ -12,6 +12,7 @@ router = APIRouter(prefix="/schools", tags=["Schools"])
 
 class SchoolCreate(BaseModel):
     name: str
+    municipality_id: Optional[str] = None
     cnpj: Optional[str] = None
     institution_type: Optional[str] = None
     address_city: Optional[str] = None
@@ -20,6 +21,7 @@ class SchoolCreate(BaseModel):
 
 class SchoolUpdate(BaseModel):
     name: Optional[str] = None
+    municipality_id: Optional[str] = None
     cnpj: Optional[str] = None
     institution_type: Optional[str] = None
     address_city: Optional[str] = None

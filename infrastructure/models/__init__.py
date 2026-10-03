@@ -3,6 +3,11 @@ from .school import School
 from .teacher import Teacher
 from .student import Student
 from .teacher_student_link import TeacherStudentLink
+from .teacher_school import TeacherSchool
+from .user_school import UserSchool
+from .diary_question import DiaryQuestion
+from .bncc import BnccSkill, StudentSkillScore, SkillReport
+from .functional_profile import FunctionalProfile
 from .diary_entry import DiaryEntry
 from .pdi import Pdi
 from .pdi_trimester_subject import PdiTrimesterSubject
@@ -21,6 +26,13 @@ __all__ = [
     "Teacher",
     "Student",
     "TeacherStudentLink",
+    "TeacherSchool",
+    "UserSchool",
+    "DiaryQuestion",
+    "BnccSkill",
+    "StudentSkillScore",
+    "SkillReport",
+    "FunctionalProfile",
     "DiaryEntry",
     "Pdi",
     "PdiTrimesterSubject",

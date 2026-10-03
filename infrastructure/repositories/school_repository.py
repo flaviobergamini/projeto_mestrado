@@ -13,6 +13,7 @@ class SchoolRepository:
         return {
             "id": s.id,
             "name": s.name,
+            "municipality_id": s.municipality_id,
             "cnpj": s.cnpj,
             "institution_type": s.institution_type,
             "address_city": s.address_city,
@@ -40,6 +41,7 @@ class SchoolRepository:
             school = School(
                 id=str(uuid.uuid4()),
                 name=data["name"],
+                municipality_id=data.get("municipality_id") or None,
                 cnpj=data.get("cnpj"),
                 institution_type=data.get("institution_type"),
                 address_city=data.get("address_city"),
@@ -63,7 +65,7 @@ class SchoolRepository:
             if not school:
                 return None
             
-            for field in ("name", "cnpj", "institution_type", "address_city", "notes"):
+            for field in ("name", "municipality_id", "cnpj", "institution_type", "address_city", "notes"):
                 if field in data:
                     setattr(school, field, data[field])
 

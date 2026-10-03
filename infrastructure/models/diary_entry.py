@@ -29,6 +29,9 @@ class DiaryEntry(Base):
     bathroom_use: Mapped[Optional[str]] = mapped_column(EncryptedText, nullable=True)
 
     open_observation: Mapped[Optional[str]] = mapped_column(EncryptedText, nullable=True)
+    # JSON {"custom": [{key,label,answer}], "labels": {coluna: rótulo}} — respostas das perguntas
+    # personalizadas do aluno e rótulos alterados das perguntas padrão, no momento do registro.
+    custom_answers: Mapped[Optional[str]] = mapped_column(EncryptedText, nullable=True)
     absence_reason: Mapped[Optional[str]] = mapped_column(EncryptedText, nullable=True)
     teacher_name: Mapped[Optional[str]] = mapped_column(EncryptedText, nullable=True)
     # presence kept plaintext — used for filtering and RAG logic

@@ -13,6 +13,9 @@ from core.kernel.container import Container
 from infrastructure.repositories.diary_repository import DiaryRepository
 from infrastructure.repositories.student_repository import StudentRepository
 from infrastructure.repositories.ai_usage_repository import AiUsageRepository
+from infrastructure.repositories.diary_question_repository import DiaryQuestionRepository
+from infrastructure.utils.diary_custom import dump_custom_answers
+from core.constants.diary_questions import DEFAULT_LABELS
 from infrastructure.services.storage_service import StorageService
 from infrastructure.utils.image_compression import compress_image, InvalidImageError
 from infrastructure.services.rag_service import RagService
@@ -36,6 +39,8 @@ class DiaryEntryCreate(BaseModel):
     bathroom_use: Optional[str] = None
     open_observation: Optional[str] = None
     absence_reason: Optional[str] = None
+    # {chave_da_pergunta: resposta} das perguntas personalizadas do aluno
+    custom_answers: Optional[dict[str, str]] = None
 
 
 class DiaryEntryUpdate(BaseModel):
@@ -51,6 +56,25 @@ class DiaryEntryUpdate(BaseModel):
     bathroom_use: Optional[str] = None
     open_observation: Optional[str] = None
     absence_reason: Optional[str] = None
+    custom_answers: Optional[dict[str, str]] = None
+
+
+async def _build_custom_payload(
+    q_repo: DiaryQuestionRepository, student_id: str, answers: dict[str, str],
+    prev_custom: Optional[list] = None, prev_labels: Optional[dict] = None,
+) -> Optional[str]:
+    """Monta o JSON de custom_answers com o texto das perguntas no momento do registro.
+    Respostas de perguntas que o aluno já não tem (removidas depois) são preservadas."""
+    questions = (await q_repo.get_effective(student_id))["questions"]
+    current_keys = {q["key"] for q in questions}
+    custom = [
+        {"key": q["key"], "label": q["label"], "answer": answers[q["key"]].strip()}
+        for q in questions if not q["builtin"] and (answers.get(q["key"]) or "").strip()
+    ]
+    labels = {q["key"]: q["label"] for q in questions if q["builtin"] and q["label"] != DEFAULT_LABELS.get(q["key"])}
+    custom += [c for c in (prev_custom or []) if c.get("key") not in current_keys]
+    labels.update({k: v for k, v in (prev_labels or {}).items() if k not in current_keys})
+    return dump_custom_answers(custom, labels)
 
 
 ALLOWED_AUDIO_TYPES = {
@@ -166,8 +190,10 @@ async def create_entry(
     repo: DiaryRepository = Depends(Provide[Container.diary_repository]),
     student_repo: StudentRepository = Depends(Provide[Container.student_repository]),
     rag: RagService = Depends(Provide[Container.rag_service]),
+    q_repo: DiaryQuestionRepository = Depends(Provide[Container.diary_question_repository]),
 ):
     data = body.model_dump()
+    data["custom_answers"] = await _build_custom_payload(q_repo, body.student_id, body.custom_answers or {})
     if not data.get("teacher_name"):
         data["teacher_name"] = current_user.get("full_name") or current_user.get("username", "")
 
@@ -185,8 +211,17 @@ async def update_entry(
     repo: DiaryRepository = Depends(Provide[Container.diary_repository]),
     student_repo: StudentRepository = Depends(Provide[Container.student_repository]),
     rag: RagService = Depends(Provide[Container.rag_service]),
+    q_repo: DiaryQuestionRepository = Depends(Provide[Container.diary_question_repository]),
 ):
-    updated = await repo.update(entry_id, body.model_dump(exclude_none=True))
+    data = body.model_dump(exclude_none=True)
+    if "custom_answers" in data:
+        current = await repo.get_by_id(entry_id)
+        if not current:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Registro não encontrado")
+        data["custom_answers"] = await _build_custom_payload(
+            q_repo, current["student_id"], data["custom_answers"],
+            current.get("custom_answers"), current.get("question_labels"))
+    updated = await repo.update(entry_id, data)
 
     if not updated:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Registro não encontrado")

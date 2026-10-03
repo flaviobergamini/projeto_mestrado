@@ -44,6 +44,7 @@ async def register(
             role=request.role,
             municipality_id=request.municipality_id,
             school_id=request.school_id,
+            school_ids=request.school_ids,
             teacher_id=request.teacher_id,
         )
         if result.is_bad_request:

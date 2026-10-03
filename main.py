@@ -34,6 +34,12 @@ from api import pei_kanban_routes
 from api.pei_kanban_routes import router as pei_kanban_router
 from api import saved_skill_routes
 from api.saved_skill_routes import router as saved_skill_router
+from api import diary_question_routes
+from api.diary_question_routes import router as diary_question_router
+from api import bncc_routes
+from api.bncc_routes import router as bncc_router
+from api import functional_profile_routes
+from api.functional_profile_routes import router as functional_profile_router
 from api.middleware.audit_middleware import AuditMiddleware
 from core.kernel.container import Container
 
@@ -45,7 +51,8 @@ container.wire(modules=[
     chat_routes, prompt_routes, pei_gen_routes,
     municipality_routes, admin_routes, ai_usage_routes, vinculos_routes,
     family_routes, diary_summary_routes, metrics_routes, skill_routes,
-    pei_kanban_routes, saved_skill_routes,
+    pei_kanban_routes, saved_skill_routes, diary_question_routes, bncc_routes,
+    functional_profile_routes,
 ])
 
 app = FastAPI(
@@ -86,6 +93,9 @@ app.include_router(metrics_router)
 app.include_router(skill_router)
 app.include_router(pei_kanban_router)
 app.include_router(saved_skill_router)
+app.include_router(diary_question_router)
+app.include_router(bncc_router)
+app.include_router(functional_profile_router)
 
 
 @app.get("/health", tags=["Health"])

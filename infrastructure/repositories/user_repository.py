@@ -4,6 +4,7 @@ from infrastructure.database_context.database import Database
 from infrastructure.models.user_profile import UserProfile
 from infrastructure.models.municipality import Municipality
 from infrastructure.models.school import School
+from infrastructure.models.user_school import UserSchool
 from core.interfaces.i_user_repository import IUserRepository
 
 
@@ -26,6 +27,41 @@ def _to_dict(u: UserProfile) -> dict:
     }
 
 
+async def _attach_school_ids(session, users: list[dict]) -> list[dict]:
+    """Preenche school_ids (todas as escolas do usuário). Sem linhas em user_schools,
+    cai para a escola principal, se houver."""
+    ids = [u["id"] for u in users]
+    by_user: dict[str, list[str]] = {}
+    if ids:
+        rows = await session.execute(
+            select(UserSchool.user_id, UserSchool.school_id).where(UserSchool.user_id.in_(ids))
+        )
+        for user_id, school_id in rows.all():
+            by_user.setdefault(user_id, []).append(school_id)
+    for u in users:
+        found = by_user.get(u["id"])
+        u["school_ids"] = found if found else ([u["school_id"]] if u["school_id"] else [])
+    return users
+
+
+def _requested_school_ids(school_ids: Optional[list[str]], school_id: Optional[str], school_id_given: bool) -> Optional[list[str]]:
+    """Lista de escolas pedida, sem duplicatas e na ordem recebida (a primeira é a
+    principal). None = não mexe nas escolas. `school_id` sozinho equivale a [school_id]."""
+    if school_ids is not None:
+        ids = school_ids
+    elif school_id_given:
+        ids = [school_id] if school_id else []
+    else:
+        return None
+    return list(dict.fromkeys(i for i in ids if i))
+
+
+async def _replace_user_schools(session, user: UserProfile, school_ids: list[str]) -> None:
+    user.school_id = school_ids[0] if school_ids else None
+    await session.execute(delete(UserSchool).where(UserSchool.user_id == user.id))
+    session.add_all(UserSchool(user_id=user.id, school_id=sid) for sid in school_ids)
+
+
 class UserRepository(IUserRepository):
     def __init__(self, database: Database) -> None:
         self.database = database
@@ -40,6 +76,7 @@ class UserRepository(IUserRepository):
         school_id: Optional[str],
         teacher_id: Optional[str],
         is_active: bool = True,
+        school_ids: Optional[list[str]] = None,
     ) -> dict:
         async with self.database.session() as session:
             # Check for soft-deleted record with same username
@@ -52,13 +89,14 @@ class UserRepository(IUserRepository):
                 existing.full_name = full_name
                 existing.role = role
                 existing.municipality_id = municipality_id
-                existing.school_id = school_id
                 existing.teacher_id = teacher_id
                 existing.is_active = is_active
                 existing.deleted = False
+                await _replace_user_schools(
+                    session, existing, _requested_school_ids(school_ids, school_id, True) or [])
                 await session.commit()
                 await session.refresh(existing)
-                return _to_dict(existing)
+                return (await _attach_school_ids(session, [_to_dict(existing)]))[0]
 
             user = UserProfile(
                 id=id,
@@ -66,14 +104,16 @@ class UserRepository(IUserRepository):
                 full_name=full_name,
                 role=role,
                 municipality_id=municipality_id,
-                school_id=school_id,
                 teacher_id=teacher_id,
                 is_active=is_active,
             )
             session.add(user)
+            await session.flush()
+            await _replace_user_schools(
+                session, user, _requested_school_ids(school_ids, school_id, True) or [])
             await session.commit()
             await session.refresh(user)
-            return _to_dict(user)
+            return (await _attach_school_ids(session, [_to_dict(user)]))[0]
 
     async def update_role(self, user_id: str, role: str) -> dict:
         async with self.database.session() as session:
@@ -86,7 +126,7 @@ class UserRepository(IUserRepository):
             await session.refresh(user)
             return _to_dict(user)
 
-    async def update(self, user_id: str, full_name: Optional[str] = None, role: Optional[str] = None, is_active: Optional[bool] = None) -> dict | None:
+    async def update(self, user_id: str, full_name: Optional[str] = None, role: Optional[str] = None, is_active: Optional[bool] = None, links: Optional[dict] = None) -> dict | None:
         async with self.database.session() as session:
             result = await session.execute(select(UserProfile).where(UserProfile.id == user_id, UserProfile.deleted == False))
             user = result.scalars().first()
@@ -98,9 +138,17 @@ class UserRepository(IUserRepository):
                 user.role = role
             if is_active is not None:
                 user.is_active = is_active
+            # links traz só as chaves enviadas; valor None/"" limpa o vínculo.
+            for key in ("municipality_id", "teacher_id"):
+                if links and key in links:
+                    setattr(user, key, links[key] or None)
+            requested = _requested_school_ids(
+                (links or {}).get("school_ids"), (links or {}).get("school_id"), bool(links) and "school_id" in links)
+            if requested is not None:
+                await _replace_user_schools(session, user, requested)
             await session.commit()
             await session.refresh(user)
-            return _to_dict(user)
+            return (await _attach_school_ids(session, [_to_dict(user)]))[0]
 
     async def update_username(self, user_id: str, new_username: str) -> Optional[dict]:
         """Atualiza o e-mail de login armazenado localmente (username == email).
@@ -147,13 +195,13 @@ class UserRepository(IUserRepository):
         async with self.database.session() as session:
             result = await session.execute(select(UserProfile).where(UserProfile.username == username, UserProfile.deleted == False))
             user = result.scalars().first()
-            return _to_dict(user) if user else None
+            return (await _attach_school_ids(session, [_to_dict(user)]))[0] if user else None
 
     async def get_by_id(self, user_id: str) -> Optional[dict]:
         async with self.database.session() as session:
             result = await session.execute(select(UserProfile).where(UserProfile.id == user_id, UserProfile.deleted == False))
             user = result.scalars().first()
-            return _to_dict(user) if user else None
+            return (await _attach_school_ids(session, [_to_dict(user)]))[0] if user else None
 
     async def get_all(self) -> list[dict]:
         async with self.database.session() as session:
@@ -186,7 +234,7 @@ class UserRepository(IUserRepository):
                 .offset(offset)
                 .limit(page_size)
             )
-            items = [_to_dict(u) for u in result.scalars().all()]
+            items = await _attach_school_ids(session, [_to_dict(u) for u in result.scalars().all()])
 
         return {
             "items": items,

@@ -11,6 +11,7 @@ class UserRegister(BaseModel):
     role: str = "professor"
     municipality_id: Optional[str] = None
     school_id: Optional[str] = None
+    school_ids: Optional[list[str]] = None
     teacher_id: Optional[str] = None
 
 
