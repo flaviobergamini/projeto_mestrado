@@ -34,6 +34,7 @@ from infrastructure.repositories.metrics_repository import MetricsRepository
 from infrastructure.repositories.skill_repository import SkillRepository
 from infrastructure.repositories.diary_question_repository import DiaryQuestionRepository
 from infrastructure.repositories.bncc_repository import BnccRepository
+from infrastructure.repositories.functional_profile_repository import FunctionalProfileRepository
 from infrastructure.repositories.pei_kanban_repository import PeiKanbanRepository
 from infrastructure.repositories.saved_skill_result_repository import SavedSkillResultRepository
 from infrastructure.services.anonymization_service import AnonymizationService
@@ -109,6 +110,8 @@ class Container(containers.DeclarativeContainer):
     diary_question_repository = providers.Factory(DiaryQuestionRepository, database=database)
 
     bncc_repository = providers.Factory(BnccRepository, database=database)
+
+    functional_profile_repository = providers.Factory(FunctionalProfileRepository, database=database)
 
     pei_kanban_repository = providers.Factory(PeiKanbanRepository, database=database)
 

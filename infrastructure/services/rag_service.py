@@ -514,6 +514,12 @@ class RagService:
             )
             skill_report_count = int(skill_report_result.scalar() or 0)
 
+            functional_profile_result = await session.execute(
+                text("SELECT COUNT(*) FROM functional_profiles WHERE student_id = :sid AND deleted = false"),
+                {"sid": student_id},
+            )
+            functional_profile_count = int(functional_profile_result.scalar() or 0)
+
         return {
             "student": {"available": student_row is not None, "count": 1 if student_row else 0},
             "case_study": {"available": case_count > 0, "count": case_count},
@@ -524,6 +530,7 @@ class RagService:
             "kanban_progress": {"available": kanban_count > 0, "count": kanban_count},
             "diary_summary": {"available": diary_summary_count > 0, "count": diary_summary_count},
             "skill_report": {"available": skill_report_count > 0, "count": skill_report_count},
+            "functional_profile": {"available": functional_profile_count > 0, "count": functional_profile_count},
         }
 
     @staticmethod

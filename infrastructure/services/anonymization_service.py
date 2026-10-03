@@ -18,7 +18,7 @@ What is stripped per entity:
 import json
 import logging
 from datetime import date as date_type
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
 
 from infrastructure.database_context.database import Database
@@ -34,6 +34,8 @@ from infrastructure.models.pei_kanban_card import PeiKanbanCard
 from infrastructure.models.diary_summary import DiarySummary
 from infrastructure.utils.diary_custom import parse_custom_answers
 from infrastructure.models.bncc import SkillReport
+from infrastructure.models.functional_profile import FunctionalProfile
+from infrastructure.utils.functional_profile import format_functional_profile
 from infrastructure.utils.case_study_answers import normalize_answers
 
 logger = logging.getLogger(__name__)
@@ -248,6 +250,7 @@ class AnonymizationService:
         include_kanban_progress = include_all or "kanban_progress" in sources
         include_diary_summary = include_all or "diary_summary" in sources
         include_skill_report = include_all or "skill_report" in sources
+        include_functional_profile = include_all or "functional_profile" in sources
 
         async with self._db.session() as session:
             # ── Student ──────────────────────────────────────────────────────
@@ -513,6 +516,27 @@ class AnonymizationService:
                     except Exception:
                         continue
 
+            # ── Perfil funcional mais recente ────────────────────────────────
+            functional_profile_item: dict | None = None
+            if include_functional_profile:
+                fp_result = await session.execute(
+                    select(FunctionalProfile)
+                    .where(FunctionalProfile.student_id == student_id, FunctionalProfile.deleted == False)
+                    .order_by(func.coalesce(FunctionalProfile.period_end, func.date(FunctionalProfile.created_at)).desc(),
+                              FunctionalProfile.created_at.desc())
+                    .limit(1)
+                )
+                fp = fp_result.scalars().first()
+                if fp:
+                    try:
+                        functional_profile_item = {
+                            "meta": {"origin": fp.origin, "period_end": str(fp.period_end) if fp.period_end else None,
+                                     "created_at": str(fp.created_at) if fp.created_at else None},
+                            "content": json.loads(fp.content),
+                        }
+                    except Exception:
+                        functional_profile_item = None
+
             # ── Resumos Diários salvos ───────────────────────────────────────
             # O chat que gera o Resumo Diário (diary_summary_routes.py) não passa
             # pelo pipeline de anonimização — o texto salvo tem o nome real do
@@ -541,6 +565,9 @@ class AnonymizationService:
             for item in diary_summary_list:
                 item["texto"] = reanonymize(item["texto"], deanon_map)
         skill_report_texts = [format_skill_report(r["title"], r["content"], deanon_map) for r in skill_report_list]
+        if functional_profile_item:
+            skill_report_texts.append(format_functional_profile(
+                functional_profile_item["meta"], functional_profile_item["content"], lambda t: reanonymize(t, deanon_map)))
 
         # ── Assemble context string ───────────────────────────────────────────
         sections: list[str] = []
