@@ -26,6 +26,7 @@ def _validate_teacher_role(v: Optional[str]) -> Optional[str]:
 class TeacherCreate(BaseModel):
     name: str
     school_id: Optional[str] = None
+    school_ids: Optional[list[str]] = None
     specialization: Optional[str] = None
     email: Optional[str] = None
     phone: Optional[str] = None
@@ -41,6 +42,7 @@ class TeacherCreate(BaseModel):
 class TeacherUpdate(BaseModel):
     name: Optional[str] = None
     school_id: Optional[str] = None
+    school_ids: Optional[list[str]] = None
     specialization: Optional[str] = None
     email: Optional[str] = None
     phone: Optional[str] = None

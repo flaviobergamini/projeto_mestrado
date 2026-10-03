@@ -28,6 +28,10 @@ class UserUpdateBody(BaseModel):
     role: Optional[str] = None
     is_active: Optional[bool] = None
     email: Optional[str] = None
+    municipality_id: Optional[str] = None
+    school_id: Optional[str] = None
+    school_ids: Optional[list[str]] = None
+    teacher_id: Optional[str] = None
 
 
 # ── Users ──────────────────────────────────────────────────────────────────────
@@ -79,7 +83,8 @@ async def update_user(
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=e.message)
             await user_repo.update_username(user_id, new_email)
 
-    updated = await user_repo.update(user_id, full_name=body.full_name, role=body.role, is_active=body.is_active)
+    links = {k: getattr(body, k) for k in ("municipality_id", "school_id", "school_ids", "teacher_id") if k in body.model_fields_set}
+    updated = await user_repo.update(user_id, full_name=body.full_name, role=body.role, is_active=body.is_active, links=links)
     if not updated:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuário não encontrado.")
     return updated

@@ -45,6 +45,7 @@ class ValidateTokenUseCase:
             "role":            user["role"],
             "municipality_id": user["municipality_id"],
             "school_id":       user["school_id"],
+            "school_ids":      user.get("school_ids", []),
             "teacher_id":      user["teacher_id"],
             "is_active":       user["is_active"],
         })
