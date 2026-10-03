@@ -33,6 +33,7 @@ from infrastructure.models.case_study_submission import CaseStudySubmission
 from infrastructure.models.pei_kanban_card import PeiKanbanCard
 from infrastructure.models.diary_summary import DiarySummary
 from infrastructure.utils.diary_custom import parse_custom_answers
+from infrastructure.models.bncc import SkillReport
 from infrastructure.utils.case_study_answers import normalize_answers
 
 logger = logging.getLogger(__name__)
@@ -68,6 +69,43 @@ def anon_teacher(teacher: dict) -> dict:
         "school_id": teacher.get("school_id") or "",
         "specialization": teacher.get("specialization") or "",
     }
+
+
+def format_skill_report(title: str, content: dict, name_map: dict[str, str], max_chars: int = 20000) -> str:
+    """Texto compacto de um relatório de habilidades BNCC para o contexto da IA.
+
+    Habilidades com nota > 0 (ou observação) levam descrição; as de nota 0 sem observação
+    entram só como lista de códigos, para o relatório completo não estourar o prompt.
+    Observações livres passam por reanonimização (nome real → ID), como os resumos."""
+    f = content.get("filters", {})
+    s = content.get("summary", {})
+    lines = [
+        f"=== RELATÓRIO DE HABILIDADES BNCC — {title} ===",
+        "Notas de 0 a 5 dadas pelo professor (0 = habilidade ainda não consolidada, 5 = totalmente consolidada).",
+        f"Gerado em {str(content.get('generated_at', ''))[:10]} | Anos: {', '.join(f.get('grades') or []) or 'todos'}"
+        f" | total de habilidades no relatório: {s.get('total', 0)} | média: {s.get('average', 0)}"
+        f" | quantidade por nota: " + ", ".join(f"{n}={v}" for n, v in sorted((s.get('by_score') or {}).items())),
+    ]
+    for group in content.get("groups", []):
+        lines.append(f"\n## {group['grade']}")
+        for area in group["areas"]:
+            lines.append(f"{area['area']}:")
+            zero_codes = []
+            for sk in area["skills"]:
+                obs = sk.get("observation")
+                if sk["score"] == 0 and not obs:
+                    zero_codes.append(sk["code"])
+                    continue
+                line = f"- {sk['code']} (nota {sk['score']}): {sk['description']}"
+                if obs:
+                    line += f" | Observação do professor: {reanonymize(obs, name_map)}"
+                lines.append(line)
+            if zero_codes:
+                lines.append(f"- Nota 0 (ainda não consolidadas): {', '.join(zero_codes)}")
+    text = "\n".join(lines)
+    if len(text) > max_chars:
+        text = text[:max_chars] + "\n[... relatório truncado por tamanho ...]"
+    return text
 
 
 def anon_diary_entry(entry: dict, school_id: str = "") -> dict:
@@ -202,13 +240,14 @@ class AnonymizationService:
         include_school = include_all or "school" in sources
         include_teacher = include_all or "teacher" in sources
         include_case_study = include_all or "case_study" in sources
-        include_diary = include_all or "diary" in sources
-        include_family_diary = include_all or "family_diary" in sources
-        include_therapy_diary = include_all or "therapy_diary" in sources
+        # Os diários (escolar, familiar, terapia) deixaram de ser entrada da IA: só os
+        # Resumos Diários e os relatórios de habilidades BNCC entram no contexto.
+        include_diary = include_family_diary = include_therapy_diary = False
         include_pdi = include_all or "pdi" in sources
         include_generated_pei = include_all or "generated_pei" in sources
         include_kanban_progress = include_all or "kanban_progress" in sources
         include_diary_summary = include_all or "diary_summary" in sources
+        include_skill_report = include_all or "skill_report" in sources
 
         async with self._db.session() as session:
             # ── Student ──────────────────────────────────────────────────────
@@ -459,6 +498,21 @@ class AnonymizationService:
                         "reacao_aluno_1a5": card.reaction,
                     })
 
+            # ── Relatórios de habilidades BNCC (JSON guardado pela tela Habilidades) ──
+            skill_report_list: list[dict] = []
+            if include_skill_report:
+                report_result = await session.execute(
+                    select(SkillReport)
+                    .where(SkillReport.student_id == student_id, SkillReport.deleted == False)
+                    .order_by(SkillReport.created_at.desc())
+                    .limit(3)
+                )
+                for rep in report_result.scalars().all():
+                    try:
+                        skill_report_list.append({"title": rep.title, "content": json.loads(rep.content)})
+                    except Exception:
+                        continue
+
             # ── Resumos Diários salvos ───────────────────────────────────────
             # O chat que gera o Resumo Diário (diary_summary_routes.py) não passa
             # pelo pipeline de anonimização — o texto salvo tem o nome real do
@@ -486,6 +540,7 @@ class AnonymizationService:
         if diary_summary_list:
             for item in diary_summary_list:
                 item["texto"] = reanonymize(item["texto"], deanon_map)
+        skill_report_texts = [format_skill_report(r["title"], r["content"], deanon_map) for r in skill_report_list]
 
         # ── Assemble context string ───────────────────────────────────────────
         sections: list[str] = []
@@ -542,6 +597,9 @@ class AnonymizationService:
                 "pela equipe a partir dos diários) ==="
             )
             sections.append(json.dumps(diary_summary_list, ensure_ascii=False, indent=2))
+
+        for text in skill_report_texts:
+            sections.append(text)
 
         context_str = "\n\n".join(sections)
         return context_str, deanon_map

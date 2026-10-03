@@ -6,6 +6,7 @@ from .teacher_student_link import TeacherStudentLink
 from .teacher_school import TeacherSchool
 from .user_school import UserSchool
 from .diary_question import DiaryQuestion
+from .bncc import BnccSkill, StudentSkillScore, SkillReport
 from .diary_entry import DiaryEntry
 from .pdi import Pdi
 from .pdi_trimester_subject import PdiTrimesterSubject
@@ -27,6 +28,9 @@ __all__ = [
     "TeacherSchool",
     "UserSchool",
     "DiaryQuestion",
+    "BnccSkill",
+    "StudentSkillScore",
+    "SkillReport",
     "DiaryEntry",
     "Pdi",
     "PdiTrimesterSubject",

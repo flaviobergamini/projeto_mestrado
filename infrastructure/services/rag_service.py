@@ -439,7 +439,8 @@ class RagService:
 
     # ── search ────────────────────────────────────────────────────────────────
 
-    VALID_SOURCES = {"diary", "case_study", "family_diary", "therapy_diary"}
+    # Diários não são mais entrada da IA — a busca semântica cobre só o estudo de caso.
+    VALID_SOURCES = {"case_study"}
     # fonte do chat → valor de diary_entries.source
     _DIARY_KIND = {"diary": "school", "family_diary": "family", "therapy_diary": "therapy"}
 
@@ -507,11 +508,14 @@ class RagService:
             )
             diary_summary_count = int(diary_summary_result.scalar() or 0)
 
+            skill_report_result = await session.execute(
+                text("SELECT COUNT(*) FROM skill_reports WHERE student_id = :sid AND deleted = false"),
+                {"sid": student_id},
+            )
+            skill_report_count = int(skill_report_result.scalar() or 0)
+
         return {
             "student": {"available": student_row is not None, "count": 1 if student_row else 0},
-            "diary": {"available": diary_count > 0, "count": diary_count},
-            "family_diary": {"available": family_count > 0, "count": family_count},
-            "therapy_diary": {"available": therapy_count > 0, "count": therapy_count},
             "case_study": {"available": case_count > 0, "count": case_count},
             "school": {"available": school_id is not None, "count": 1 if school_id else 0},
             "teacher": {"available": teacher_count > 0, "count": teacher_count},
@@ -519,6 +523,7 @@ class RagService:
             "generated_pei": {"available": gpei_count > 0, "count": gpei_count},
             "kanban_progress": {"available": kanban_count > 0, "count": kanban_count},
             "diary_summary": {"available": diary_summary_count > 0, "count": diary_summary_count},
+            "skill_report": {"available": skill_report_count > 0, "count": skill_report_count},
         }
 
     @staticmethod
