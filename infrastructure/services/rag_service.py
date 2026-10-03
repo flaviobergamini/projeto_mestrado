@@ -45,6 +45,11 @@ def build_diary_json(entry: dict) -> dict:
             "uso_banheiro": entry.get("bathroom_use") or "",
             "cumpriu_combinados": entry.get("followed_agreements") or "",
         }
+        custom = entry.get("custom_answers")
+        if isinstance(custom, list) and custom:
+            data["perguntas_personalizadas"] = [{"pergunta": c["label"], "resposta": c["answer"]} for c in custom]
+        if entry.get("question_labels"):
+            data["rotulos_perguntas_alterados"] = entry["question_labels"]
         if entry.get("open_observation"):
             data["observacoes"] = entry["open_observation"]
     else:

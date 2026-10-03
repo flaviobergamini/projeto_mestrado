@@ -32,6 +32,7 @@ from infrastructure.models.generated_pei import GeneratedPei
 from infrastructure.models.case_study_submission import CaseStudySubmission
 from infrastructure.models.pei_kanban_card import PeiKanbanCard
 from infrastructure.models.diary_summary import DiarySummary
+from infrastructure.utils.diary_custom import parse_custom_answers
 from infrastructure.utils.case_study_answers import normalize_answers
 
 logger = logging.getLogger(__name__)
@@ -91,6 +92,11 @@ def anon_diary_entry(entry: dict, school_id: str = "") -> dict:
             "completed_activities": entry.get("completed_activities") or "",
             "bathroom_use": entry.get("bathroom_use") or "",
         }
+        # Perguntas personalizadas do aluno e rótulos alterados das perguntas padrão
+        if entry.get("custom_answers"):
+            data["custom_questions"] = [{"question": c["label"], "answer": c["answer"]} for c in entry["custom_answers"]]
+        if entry.get("question_labels"):
+            data["activity_question_labels"] = entry["question_labels"]
         if entry.get("open_observation"):
             data["open_observation"] = entry["open_observation"]
     else:
@@ -318,6 +324,7 @@ class AnonymizationService:
                             "open_observation": e.open_observation,
                             "absence_reason": e.absence_reason,
                         }
+                        entry_dict["custom_answers"], entry_dict["question_labels"] = parse_custom_answers(e.custom_answers)
                         d = anon_diary_entry(entry_dict, school_id=school_id)
                     # Enrich with persisted normalized observation when available
                     if e.normalized_observation:
