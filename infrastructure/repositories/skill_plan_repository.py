@@ -3,6 +3,7 @@ import uuid
 from datetime import datetime
 from typing import Optional
 from sqlalchemy import select
+from core.interfaces.i_skill_plan_repository import ISkillPlanRepository
 from infrastructure.database_context.database import Database
 from infrastructure.models.bncc import (
     BnccSkill, StudentSkillScore, StudentSkillEvent, SkillSuggestion,
@@ -18,7 +19,7 @@ def _codes(raw: Optional[str]) -> list[str]:
         return []
 
 
-class SkillPlanRepository:
+class SkillPlanRepository(ISkillPlanRepository):
     """Plano por habilidade: alvos das rodadas da IA, gravação dos rascunhos e sugestões de nota."""
 
     def __init__(self, database: Database) -> None:

@@ -3,11 +3,13 @@ import uuid
 from datetime import datetime
 from typing import Optional
 from sqlalchemy import select
+from core.constants.kanban import KANBAN_STATUSES, KANBAN_REVIEW_STATUS
+from core.interfaces.i_kanban_repository import IKanbanRepository
 from infrastructure.database_context.database import Database
 from infrastructure.models.pei_kanban_card import PeiKanbanCard
 from infrastructure.models.bncc import BnccSkill, StudentSkillScore
 
-VALID_STATUSES = ("todo", "doing", "review", "done", "archived")
+VALID_STATUSES = KANBAN_STATUSES  # mantido por compatibilidade
 
 
 def _codes(raw: Optional[str]) -> list[str]:
@@ -41,7 +43,7 @@ def _to_dict(c: PeiKanbanCard) -> dict:
     }
 
 
-class PeiKanbanRepository:
+class PeiKanbanRepository(IKanbanRepository):
     def __init__(self, database: Database) -> None:
         self.database = database
 
@@ -131,7 +133,7 @@ class PeiKanbanRepository:
             for field in ("status", "title", "description", "reaction", "position", "adaptation", "daily_log"):
                 if field in data:
                     setattr(card, field, data[field])
-            if data.get("status") == "review" and not card.reviewed_at:
+            if data.get("status") == KANBAN_REVIEW_STATUS and not card.reviewed_at:
                 card.reviewed_at = datetime.utcnow()
             await session.commit()
             await session.refresh(card)

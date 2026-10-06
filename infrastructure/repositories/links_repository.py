@@ -1,9 +1,10 @@
-"""Repositório para gerenciar vínculos professor-aluno."""
+"""Repositório de vínculos professor-aluno e da visão consolidada de relações."""
 
 import uuid
 from sqlalchemy import select, delete, update
 from sqlalchemy.orm import selectinload
 
+from core.interfaces.i_links_repository import ILinksRepository
 from infrastructure.database_context.database import Database
 from infrastructure.models.student import Student
 from infrastructure.models.school import School
@@ -11,7 +12,7 @@ from infrastructure.models.teacher import Teacher
 from infrastructure.models.teacher_student_link import TeacherStudentLink
 
 
-class VinculosRepository:
+class LinksRepository(ILinksRepository):
     def __init__(self, database: Database):
         self._db = database
 

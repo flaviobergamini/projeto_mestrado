@@ -13,7 +13,7 @@ from infrastructure.repositories.prompt_repository import PromptRepository
 from infrastructure.repositories.generated_pei_repository import GeneratedPeiRepository
 from infrastructure.repositories.school_repository import SchoolRepository
 from infrastructure.repositories.teacher_repository import TeacherRepository
-from infrastructure.repositories.vinculos_repository import VinculosRepository
+from infrastructure.repositories.links_repository import LinksRepository
 from infrastructure.repositories.user_repository import UserRepository
 from infrastructure.repositories.ai_usage_repository import AiUsageRepository
 from infrastructure.repositories.municipality_repository import MunicipalityRepository
@@ -83,8 +83,8 @@ def get_teacher_repo() -> TeacherRepository:
     return TeacherRepository(get_db())
 
 
-def get_vinculos_repo() -> VinculosRepository:
-    return VinculosRepository(get_db())
+def get_links_repo() -> LinksRepository:
+    return LinksRepository(get_db())
 
 
 def get_user_repo() -> UserRepository:

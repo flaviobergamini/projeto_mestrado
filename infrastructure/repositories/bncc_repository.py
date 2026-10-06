@@ -4,13 +4,10 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 from sqlalchemy import select, func, or_
+from core.interfaces.i_bncc_repository import IBnccRepository, BnccError
 from infrastructure.database_context.database import Database
 from infrastructure.models.bncc import BnccSkill, StudentSkillScore, SkillReport, StudentSkillEvent
 from infrastructure.models.student import Student
-
-
-class BnccError(ValueError):
-    pass
 
 
 def _skill_dict(s: BnccSkill) -> dict:
@@ -49,7 +46,7 @@ def _grade_order(grade: str, stage: str) -> int:
     return int(m.group(1)) if m else 99
 
 
-class BnccRepository:
+class BnccRepository(IBnccRepository):
     def __init__(self, database: Database) -> None:
         self.database = database
 

@@ -6,12 +6,9 @@ from sqlalchemy import select
 from infrastructure.database_context.database import Database
 from infrastructure.models.functional_profile import FunctionalProfile
 from infrastructure.models.student import Student
-from infrastructure.utils.functional_profile import normalize_content, average_level
+from core.interfaces.i_functional_profile_repository import IFunctionalProfileRepository, ProfileError
+from core.services.functional_profile_content import normalize_content, average_level
 from core.constants.functional_profile import DOMAINS
-
-
-class ProfileError(ValueError):
-    pass
 
 
 def _parse_date(value: Optional[str]) -> Optional[date]:
@@ -27,7 +24,7 @@ def _ref_date(p: FunctionalProfile) -> date:
     return p.period_end or (p.created_at.date() if p.created_at else date.today())
 
 
-class FunctionalProfileRepository:
+class FunctionalProfileRepository(IFunctionalProfileRepository):
     def __init__(self, database: Database) -> None:
         self.database = database
 
