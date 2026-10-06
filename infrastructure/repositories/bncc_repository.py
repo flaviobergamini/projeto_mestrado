@@ -4,19 +4,38 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 from sqlalchemy import select, func, or_
+from core.interfaces.i_bncc_repository import IBnccRepository, BnccError
 from infrastructure.database_context.database import Database
-from infrastructure.models.bncc import BnccSkill, StudentSkillScore, SkillReport
+from infrastructure.models.bncc import BnccSkill, StudentSkillScore, SkillReport, StudentSkillEvent
 from infrastructure.models.student import Student
-
-
-class BnccError(ValueError):
-    pass
 
 
 def _skill_dict(s: BnccSkill) -> dict:
     return {
         "id": s.id, "stage": s.stage, "grade": s.grade, "grade_order": s.grade_order,
         "area": s.area, "code": s.code, "description": s.description, "position": s.position,
+    }
+
+
+def _load_codes(raw: Optional[str]) -> list[str]:
+    if not raw:
+        return []
+    try:
+        v = json.loads(raw)
+        return [str(x) for x in v] if isinstance(v, list) else []
+    except Exception:
+        return []
+
+
+def _plan_dict(row: Optional[StudentSkillScore]) -> dict:
+    return {
+        "adaptation": (row.adaptation or "") if row else "",
+        "justification": (row.justification or "") if row else "",
+        "actions": (row.actions or "") if row else "",
+        "correlated_codes": _load_codes(row.correlated_codes) if row else [],
+        "ai_excluded": bool(row.ai_excluded) if row else False,
+        "in_plan": bool(row.in_plan) if row else False,
+        "plan_ai_at": row.plan_ai_at.isoformat() if row and row.plan_ai_at else None,
     }
 
 
@@ -27,7 +46,7 @@ def _grade_order(grade: str, stage: str) -> int:
     return int(m.group(1)) if m else 99
 
 
-class BnccRepository:
+class BnccRepository(IBnccRepository):
     def __init__(self, database: Database) -> None:
         self.database = database
 
@@ -42,6 +61,11 @@ class BnccRepository:
                 .order_by(BnccSkill.grade_order, BnccSkill.grade)
             )
             return [{"grade": g, "grade_order": o, "stage": st, "count": n} for g, o, st, n in rows.all()]
+
+    async def list_codes(self) -> list[str]:
+        async with self.database.session() as session:
+            rows = await session.execute(select(BnccSkill.code).where(BnccSkill.deleted == False).distinct())
+            return [r[0] for r in rows.all()]
 
     async def list_areas(self) -> list[str]:
         async with self.database.session() as session:
@@ -139,7 +163,7 @@ class BnccRepository:
     async def student_skills(
         self, student_id: str, grades: Optional[list[str]] = None, areas: Optional[list[str]] = None,
         q: Optional[str] = None, min_score: Optional[int] = None, max_score: Optional[int] = None,
-        only_with_observation: bool = False,
+        only_with_observation: bool = False, only_in_plan: bool = False,
     ) -> list[dict]:
         async with self.database.session() as session:
             skills = await self._list_skills(session, grades, areas, q)
@@ -161,8 +185,10 @@ class BnccRepository:
                 continue
             if only_with_observation and not observation.strip():
                 continue
+            if only_in_plan and not (row and row.in_plan):
+                continue
             out.append({
-                **s, "score": score, "observation": observation,
+                **s, "score": score, "observation": observation, **_plan_dict(row),
                 "updated_at": row.updated_at.isoformat() if row and row.updated_at else None,
             })
         return out
@@ -176,18 +202,61 @@ class BnccRepository:
                 raise BnccError("Habilidade não encontrada.")
             row = await session.get(StudentSkillScore, (student_id, skill_id))
             if not row:
-                row = StudentSkillScore(student_id=student_id, skill_id=skill_id, score=0)
+                row = StudentSkillScore(
+                    student_id=student_id, skill_id=skill_id, score=0, ai_excluded=False, in_plan=False,
+                )
                 session.add(row)
+            old_score = row.score or 0
             if "score" in fields and fields["score"] is not None:
                 row.score = int(fields["score"])
             if "observation" in fields:
                 row.observation = (fields["observation"] or "").strip() or None
+            for key in ("adaptation", "justification", "actions"):
+                if key in fields:
+                    setattr(row, key, (fields[key] or "").strip() or None)
+            if "correlated_codes" in fields:
+                codes = [str(c).strip() for c in (fields["correlated_codes"] or []) if str(c).strip()]
+                row.correlated_codes = json.dumps(codes, ensure_ascii=False) if codes else None
+            if "ai_excluded" in fields and fields["ai_excluded"] is not None:
+                row.ai_excluded = bool(fields["ai_excluded"])
+            if "in_plan" in fields and fields["in_plan"] is not None:
+                was = bool(row.in_plan)
+                row.in_plan = bool(fields["in_plan"])
+                if row.in_plan != was:
+                    session.add(StudentSkillEvent(
+                        id=str(uuid.uuid4()), student_id=student_id, skill_id=skill_id, kind="plan",
+                        old_score=old_score, new_score=row.score,
+                        note="Habilidade incluída no plano." if row.in_plan else "Habilidade removida do plano.",
+                        user_id=user.get("user_id"), username=user.get("username"),
+                    ))
             row.updated_by_user_id = user.get("user_id")
             row.updated_by_username = user.get("username")
+            if row.score != old_score:
+                session.add(StudentSkillEvent(
+                    id=str(uuid.uuid4()), student_id=student_id, skill_id=skill_id, kind="score",
+                    old_score=old_score, new_score=row.score,
+                    note=(fields.get("change_note") or "").strip() or None,
+                    evidence_card_ids=json.dumps(fields.get("evidence_card_ids") or []) if fields.get("evidence_card_ids") else None,
+                    user_id=user.get("user_id"), username=user.get("username"),
+                ))
             await session.commit()
             await session.refresh(row)
             return {**_skill_dict(skill), "score": row.score, "observation": row.observation or "",
+                    **_plan_dict(row),
                     "updated_at": row.updated_at.isoformat() if row.updated_at else None}
+
+    async def list_events(self, student_id: str, skill_id: str) -> list[dict]:
+        async with self.database.session() as session:
+            rows = await session.execute(
+                select(StudentSkillEvent)
+                .where(StudentSkillEvent.student_id == student_id, StudentSkillEvent.skill_id == skill_id)
+                .order_by(StudentSkillEvent.created_at.desc())
+            )
+            return [{
+                "id": e.id, "kind": e.kind, "old_score": e.old_score, "new_score": e.new_score,
+                "note": e.note, "evidence_card_ids": _load_codes(e.evidence_card_ids),
+                "username": e.username, "created_at": e.created_at.isoformat() if e.created_at else None,
+            } for e in rows.scalars().all()]
 
     # ── relatórios ────────────────────────────────────────────────────────────
 

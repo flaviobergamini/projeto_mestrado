@@ -12,6 +12,8 @@ class Settings:
     GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
     GEMINI_MODEL = os.getenv("GEMINI_MODEL")
     GEMINI_EMBEDDING_MODEL = os.getenv("GEMINI_EMBEDDING_MODEL")
+    # Validade (s) do cache explícito do catálogo BNCC. 0 desliga o cache explícito (o catálogo vai inline).
+    BNCC_CACHE_TTL_SECONDS = int(os.getenv("BNCC_CACHE_TTL_SECONDS", "1800"))
 
     # AWS Cognito
     COGNITO_REGION = os.getenv("COGNITO_REGION", "us-east-1")

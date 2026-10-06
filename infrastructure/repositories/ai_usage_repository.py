@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 # "input_audio" é o preço cobrado quando a entrada é áudio (transcrição de
 # diário/família) — mais caro que texto/imagem/vídeo na tabela do Gemini.
 PRICING: dict[str, dict[str, float]] = {
-    "gemini-2.5-flash": {"input": 0.30 / 1_000_000, "input_audio": 1.00 / 1_000_000, "output": 2.50 / 1_000_000},
+    "gemini-2.5-flash": {"input": 0.30 / 1_000_000, "input_audio": 1.00 / 1_000_000, "output": 2.50 / 1_000_000, "cached": 0.03 / 1_000_000},
     "gemini-2.5-flash-preview-05-20": {"input": 0.30 / 1_000_000, "input_audio": 1.00 / 1_000_000, "output": 2.50 / 1_000_000},
     "gemini-2.0-flash": {"input": 0.10 / 1_000_000, "input_audio": 0.70 / 1_000_000, "output": 0.40 / 1_000_000},
     "gemini-1.5-flash": {"input": 0.075 / 1_000_000, "input_audio": 0.25 / 1_000_000, "output": 0.30 / 1_000_000},
@@ -29,8 +29,8 @@ PRICING_REF_DATE = "2026-09-16"
 AUDIO_INPUT_OPERATIONS = {"diary_audio_transcription", "family_audio_transcription"}
 
 
-def _calc_cost(model: str, input_tokens: int, output_tokens: int, is_audio_input: bool = False) -> float:
-    """Calculate cost in USD based on the pricing table."""
+def _calc_cost(model: str, input_tokens: int, output_tokens: int, is_audio_input: bool = False, cached_tokens: int = 0) -> float:
+    """Calculate cost in USD based on the pricing table. Tokens vindos do cache de contexto custam ~10% da entrada."""
     p = None
     for key, prices in PRICING.items():
         if model.endswith(key) or key.endswith(model) or model == key:
@@ -40,7 +40,9 @@ def _calc_cost(model: str, input_tokens: int, output_tokens: int, is_audio_input
         # Fallback to gemini-2.0-flash pricing for unknown models
         p = {"input": 0.10 / 1_000_000, "input_audio": 0.70 / 1_000_000, "output": 0.40 / 1_000_000}
     input_price = p.get("input_audio", p["input"]) if is_audio_input else p["input"]
-    return round(input_tokens * input_price + output_tokens * p["output"], 8)
+    cached = min(max(cached_tokens, 0), input_tokens)
+    cached_price = p.get("cached", p["input"] * 0.1)
+    return round((input_tokens - cached) * input_price + cached * cached_price + output_tokens * p["output"], 8)
 
 
 class AiUsageRepository:
@@ -57,8 +59,10 @@ class AiUsageRepository:
         duration_ms: int | None = None,
         user_id: str | None = None,
         username: str | None = None,
+        cached_tokens: int = 0,
     ) -> None:
-        cost = _calc_cost(model, input_tokens, output_tokens, is_audio_input=operation in AUDIO_INPUT_OPERATIONS)
+        cost = _calc_cost(model, input_tokens, output_tokens, is_audio_input=operation in AUDIO_INPUT_OPERATIONS,
+                          cached_tokens=cached_tokens)
         if total_tokens is None:
             total_tokens = input_tokens + output_tokens
         try:
@@ -71,6 +75,7 @@ class AiUsageRepository:
                     total_tokens=total_tokens,
                     duration_ms=duration_ms,
                     cost_usd=cost,
+                    cached_tokens=cached_tokens,
                     user_id=user_id,
                     username=username,
                 ))

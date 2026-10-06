@@ -1,5 +1,4 @@
-import asyncio
-import logging
+"""Perfil funcional do aluno. Camada HTTP apenas: a regra fica nos use cases."""
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from typing import Any, Optional
@@ -7,15 +6,9 @@ from dependency_injector.wiring import inject, Provide
 
 from api.dependencies import require_roles
 from core.kernel.container import Container
-from core.constants.functional_profile import DOMAINS, LEVEL_SCALE, DEFAULT_SOURCES
-from infrastructure.repositories.functional_profile_repository import FunctionalProfileRepository, ProfileError
-from infrastructure.repositories.student_repository import StudentRepository
-from infrastructure.repositories.ai_usage_repository import AiUsageRepository
-from infrastructure.services.gemini_service import GeminiService
-from infrastructure.services.anonymization_service import AnonymizationService, deanonymize
-from infrastructure.utils.functional_profile import normalize_content, parse_model_json, map_strings
+from core.kernel.result import Result
+from core.use_case.functional_profile import functional_profile_use_cases as uc
 
-logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/functional-profiles", tags=["Functional Profile"])
 
 READERS = ("admin", "coordenacao", "professor", "viewer")
@@ -38,46 +31,23 @@ class ProfileBody(BaseModel):
     content: Optional[dict[str, Any]] = None
 
 
-SYSTEM_INSTRUCTION = f"""Você é um especialista em educação especial inclusiva e em Transtorno do Espectro Autista (TEA).
-Elabore o PERFIL FUNCIONAL do aluno com base APENAS nas informações do contexto anonimizado fornecido
-(resumos do diário, relatórios de habilidades BNCC, estudo de caso, PDI, cadastro, progresso do PEI etc.).
-
-Responda SOMENTE com um objeto JSON válido (sem markdown, sem comentários, sem texto fora do JSON), neste formato:
-{{
-  "summary": "síntese do funcionamento do aluno em 3 a 5 frases",
-  "domains": [
-    {{"key": "<chave do domínio>", "level": <1 a 5 ou null>, "description": "até 3 frases",
-      "strengths": ["até 4 itens"], "needs": ["até 4 itens"], "supports": ["até 4 estratégias de apoio"]}}
-  ],
-  "evidence": ["tipos de registro que sustentam o perfil, ex.: 'resumos do diário', 'relatório BNCC'"]
-}}
-
-Domínios (use exatamente estas chaves, um objeto para cada): {", ".join(f"{k} ({v})" for k, v in DOMAINS)}.
-Escala de "level": {LEVEL_SCALE}. Use null quando não houver evidência suficiente no contexto — NUNCA invente
-dados nem preencha por suposição. Linguagem profissional, objetiva e não estigmatizante, em português do Brasil.
-Quando precisar citar o aluno, use o identificador anonimizado exatamente como fornecido."""
-
-
-def _build_prompt(student_id: str, school_id: Optional[str], context: str, body: GenerateBody) -> str:
-    period = ""
-    if body.period_start or body.period_end:
-        period = f"\nPeríodo de referência do perfil: {body.period_start or '?'} a {body.period_end or '?'}."
-    notes = f"\nOrientações do avaliador: {body.notes.strip()}" if body.notes and body.notes.strip() else ""
-    return (
-        "DADOS DO ALUNO (ANONIMIZADOS) — copie o identificador EXATAMENTE como fornecido ao citar o aluno ou a escola:\n"
-        f"- ID do aluno: {student_id}\n- ID da escola: {school_id or '(não informado)'}{period}{notes}\n\n"
-        f"=== CONTEXTO DO ALUNO (ANONIMIZADO) ===\n{context}\n\n"
-        "Elabore agora o perfil funcional em JSON."
-    )
-
-
-def _read_only_error(e: Exception) -> HTTPException:
-    return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+def _unwrap(result: Result):
+    if result.is_ok:
+        return result.value
+    if result.is_not_found:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=result.not_found_error)
+    if result.is_bad_request:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=result.bad_request_error)
+    raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=result.error)
 
 
 @router.get("/domains")
-async def list_domains(current_user: dict = Depends(require_roles(*READERS))):
-    return {"domains": [{"key": k, "label": v} for k, v in DOMAINS], "scale": LEVEL_SCALE}
+@inject
+async def list_domains(
+    current_user: dict = Depends(require_roles(*READERS)),
+    use_case: uc.ListFunctionalDomainsUseCase = Depends(Provide[Container.list_functional_domains_use_case]),
+):
+    return _unwrap(await use_case.execute())
 
 
 @router.post("/generate", status_code=status.HTTP_201_CREATED)
@@ -85,56 +55,12 @@ async def list_domains(current_user: dict = Depends(require_roles(*READERS))):
 async def generate_profile(
     body: GenerateBody,
     current_user: dict = Depends(require_roles(*WRITERS)),
-    repo: FunctionalProfileRepository = Depends(Provide[Container.functional_profile_repository]),
-    student_repo: StudentRepository = Depends(Provide[Container.student_repository]),
-    gemini: GeminiService = Depends(Provide[Container.gemini_service]),
-    usage_repo: AiUsageRepository = Depends(Provide[Container.ai_usage_repository]),
-    anon_svc: AnonymizationService = Depends(Provide[Container.anonymization_service]),
+    use_case: uc.GenerateFunctionalProfileUseCase = Depends(Provide[Container.generate_functional_profile_use_case]),
 ):
-    student = await student_repo.get_by_id(body.student_id)
-    if not student:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Aluno não encontrado.")
-
-    # O perfil funcional nunca usa a si mesmo como fonte.
-    sources = [s for s in (body.sources or DEFAULT_SOURCES) if s != "functional_profile"] or DEFAULT_SOURCES
-    context, deanon_map = await anon_svc.build_context(body.student_id, sources=sources)
-    prompt = _build_prompt(body.student_id, student.get("school_id"), context, body)
-
-    raw: dict = {}
-    last_error = ""
-    for attempt in range(2):
-        attempt_prompt = prompt if attempt == 0 else prompt + "\n\nATENÇÃO: sua resposta anterior não era um JSON válido. Responda apenas com o objeto JSON."
-        try:
-            text, usage = await asyncio.to_thread(
-                gemini.generate_text_tracked, prompt=attempt_prompt, system_instruction=SYSTEM_INSTRUCTION,
-            )
-            await usage_repo.log(
-                model=usage.model, operation="functional_profile_generation",
-                input_tokens=usage.input_tokens, output_tokens=usage.output_tokens,
-                total_tokens=usage.total_tokens, duration_ms=usage.duration_ms,
-                user_id=current_user.get("user_id"),
-            )
-            raw = parse_model_json(text)
-            break
-        except ValueError as e:
-            last_error = str(e)
-            logger.warning("Perfil funcional: JSON inválido (student_id=%s, tentativa %d): %s", body.student_id, attempt + 1, e)
-        except Exception as e:
-            logger.exception("Falha ao gerar perfil funcional (student_id=%s)", body.student_id)
-            raise HTTPException(status_code=500, detail=f"Erro ao gerar o perfil funcional: {e}")
-    else:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY,
-                            detail=f"A IA não devolveu um perfil válido ({last_error}). Tente novamente.")
-
-    # Desanonimiza (ID → nome real) cada texto do perfil, como é feito no PEI.
-    content = map_strings(normalize_content(raw), lambda s: deanonymize(s, deanon_map))
-    try:
-        return await repo.create(
-            body.student_id, content, "ai", current_user, period_start=body.period_start,
-            period_end=body.period_end, sources=sources,
-        )
-    except ProfileError as e:
-        raise _read_only_error(e)
+    return _unwrap(await use_case.execute(
+        body.student_id, current_user, sources=body.sources, period_start=body.period_start,
+        period_end=body.period_end, notes=body.notes,
+    ))
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
@@ -142,17 +68,11 @@ async def generate_profile(
 async def create_profile(
     body: ProfileBody,
     current_user: dict = Depends(require_roles(*WRITERS)),
-    repo: FunctionalProfileRepository = Depends(Provide[Container.functional_profile_repository]),
+    use_case: uc.CreateManualProfileUseCase = Depends(Provide[Container.create_manual_profile_use_case]),
 ):
-    if not body.student_id:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Informe o aluno.")
-    try:
-        return await repo.create(
-            body.student_id, body.content or {}, "manual", current_user, title=body.title,
-            period_start=body.period_start, period_end=body.period_end,
-        )
-    except ProfileError as e:
-        raise _read_only_error(e)
+    return _unwrap(await use_case.execute(
+        body.student_id, body.content, current_user, body.title, body.period_start, body.period_end,
+    ))
 
 
 @router.get("/student/{student_id}")
@@ -160,9 +80,9 @@ async def create_profile(
 async def list_profiles(
     student_id: str,
     current_user: dict = Depends(require_roles(*READERS)),
-    repo: FunctionalProfileRepository = Depends(Provide[Container.functional_profile_repository]),
+    use_case: uc.ListStudentProfilesUseCase = Depends(Provide[Container.list_student_profiles_use_case]),
 ):
-    return await repo.list_for_student(student_id)
+    return _unwrap(await use_case.execute(student_id))
 
 
 @router.get("/student/{student_id}/evolution")
@@ -170,9 +90,9 @@ async def list_profiles(
 async def evolution(
     student_id: str,
     current_user: dict = Depends(require_roles(*READERS)),
-    repo: FunctionalProfileRepository = Depends(Provide[Container.functional_profile_repository]),
+    use_case: uc.GetProfileEvolutionUseCase = Depends(Provide[Container.get_profile_evolution_use_case]),
 ):
-    return await repo.evolution(student_id)
+    return _unwrap(await use_case.execute(student_id))
 
 
 @router.get("/{profile_id}")
@@ -180,12 +100,9 @@ async def evolution(
 async def get_profile(
     profile_id: str,
     current_user: dict = Depends(require_roles(*READERS)),
-    repo: FunctionalProfileRepository = Depends(Provide[Container.functional_profile_repository]),
+    use_case: uc.GetProfileUseCase = Depends(Provide[Container.get_profile_use_case]),
 ):
-    profile = await repo.get(profile_id)
-    if not profile:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Perfil não encontrado")
-    return profile
+    return _unwrap(await use_case.execute(profile_id))
 
 
 @router.put("/{profile_id}")
@@ -194,18 +111,12 @@ async def update_profile(
     profile_id: str,
     body: ProfileBody,
     current_user: dict = Depends(require_roles(*WRITERS)),
-    repo: FunctionalProfileRepository = Depends(Provide[Container.functional_profile_repository]),
+    use_case: uc.UpdateProfileUseCase = Depends(Provide[Container.update_profile_use_case]),
 ):
-    try:
-        updated = await repo.update(
-            profile_id, body.content, current_user, title=body.title, period_start=body.period_start,
-            period_end=body.period_end, fields_set=body.model_fields_set,
-        )
-    except ProfileError as e:
-        raise _read_only_error(e)
-    if not updated:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Perfil não encontrado")
-    return updated
+    return _unwrap(await use_case.execute(
+        profile_id, body.content, current_user, body.title, body.period_start, body.period_end,
+        body.model_fields_set,
+    ))
 
 
 @router.delete("/{profile_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -213,7 +124,6 @@ async def update_profile(
 async def delete_profile(
     profile_id: str,
     current_user: dict = Depends(require_roles(*WRITERS)),
-    repo: FunctionalProfileRepository = Depends(Provide[Container.functional_profile_repository]),
+    use_case: uc.DeleteProfileUseCase = Depends(Provide[Container.delete_profile_use_case]),
 ):
-    if not await repo.delete(profile_id):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Perfil não encontrado")
+    _unwrap(await use_case.execute(profile_id))

@@ -35,7 +35,7 @@ from infrastructure.models.diary_summary import DiarySummary
 from infrastructure.utils.diary_custom import parse_custom_answers
 from infrastructure.models.bncc import SkillReport
 from infrastructure.models.functional_profile import FunctionalProfile
-from infrastructure.utils.functional_profile import format_functional_profile
+from core.services.functional_profile_content import format_functional_profile
 from infrastructure.utils.case_study_answers import normalize_answers
 
 logger = logging.getLogger(__name__)

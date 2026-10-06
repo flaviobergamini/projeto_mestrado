@@ -520,6 +520,9 @@ class RagService:
             )
             functional_profile_count = int(functional_profile_result.scalar() or 0)
 
+            bncc_catalog_result = await session.execute(text("SELECT COUNT(*) FROM bncc_skills WHERE deleted = false"))
+            bncc_catalog_count = int(bncc_catalog_result.scalar() or 0)
+
         return {
             "student": {"available": student_row is not None, "count": 1 if student_row else 0},
             "case_study": {"available": case_count > 0, "count": case_count},
@@ -531,6 +534,7 @@ class RagService:
             "diary_summary": {"available": diary_summary_count > 0, "count": diary_summary_count},
             "skill_report": {"available": skill_report_count > 0, "count": skill_report_count},
             "functional_profile": {"available": functional_profile_count > 0, "count": functional_profile_count},
+            "bncc_catalog": {"available": bncc_catalog_count > 0, "count": bncc_catalog_count},
         }
 
     @staticmethod

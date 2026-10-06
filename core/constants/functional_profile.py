@@ -23,5 +23,5 @@ LEVEL_SCALE = (
 # Fontes que o perfil funcional pode usar quando gerado por IA (nunca ele mesmo; diários não são mais entrada da IA).
 DEFAULT_SOURCES = [
     "student", "school", "teacher", "case_study", "pdi", "generated_pei",
-    "kanban_progress", "diary_summary", "skill_report",
+    "kanban_progress", "diary_summary", "skill_report", "bncc_catalog",
 ]

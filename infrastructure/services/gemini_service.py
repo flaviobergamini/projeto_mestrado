@@ -11,9 +11,11 @@ EMBEDDING_DIMENSIONS = 768
 
 class UsageData:
     """Token usage and timing for a single Gemini API call."""
-    __slots__ = ("model", "input_tokens", "output_tokens", "total_tokens", "duration_ms")
+    __slots__ = ("model", "input_tokens", "output_tokens", "total_tokens", "duration_ms", "cached_tokens")
 
-    def __init__(self, model: str, input_tokens: int, output_tokens: int, total_tokens: int, duration_ms: int):
+    def __init__(self, model: str, input_tokens: int, output_tokens: int, total_tokens: int, duration_ms: int,
+                 cached_tokens: int = 0):
+        self.cached_tokens = cached_tokens
         self.model = model
         self.input_tokens = input_tokens
         self.output_tokens = output_tokens
@@ -41,7 +43,13 @@ def _usage_from_metadata(model: str, meta, duration_ms: int, fallback_text: str 
         output_tokens=max(0, int(output_tok)),
         total_tokens=max(0, int(total_tok)),
         duration_ms=duration_ms,
+        cached_tokens=max(0, int(getattr(meta, "cached_content_token_count", None) or 0)) if meta else 0,
     )
+
+
+def _is_cache_error(e: Exception) -> bool:
+    msg = str(e)
+    return any(k in msg for k in ("CachedContent", "cachedContents", "cached_content"))
 
 
 class GeminiService:
@@ -57,7 +65,10 @@ class GeminiService:
         text, _ = self.generate_text_tracked(prompt, system_instruction)
         return text
 
-    def generate_text_tracked(self, prompt: str, system_instruction: str | None = None) -> tuple[str, UsageData]:
+    def generate_text_tracked(
+        self, prompt: str, system_instruction: str | None = None,
+        cached_content: str | None = None, cache_fallback_prefix: str | None = None,
+    ) -> tuple[str, UsageData]:
         """Generate text and return (text, UsageData) for usage tracking.
 
         Usa o SDK unificado google-genai (mesmo usado na PoC) em vez do
@@ -84,21 +95,35 @@ class GeminiService:
         """
         client = genai.Client(api_key=self.api_key)
         thinking_config = types.ThinkingConfig(thinking_budget=3000)
-        config = types.GenerateContentConfig(
-            system_instruction=system_instruction,
-            temperature=0.2,
-            max_output_tokens=14000,
-            thinking_config=thinking_config,
-        ) if system_instruction else types.GenerateContentConfig(
-            temperature=0.2, max_output_tokens=14000, thinking_config=thinking_config,
-        )
+
+        def _call(contents: str, cached: str | None):
+            if cached:
+                # O Gemini não aceita system_instruction numa requisição com cache explícito
+                # (ele só vale se estiver dentro do próprio cache): as instruções vão no prompt.
+                body = (f"=== INSTRUÇÕES DO SISTEMA (siga rigorosamente) ===\n{system_instruction}\n\n{contents}"
+                        if system_instruction else contents)
+                cfg = types.GenerateContentConfig(
+                    cached_content=cached, temperature=0.2, max_output_tokens=14000, thinking_config=thinking_config,
+                )
+                return client.models.generate_content(model=self.model_name, contents=body, config=cfg)
+            cfg = types.GenerateContentConfig(
+                system_instruction=system_instruction, temperature=0.2, max_output_tokens=14000,
+                thinking_config=thinking_config,
+            ) if system_instruction else types.GenerateContentConfig(
+                temperature=0.2, max_output_tokens=14000, thinking_config=thinking_config,
+            )
+            return client.models.generate_content(model=self.model_name, contents=contents, config=cfg)
 
         t0 = time.monotonic()
-        response = client.models.generate_content(
-            model=self.model_name,
-            contents=prompt,
-            config=config,
-        )
+        try:
+            response = _call(prompt, cached_content)
+        except Exception as e:
+            if cached_content and _is_cache_error(e):
+                # Cache expirado/apagado: repete sem cache, com o conteúdo dele inline.
+                logger.warning("Cache de contexto indisponível (%s); repetindo sem cache.", str(e)[:120])
+                response = _call((cache_fallback_prefix or "") + prompt, None)
+            else:
+                raise
         duration_ms = int((time.monotonic() - t0) * 1000)
 
         usage = _usage_from_metadata(self.model_name, getattr(response, "usage_metadata", None), duration_ms, prompt)
