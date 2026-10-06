@@ -6,9 +6,8 @@ from dependency_injector.wiring import inject, Provide
 
 from api.dependencies import require_roles
 from core.kernel.container import Container
-from infrastructure.repositories.bncc_repository import BnccRepository, BnccError
-from infrastructure.repositories.student_repository import StudentRepository
-from infrastructure.services.skill_report_pdf import generate_skill_report_pdf
+from core.kernel.result import Result
+from core.use_case.bncc import bncc_use_cases as uc
 
 router = APIRouter(prefix="/bncc", tags=["BNCC"])
 
@@ -30,6 +29,14 @@ class SkillBody(BaseModel):
 class ScoreBody(BaseModel):
     score: Optional[int] = Field(None, ge=0, le=5)
     observation: Optional[str] = Field(None, max_length=2000)
+    adaptation: Optional[str] = Field(None, max_length=4000)
+    justification: Optional[str] = Field(None, max_length=4000)
+    actions: Optional[str] = Field(None, max_length=4000)
+    correlated_codes: Optional[list[str]] = None
+    ai_excluded: Optional[bool] = None
+    in_plan: Optional[bool] = None
+    change_note: Optional[str] = Field(None, max_length=2000)
+    evidence_card_ids: Optional[list[str]] = None
 
 
 class ReportBody(BaseModel):
@@ -48,24 +55,33 @@ def _csv(value: Optional[str]) -> Optional[list[str]]:
     return items or None
 
 
+def _unwrap(result: Result):
+    """Traduz o Result do use case em resposta HTTP."""
+    if result.is_ok:
+        return result.value
+    if result.is_not_found:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=result.not_found_error)
+    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=result.bad_request_error or result.error)
+
+
 # ── catálogo ──────────────────────────────────────────────────────────────────
 
 @router.get("/grades")
 @inject
 async def list_grades(
     current_user: dict = Depends(require_roles(*READERS)),
-    repo: BnccRepository = Depends(Provide[Container.bncc_repository]),
+    use_case: uc.ListGradesUseCase = Depends(Provide[Container.bncc_list_grades_use_case]),
 ):
-    return await repo.list_grades()
+    return _unwrap(await use_case.execute())
 
 
 @router.get("/areas")
 @inject
 async def list_areas(
     current_user: dict = Depends(require_roles(*READERS)),
-    repo: BnccRepository = Depends(Provide[Container.bncc_repository]),
+    use_case: uc.ListAreasUseCase = Depends(Provide[Container.bncc_list_areas_use_case]),
 ):
-    return await repo.list_areas()
+    return _unwrap(await use_case.execute())
 
 
 @router.get("/skills")
@@ -75,9 +91,9 @@ async def list_skills(
     areas: Optional[str] = Query(None, description="áreas separadas por |"),
     q: Optional[str] = None,
     current_user: dict = Depends(require_roles(*READERS)),
-    repo: BnccRepository = Depends(Provide[Container.bncc_repository]),
+    use_case: uc.ListSkillsUseCase = Depends(Provide[Container.bncc_list_skills_use_case]),
 ):
-    return await repo.list_skills(_csv(grades), _csv(areas), q)
+    return _unwrap(await use_case.execute(_csv(grades), _csv(areas), q))
 
 
 @router.post("/skills", status_code=status.HTTP_201_CREATED)
@@ -85,12 +101,9 @@ async def list_skills(
 async def create_skill(
     body: SkillBody,
     current_user: dict = Depends(require_roles(*CATALOG_EDITORS)),
-    repo: BnccRepository = Depends(Provide[Container.bncc_repository]),
+    use_case: uc.CreateSkillUseCase = Depends(Provide[Container.bncc_create_skill_use_case]),
 ):
-    try:
-        return await repo.create_skill(body.model_dump())
-    except BnccError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    return _unwrap(await use_case.execute(body.model_dump()))
 
 
 @router.put("/skills/{skill_id}")
@@ -99,15 +112,9 @@ async def update_skill(
     skill_id: str,
     body: SkillBody,
     current_user: dict = Depends(require_roles(*CATALOG_EDITORS)),
-    repo: BnccRepository = Depends(Provide[Container.bncc_repository]),
+    use_case: uc.UpdateSkillUseCase = Depends(Provide[Container.bncc_update_skill_use_case]),
 ):
-    try:
-        updated = await repo.update_skill(skill_id, body.model_dump())
-    except BnccError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-    if not updated:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Habilidade não encontrada")
-    return updated
+    return _unwrap(await use_case.execute(skill_id, body.model_dump()))
 
 
 @router.delete("/skills/{skill_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -115,10 +122,9 @@ async def update_skill(
 async def delete_skill(
     skill_id: str,
     current_user: dict = Depends(require_roles(*CATALOG_EDITORS)),
-    repo: BnccRepository = Depends(Provide[Container.bncc_repository]),
+    use_case: uc.DeleteSkillUseCase = Depends(Provide[Container.bncc_delete_skill_use_case]),
 ):
-    if not await repo.delete_skill(skill_id):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Habilidade não encontrada")
+    _unwrap(await use_case.execute(skill_id))
 
 
 # ── notas por aluno ───────────────────────────────────────────────────────────
@@ -133,12 +139,25 @@ async def student_skills(
     min_score: Optional[int] = Query(None, ge=0, le=5),
     max_score: Optional[int] = Query(None, ge=0, le=5),
     only_with_observation: bool = False,
+    only_in_plan: bool = False,
     current_user: dict = Depends(require_roles(*READERS)),
-    repo: BnccRepository = Depends(Provide[Container.bncc_repository]),
+    use_case: uc.ListStudentSkillsUseCase = Depends(Provide[Container.bncc_list_student_skills_use_case]),
 ):
-    return await repo.student_skills(
-        student_id, _csv(grades), _csv(areas), q, min_score, max_score, only_with_observation,
-    )
+    return _unwrap(await use_case.execute(
+        student_id, grades=_csv(grades), areas=_csv(areas), q=q, min_score=min_score, max_score=max_score,
+        only_with_observation=only_with_observation, only_in_plan=only_in_plan,
+    ))
+
+
+@router.get("/students/{student_id}/skills/{skill_id}/events")
+@inject
+async def skill_events(
+    student_id: str,
+    skill_id: str,
+    current_user: dict = Depends(require_roles(*READERS)),
+    use_case: uc.ListSkillEventsUseCase = Depends(Provide[Container.bncc_list_skill_events_use_case]),
+):
+    return _unwrap(await use_case.execute(student_id, skill_id))
 
 
 @router.put("/students/{student_id}/skills/{skill_id}")
@@ -148,14 +167,11 @@ async def set_score(
     skill_id: str,
     body: ScoreBody,
     current_user: dict = Depends(require_roles(*WRITERS)),
-    repo: BnccRepository = Depends(Provide[Container.bncc_repository]),
+    use_case: uc.SetSkillScoreUseCase = Depends(Provide[Container.bncc_set_skill_score_use_case]),
 ):
-    try:
-        return await repo.set_score(
-            student_id, skill_id, {k: getattr(body, k) for k in body.model_fields_set}, current_user,
-        )
-    except BnccError as e:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    return _unwrap(await use_case.execute(
+        student_id, skill_id, {k: getattr(body, k) for k in body.model_fields_set}, current_user,
+    ))
 
 
 # ── relatórios ────────────────────────────────────────────────────────────────
@@ -166,12 +182,9 @@ async def create_report(
     student_id: str,
     body: ReportBody,
     current_user: dict = Depends(require_roles(*WRITERS)),
-    repo: BnccRepository = Depends(Provide[Container.bncc_repository]),
+    use_case: uc.CreateSkillReportUseCase = Depends(Provide[Container.bncc_create_report_use_case]),
 ):
-    try:
-        return await repo.create_report(student_id, body.model_dump(), current_user)
-    except BnccError as e:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    return _unwrap(await use_case.execute(student_id, body.model_dump(), current_user))
 
 
 @router.get("/students/{student_id}/reports")
@@ -179,9 +192,9 @@ async def create_report(
 async def list_reports(
     student_id: str,
     current_user: dict = Depends(require_roles(*READERS)),
-    repo: BnccRepository = Depends(Provide[Container.bncc_repository]),
+    use_case: uc.ListSkillReportsUseCase = Depends(Provide[Container.bncc_list_reports_use_case]),
 ):
-    return await repo.list_reports(student_id)
+    return _unwrap(await use_case.execute(student_id))
 
 
 @router.get("/reports/{report_id}")
@@ -189,12 +202,9 @@ async def list_reports(
 async def get_report(
     report_id: str,
     current_user: dict = Depends(require_roles(*READERS)),
-    repo: BnccRepository = Depends(Provide[Container.bncc_repository]),
+    use_case: uc.GetSkillReportUseCase = Depends(Provide[Container.bncc_get_report_use_case]),
 ):
-    report = await repo.get_report(report_id)
-    if not report:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Relatório não encontrado")
-    return report
+    return _unwrap(await use_case.execute(report_id))
 
 
 @router.delete("/reports/{report_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -202,10 +212,9 @@ async def get_report(
 async def delete_report(
     report_id: str,
     current_user: dict = Depends(require_roles(*WRITERS)),
-    repo: BnccRepository = Depends(Provide[Container.bncc_repository]),
+    use_case: uc.DeleteSkillReportUseCase = Depends(Provide[Container.bncc_delete_report_use_case]),
 ):
-    if not await repo.delete_report(report_id):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Relatório não encontrado")
+    _unwrap(await use_case.execute(report_id))
 
 
 @router.get("/reports/{report_id}/pdf")
@@ -213,14 +222,9 @@ async def delete_report(
 async def report_pdf(
     report_id: str,
     current_user: dict = Depends(require_roles(*READERS)),
-    repo: BnccRepository = Depends(Provide[Container.bncc_repository]),
-    student_repo: StudentRepository = Depends(Provide[Container.student_repository]),
+    use_case: uc.RenderSkillReportPdfUseCase = Depends(Provide[Container.bncc_report_pdf_use_case]),
 ):
-    report = await repo.get_report(report_id)
-    if not report:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Relatório não encontrado")
-    student = await student_repo.get_by_id(report["student_id"])
-    pdf = generate_skill_report_pdf(report, (student or {}).get("name") or "Aluno")
+    pdf = _unwrap(await use_case.execute(report_id))
     return Response(
         content=pdf, media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="habilidades_bncc_{report_id[:8]}.pdf"'},

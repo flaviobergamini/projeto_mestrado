@@ -1,3 +1,4 @@
+from core.interfaces.i_teacher_reader import ITeacherReader
 import uuid
 from typing import Optional
 from sqlalchemy import select, delete
@@ -21,7 +22,7 @@ def _requested_school_ids(data: dict) -> Optional[list[str]]:
     return list(dict.fromkeys(i for i in ids if i))
 
 
-class TeacherRepository:
+class TeacherRepository(ITeacherReader):
     def __init__(self, database: Database):
         self._db = database
 

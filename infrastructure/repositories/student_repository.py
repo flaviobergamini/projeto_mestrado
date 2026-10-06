@@ -3,6 +3,7 @@ import json
 from datetime import date
 from typing import Optional
 from sqlalchemy import select, func
+from core.interfaces.i_student_reader import IStudentReader
 from infrastructure.database_context.database import Database
 from infrastructure.models.student import Student
 from infrastructure.models.school import School
@@ -42,7 +43,7 @@ def _to_dict(s: Student, school_name: Optional[str] = None) -> dict:
     }
 
 
-class StudentRepository:
+class StudentRepository(IStudentReader):
     def __init__(self, database: Database) -> None:
         self.database = database
 

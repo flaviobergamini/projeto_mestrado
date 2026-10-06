@@ -1,13 +1,13 @@
-"""Quadro Kanban de execução do PEI — um card por seção do PEI gerado (automático)
-ou criado manualmente pelo professor, movido entre 'A fazer' / 'Fazendo' / 'Concluído'."""
+"""Quadro Kanban de execução do PEI. Camada HTTP apenas: a regra fica nos use cases."""
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel
 from typing import Optional
 from dependency_injector.wiring import inject, Provide
 
 from api.dependencies import require_roles
 from core.kernel.container import Container
-from infrastructure.repositories.pei_kanban_repository import PeiKanbanRepository, VALID_STATUSES
+from core.kernel.result import Result
+from core.use_case.kanban import kanban_use_cases as uc
 
 router = APIRouter(prefix="/pei-kanban", tags=["PEI Kanban"])
 
@@ -20,34 +20,32 @@ class KanbanCardCreate(BaseModel):
     description: Optional[str] = None
     status: str = "todo"
 
-    @field_validator("status")
-    @classmethod
-    def _validate_status(cls, v: str) -> str:
-        if v not in VALID_STATUSES:
-            raise ValueError(f"status deve ser um de: {VALID_STATUSES}")
-        return v
-
 
 class KanbanCardUpdate(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
     status: Optional[str] = None
     reaction: Optional[int] = None
+    adaptation: Optional[str] = None
+    daily_log: Optional[str] = None
     position: Optional[int] = None
 
-    @field_validator("status")
-    @classmethod
-    def _validate_status(cls, v: Optional[str]) -> Optional[str]:
-        if v is not None and v not in VALID_STATUSES:
-            raise ValueError(f"status deve ser um de: {VALID_STATUSES}")
-        return v
 
-    @field_validator("reaction")
-    @classmethod
-    def _validate_reaction(cls, v: Optional[int]) -> Optional[int]:
-        if v is not None and not (1 <= v <= 5):
-            raise ValueError("reaction deve estar entre 1 e 5")
-        return v
+class FromSkillBody(BaseModel):
+    student_id: str
+    skill_id: str
+
+
+def _unwrap(result: Result):
+    if result.is_ok:
+        return result.value
+    if result.is_not_found:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=result.not_found_error)
+    raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=result.bad_request_error or result.error)
+
+
+def _author(user: dict) -> str:
+    return user.get("full_name") or user.get("username", "")
 
 
 @router.get("")
@@ -55,9 +53,9 @@ class KanbanCardUpdate(BaseModel):
 async def list_kanban_cards(
     student_id: str = Query(...),
     current_user: dict = Depends(require_roles(*VIEW_ROLES)),
-    repo: PeiKanbanRepository = Depends(Provide[Container.pei_kanban_repository]),
+    use_case: uc.ListKanbanCardsUseCase = Depends(Provide[Container.list_kanban_cards_use_case]),
 ):
-    return await repo.list_by_student(student_id)
+    return _unwrap(await use_case.execute(student_id))
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
@@ -65,12 +63,20 @@ async def list_kanban_cards(
 async def create_kanban_card(
     body: KanbanCardCreate,
     current_user: dict = Depends(require_roles(*VIEW_ROLES)),
-    repo: PeiKanbanRepository = Depends(Provide[Container.pei_kanban_repository]),
+    use_case: uc.CreateKanbanCardUseCase = Depends(Provide[Container.create_kanban_card_use_case]),
 ):
-    data = body.model_dump()
-    data["created_by"] = current_user.get("full_name") or current_user.get("username", "")
-    data["source"] = "manual"
-    return await repo.create(data)
+    return _unwrap(await use_case.execute(body.model_dump(), _author(current_user)))
+
+
+@router.post("/from-skill", status_code=status.HTTP_201_CREATED)
+@inject
+async def create_cards_from_skill(
+    body: FromSkillBody,
+    current_user: dict = Depends(require_roles(*VIEW_ROLES)),
+    use_case: uc.CreateCardsFromSkillUseCase = Depends(Provide[Container.create_cards_from_skill_use_case]),
+):
+    """Envia as ações práticas do plano de uma habilidade para o Kanban."""
+    return _unwrap(await use_case.execute(body.student_id, body.skill_id, _author(current_user)))
 
 
 @router.patch("/{card_id}")
@@ -79,12 +85,9 @@ async def update_kanban_card(
     card_id: str,
     body: KanbanCardUpdate,
     current_user: dict = Depends(require_roles(*VIEW_ROLES)),
-    repo: PeiKanbanRepository = Depends(Provide[Container.pei_kanban_repository]),
+    use_case: uc.UpdateKanbanCardUseCase = Depends(Provide[Container.update_kanban_card_use_case]),
 ):
-    updated = await repo.update(card_id, body.model_dump(exclude_none=True))
-    if not updated:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Card não encontrado")
-    return updated
+    return _unwrap(await use_case.execute(card_id, body.model_dump(exclude_none=True)))
 
 
 @router.delete("/{card_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -92,8 +95,6 @@ async def update_kanban_card(
 async def delete_kanban_card(
     card_id: str,
     current_user: dict = Depends(require_roles(*VIEW_ROLES)),
-    repo: PeiKanbanRepository = Depends(Provide[Container.pei_kanban_repository]),
+    use_case: uc.DeleteKanbanCardUseCase = Depends(Provide[Container.delete_kanban_card_use_case]),
 ):
-    deleted = await repo.delete(card_id)
-    if not deleted:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Card não encontrado")
+    _unwrap(await use_case.execute(card_id))

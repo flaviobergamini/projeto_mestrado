@@ -35,6 +35,7 @@ def normalize_content(raw: Any) -> dict:
             "strengths": _text_list(d.get("strengths")),
             "needs": _text_list(d.get("needs")),
             "supports": _text_list(d.get("supports")),
+            "bncc_references": [c.upper() for c in _text_list(d.get("bncc_references"), 6)],
         })
     return {
         "version": 1,
@@ -84,5 +85,7 @@ def format_functional_profile(meta: dict, content: dict, reanon) -> str:
         for key, title in (("strengths", "Pontos fortes"), ("needs", "Necessidades"), ("supports", "Apoios")):
             if d.get(key):
                 parts.append(f"{title}: " + "; ".join(reanon(x) for x in d[key]))
+        if d.get("bncc_references"):
+            parts.append("Habilidades BNCC relacionadas: " + ", ".join(d["bncc_references"]))
         lines.append(" | ".join(parts))
     return "\n".join(lines)

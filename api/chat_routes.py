@@ -14,6 +14,7 @@ from infrastructure.repositories.prompt_repository import PromptRepository
 from infrastructure.repositories.ai_usage_repository import AiUsageRepository
 from infrastructure.repositories.student_repository import StudentRepository
 from infrastructure.services.gemini_service import GeminiService
+from infrastructure.services.bncc_context import BnccContext, BNCC_USAGE_RULE
 from infrastructure.services.rag_service import RagService
 from infrastructure.services.anonymization_service import AnonymizationService, deanonymize
 from infrastructure.services.pdf_service import generate_chat_pdf
@@ -84,6 +85,7 @@ async def send_message(
     usage_repo: AiUsageRepository = Depends(Provide[Container.ai_usage_repository]),
     anon_svc: AnonymizationService = Depends(Provide[Container.anonymization_service]),
     student_repo: StudentRepository = Depends(Provide[Container.student_repository]),
+    bncc_ctx: BnccContext = Depends(Provide[Container.bncc_context]),
 ):
     """Send a message and receive an AI response with anonymised RAG context."""
     user_id = current_user.get("user_id", "")
@@ -144,10 +146,6 @@ async def send_message(
         '"[Nome do Aluno]" ou "[Nome da Escola]":\n'
         f"- ID do aluno: {body.student_id}\n"
         f"- ID da escola: {(student_for_rule or {}).get('school_id') or '(não informado)'}"
-        "\n\nNOTA SOBRE OS DIÁRIOS: é normal existir mais de um registro de diário na mesma data "
-        "para o mesmo aluno — eles vêm de autores diferentes (ex.: professor regente e professor "
-        "de apoio ou coordenação) e têm conteúdos distintos. Isso NÃO é duplicidade nem erro; "
-        "não aponte como problema e considere todos os registros da data."
     )
 
     # Memória curta: histórico da sessão ANTES desta mensagem (só em sessão existente)
@@ -165,11 +163,17 @@ async def send_message(
 === CONTEXTO DO ALUNO (ANONIMIZADO) ===
 {anon_context}
 
-=== REGISTROS SIMILARES (RAG) ===
+{history_block}=== REGISTROS SIMILARES (RAG) ===
 {rag_context}
 
-{history_block}=== PERGUNTA ===
+=== PERGUNTA ===
 {body.message}"""
+
+    # Ordem do prompt pensada para o cache de contexto: o que se repete entre perguntas (regra, contexto do
+    # aluno, histórico que só cresce) vem primeiro; o que muda a cada pergunta (RAG, pergunta) vem por último.
+    call_kwargs: dict = {"prompt": prompt}
+    if "bncc_catalog" in (body.sources or []):
+        call_kwargs = await bncc_ctx.attach(BNCC_USAGE_RULE + "\n\n" + prompt)
 
     # Save user message
     await chat_repo.add_message(
@@ -192,8 +196,8 @@ async def send_message(
         # ou faz retry por rate limit.
         raw_answer, usage = await asyncio.to_thread(
             gemini.generate_text_tracked,
-            prompt=prompt,
             system_instruction=system_instruction,
+            **call_kwargs,
         )
         await usage_repo.log(
             model=usage.model,
@@ -204,6 +208,7 @@ async def send_message(
             duration_ms=usage.duration_ms,
             user_id=user_id,
             username=username,
+            cached_tokens=usage.cached_tokens,
         )
     except Exception:
         # Sem este log a causa real (timeout, 429/503 do Gemini, resposta vazia...)
