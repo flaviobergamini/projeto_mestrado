@@ -33,6 +33,8 @@ class KanbanCardUpdate(BaseModel):
     description: Optional[str] = None
     status: Optional[str] = None
     reaction: Optional[int] = None
+    adaptation: Optional[str] = None
+    daily_log: Optional[str] = None
     position: Optional[int] = None
 
     @field_validator("status")
@@ -71,6 +73,24 @@ async def create_kanban_card(
     data["created_by"] = current_user.get("full_name") or current_user.get("username", "")
     data["source"] = "manual"
     return await repo.create(data)
+
+
+class FromSkillBody(BaseModel):
+    student_id: str
+    skill_id: str
+
+
+@router.post("/from-skill", status_code=status.HTTP_201_CREATED)
+@inject
+async def create_cards_from_skill(
+    body: FromSkillBody,
+    current_user: dict = Depends(require_roles(*VIEW_ROLES)),
+    repo: PeiKanbanRepository = Depends(Provide[Container.pei_kanban_repository]),
+):
+    """Envia as ações práticas do plano de uma habilidade para o Kanban."""
+    return await repo.create_from_skill(
+        body.student_id, body.skill_id, current_user.get("full_name") or current_user.get("username", ""),
+    )
 
 
 @router.patch("/{card_id}")

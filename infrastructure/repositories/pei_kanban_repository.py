@@ -1,10 +1,21 @@
+import json
 import uuid
+from datetime import datetime
 from typing import Optional
 from sqlalchemy import select
 from infrastructure.database_context.database import Database
 from infrastructure.models.pei_kanban_card import PeiKanbanCard
+from infrastructure.models.bncc import BnccSkill, StudentSkillScore
 
-VALID_STATUSES = ("todo", "doing", "done")
+VALID_STATUSES = ("todo", "doing", "review", "done", "archived")
+
+
+def _codes(raw: Optional[str]) -> list[str]:
+    try:
+        v = json.loads(raw) if raw else []
+        return [str(x) for x in v] if isinstance(v, list) else []
+    except Exception:
+        return []
 
 
 def _to_dict(c: PeiKanbanCard) -> dict:
@@ -17,6 +28,12 @@ def _to_dict(c: PeiKanbanCard) -> dict:
         "description": c.description,
         "reaction": c.reaction,
         "source": c.source,
+        "skill_id": c.skill_id,
+        "adaptation": c.adaptation,
+        "daily_log": c.daily_log,
+        "correlated_codes": _codes(c.correlated_codes),
+        "score_at_creation": c.score_at_creation,
+        "reviewed_at": c.reviewed_at.isoformat() if c.reviewed_at else None,
         "position": c.position,
         "created_by": c.created_by,
         "created_at": c.created_at.isoformat() if c.created_at else None,
@@ -35,7 +52,13 @@ class PeiKanbanRepository:
                 .where(PeiKanbanCard.student_id == student_id, PeiKanbanCard.deleted == False)  # noqa: E712
                 .order_by(PeiKanbanCard.status, PeiKanbanCard.position, PeiKanbanCard.created_at)
             )
-            return [_to_dict(c) for c in result.scalars().all()]
+            cards = result.scalars().all()
+            skill_ids = {c.skill_id for c in cards if c.skill_id}
+            codes: dict[str, str] = {}
+            if skill_ids:
+                rows = await session.execute(select(BnccSkill.id, BnccSkill.code).where(BnccSkill.id.in_(skill_ids)))
+                codes = {i: c for i, c in rows.all()}
+            return [{**_to_dict(c), "skill_code": codes.get(c.skill_id)} for c in cards]
 
     async def create(self, data: dict) -> dict:
         async with self.database.session() as session:
@@ -105,9 +128,11 @@ class PeiKanbanRepository:
             card = result.scalars().first()
             if not card:
                 return None
-            for field in ("status", "title", "description", "reaction", "position"):
+            for field in ("status", "title", "description", "reaction", "position", "adaptation", "daily_log"):
                 if field in data:
                     setattr(card, field, data[field])
+            if data.get("status") == "review" and not card.reviewed_at:
+                card.reviewed_at = datetime.utcnow()
             await session.commit()
             await session.refresh(card)
             return _to_dict(card)
@@ -123,3 +148,45 @@ class PeiKanbanRepository:
             card.deleted = True
             await session.commit()
             return True
+
+    async def create_from_skill(self, student_id: str, skill_id: str, created_by: Optional[str] = None) -> list[dict]:
+        """Transforma as 'ações práticas' do plano da habilidade (uma por linha) em cards 'A fazer'.
+
+        Não duplica: pula ações cujo título já existe (ativo) para a mesma habilidade."""
+        async with self.database.session() as session:
+            skill = await session.get(BnccSkill, skill_id)
+            row = await session.get(StudentSkillScore, (student_id, skill_id))
+            if not skill or not row or not (row.actions or "").strip():
+                return []
+            lines = [
+                ln.strip().lstrip("-•*0123456789.) ").strip()
+                for ln in (row.actions or "").splitlines()
+            ]
+            lines = [ln for ln in lines if ln]
+            existing = await session.execute(
+                select(PeiKanbanCard.title).where(
+                    PeiKanbanCard.student_id == student_id, PeiKanbanCard.skill_id == skill_id,
+                    PeiKanbanCard.deleted == False,  # noqa: E712
+                )
+            )
+            seen = {t.strip().lower() for (t,) in existing.all()}
+            cards = []
+            for i, line in enumerate(lines):
+                title = line[:255]
+                if title.lower() in seen:
+                    continue
+                seen.add(title.lower())
+                card = PeiKanbanCard(
+                    id=str(uuid.uuid4()), student_id=student_id, skill_id=skill_id, status="todo",
+                    title=title, description=line if len(line) > 255 else None,
+                    adaptation=row.adaptation, correlated_codes=row.correlated_codes,
+                    score_at_creation=row.score, source="skill_plan", position=i, created_by=created_by,
+                )
+                session.add(card)
+                cards.append(card)
+            if not cards:
+                return []
+            await session.commit()
+            for c in cards:
+                await session.refresh(c)
+            return [_to_dict(c) for c in cards]

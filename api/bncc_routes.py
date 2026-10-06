@@ -30,6 +30,14 @@ class SkillBody(BaseModel):
 class ScoreBody(BaseModel):
     score: Optional[int] = Field(None, ge=0, le=5)
     observation: Optional[str] = Field(None, max_length=2000)
+    adaptation: Optional[str] = Field(None, max_length=4000)
+    justification: Optional[str] = Field(None, max_length=4000)
+    actions: Optional[str] = Field(None, max_length=4000)
+    correlated_codes: Optional[list[str]] = None
+    ai_excluded: Optional[bool] = None
+    in_plan: Optional[bool] = None
+    change_note: Optional[str] = Field(None, max_length=2000)
+    evidence_card_ids: Optional[list[str]] = None
 
 
 class ReportBody(BaseModel):
@@ -133,12 +141,24 @@ async def student_skills(
     min_score: Optional[int] = Query(None, ge=0, le=5),
     max_score: Optional[int] = Query(None, ge=0, le=5),
     only_with_observation: bool = False,
+    only_in_plan: bool = False,
     current_user: dict = Depends(require_roles(*READERS)),
     repo: BnccRepository = Depends(Provide[Container.bncc_repository]),
 ):
     return await repo.student_skills(
-        student_id, _csv(grades), _csv(areas), q, min_score, max_score, only_with_observation,
+        student_id, _csv(grades), _csv(areas), q, min_score, max_score, only_with_observation, only_in_plan,
     )
+
+
+@router.get("/students/{student_id}/skills/{skill_id}/events")
+@inject
+async def skill_events(
+    student_id: str,
+    skill_id: str,
+    current_user: dict = Depends(require_roles(*READERS)),
+    repo: BnccRepository = Depends(Provide[Container.bncc_repository]),
+):
+    return await repo.list_events(student_id, skill_id)
 
 
 @router.put("/students/{student_id}/skills/{skill_id}")
