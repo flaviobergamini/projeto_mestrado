@@ -43,6 +43,11 @@ class BnccRepository:
             )
             return [{"grade": g, "grade_order": o, "stage": st, "count": n} for g, o, st, n in rows.all()]
 
+    async def list_codes(self) -> list[str]:
+        async with self.database.session() as session:
+            rows = await session.execute(select(BnccSkill.code).where(BnccSkill.deleted == False).distinct())
+            return [r[0] for r in rows.all()]
+
     async def list_areas(self) -> list[str]:
         async with self.database.session() as session:
             rows = await session.execute(

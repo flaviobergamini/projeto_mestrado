@@ -40,6 +40,7 @@ from infrastructure.repositories.saved_skill_result_repository import SavedSkill
 from infrastructure.services.anonymization_service import AnonymizationService
 from infrastructure.services.cognito_service import CognitoService
 from infrastructure.services.gemini_service import GeminiService
+from infrastructure.services.bncc_context import BnccContext
 from infrastructure.services.rag_service import RagService
 
 
@@ -98,6 +99,9 @@ class Container(containers.DeclarativeContainer):
     audit_repository = providers.Factory(AuditRepository, database=database)
 
     ai_usage_repository = providers.Factory(AiUsageRepository, database=database)
+
+    # Singleton: guarda o nome/validade do cache explícito do catálogo BNCC entre requisições.
+    bncc_context = providers.Singleton(BnccContext, database=database, gemini=gemini_service, usage_repo=ai_usage_repository)
 
     vinculos_repository = providers.Factory(VinculosRepository, database=database)
 

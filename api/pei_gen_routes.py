@@ -17,6 +17,7 @@ from infrastructure.repositories.student_repository import StudentRepository
 from infrastructure.repositories.pei_kanban_repository import PeiKanbanRepository
 from infrastructure.services.rag_service import RagService
 from infrastructure.services.gemini_service import GeminiService
+from infrastructure.services.bncc_context import BnccContext, BNCC_USAGE_RULE
 from infrastructure.services.anonymization_service import AnonymizationService, deanonymize
 from infrastructure.services.pdf_service import generate_pei_pdf
 from infrastructure.utils.pei_sections import parse_pei_sections
@@ -58,6 +59,7 @@ async def generate_pei(
     usage_repo: AiUsageRepository = Depends(Provide[Container.ai_usage_repository]),
     anon_svc: AnonymizationService = Depends(Provide[Container.anonymization_service]),
     kanban_repo: PeiKanbanRepository = Depends(Provide[Container.pei_kanban_repository]),
+    bncc_ctx: BnccContext = Depends(Provide[Container.bncc_context]),
 ):
     student = await student_repo.get_by_id(body.student_id)
     if not student:
@@ -112,7 +114,11 @@ async def generate_pei(
         f"- ID da escola: {student.get('school_id') or '(não informado)'}"
     )
 
-    prompt = f"""Com base nos dados anonimizados abaixo, gere o PEI completo.
+    # A regra de tabelas (igual para todos os alunos) vai primeiro, para o prefixo do prompt ser estável
+    # e reaproveitável pelo cache de contexto; os dados do aluno vêm depois.
+    prompt = f"""{TABLE_FORMAT_RULE}
+
+Com base nos dados anonimizados abaixo, gere o PEI completo.
 
 {anonymization_rule}
 
@@ -122,9 +128,12 @@ async def generate_pei(
 === REGISTROS SIMILARES (RAG) ===
 {rag_context}
 
-{TABLE_FORMAT_RULE}
-
 Gere o Plano Educacional Individualizado (PEI) completo para este aluno."""
+
+    call_kwargs: dict = {"prompt": prompt, "cached_content": None, "cache_fallback_prefix": None}
+    if "bncc_catalog" in (body.sources or []):
+        call_kwargs = await bncc_ctx.attach(BNCC_USAGE_RULE + "\n\n" + prompt)
+        prompt = call_kwargs["prompt"]
 
     try:
         # Chamada síncrona e bloqueante — roda em thread separada para não
@@ -139,6 +148,8 @@ Gere o Plano Educacional Individualizado (PEI) completo para este aluno."""
                 gemini.generate_text_tracked,
                 prompt=attempt_prompt,
                 system_instruction=system_instruction,
+                cached_content=call_kwargs["cached_content"],
+                cache_fallback_prefix=call_kwargs["cache_fallback_prefix"],
             )
             await usage_repo.log(
                 model=usage.model,
@@ -148,6 +159,7 @@ Gere o Plano Educacional Individualizado (PEI) completo para este aluno."""
                 total_tokens=usage.total_tokens,
                 duration_ms=usage.duration_ms,
                 user_id=generated_by,
+                cached_tokens=usage.cached_tokens,
             )
             if not has_degenerate_output(raw_pei):
                 break

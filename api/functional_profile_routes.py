@@ -12,6 +12,8 @@ from infrastructure.repositories.functional_profile_repository import Functional
 from infrastructure.repositories.student_repository import StudentRepository
 from infrastructure.repositories.ai_usage_repository import AiUsageRepository
 from infrastructure.services.gemini_service import GeminiService
+from infrastructure.services.bncc_context import BnccContext, BNCC_USAGE_RULE
+from infrastructure.repositories.bncc_repository import BnccRepository
 from infrastructure.services.anonymization_service import AnonymizationService, deanonymize
 from infrastructure.utils.functional_profile import normalize_content, parse_model_json, map_strings
 
@@ -47,7 +49,8 @@ Responda SOMENTE com um objeto JSON válido (sem markdown, sem comentários, sem
   "summary": "síntese do funcionamento do aluno em 3 a 5 frases",
   "domains": [
     {{"key": "<chave do domínio>", "level": <1 a 5 ou null>, "description": "até 3 frases",
-      "strengths": ["até 4 itens"], "needs": ["até 4 itens"], "supports": ["até 4 estratégias de apoio"]}}
+      "strengths": ["até 4 itens"], "needs": ["até 4 itens"], "supports": ["até 4 estratégias de apoio"],
+      "bncc_references": ["até 5 códigos de habilidades do catálogo BNCC ligadas às evidências; [] se o catálogo não foi fornecido"]}}
   ],
   "evidence": ["tipos de registro que sustentam o perfil, ex.: 'resumos do diário', 'relatório BNCC'"]
 }}
@@ -55,6 +58,7 @@ Responda SOMENTE com um objeto JSON válido (sem markdown, sem comentários, sem
 Domínios (use exatamente estas chaves, um objeto para cada): {", ".join(f"{k} ({v})" for k, v in DOMAINS)}.
 Escala de "level": {LEVEL_SCALE}. Use null quando não houver evidência suficiente no contexto — NUNCA invente
 dados nem preencha por suposição. Linguagem profissional, objetiva e não estigmatizante, em português do Brasil.
+Em "bncc_references" use SOMENTE códigos que existam no catálogo BNCC fornecido; nunca invente códigos.
 Quando precisar citar o aluno, use o identificador anonimizado exatamente como fornecido."""
 
 
@@ -90,6 +94,8 @@ async def generate_profile(
     gemini: GeminiService = Depends(Provide[Container.gemini_service]),
     usage_repo: AiUsageRepository = Depends(Provide[Container.ai_usage_repository]),
     anon_svc: AnonymizationService = Depends(Provide[Container.anonymization_service]),
+    bncc_ctx: BnccContext = Depends(Provide[Container.bncc_context]),
+    bncc_repo: BnccRepository = Depends(Provide[Container.bncc_repository]),
 ):
     student = await student_repo.get_by_id(body.student_id)
     if not student:
@@ -99,6 +105,10 @@ async def generate_profile(
     sources = [s for s in (body.sources or DEFAULT_SOURCES) if s != "functional_profile"] or DEFAULT_SOURCES
     context, deanon_map = await anon_svc.build_context(body.student_id, sources=sources)
     prompt = _build_prompt(body.student_id, student.get("school_id"), context, body)
+    call_kwargs: dict = {"prompt": prompt, "cached_content": None, "cache_fallback_prefix": None}
+    if "bncc_catalog" in sources:
+        call_kwargs = await bncc_ctx.attach(BNCC_USAGE_RULE + "\n\n" + prompt)
+        prompt = call_kwargs["prompt"]
 
     raw: dict = {}
     last_error = ""
@@ -107,11 +117,12 @@ async def generate_profile(
         try:
             text, usage = await asyncio.to_thread(
                 gemini.generate_text_tracked, prompt=attempt_prompt, system_instruction=SYSTEM_INSTRUCTION,
+                cached_content=call_kwargs["cached_content"], cache_fallback_prefix=call_kwargs["cache_fallback_prefix"],
             )
             await usage_repo.log(
                 model=usage.model, operation="functional_profile_generation",
                 input_tokens=usage.input_tokens, output_tokens=usage.output_tokens,
-                total_tokens=usage.total_tokens, duration_ms=usage.duration_ms,
+                total_tokens=usage.total_tokens, duration_ms=usage.duration_ms, cached_tokens=usage.cached_tokens,
                 user_id=current_user.get("user_id"),
             )
             raw = parse_model_json(text)
@@ -128,6 +139,10 @@ async def generate_profile(
 
     # Desanonimiza (ID → nome real) cada texto do perfil, como é feito no PEI.
     content = map_strings(normalize_content(raw), lambda s: deanonymize(s, deanon_map))
+    # Anti-alucinação: só ficam referências a códigos que realmente existem no catálogo.
+    valid_codes = set(await bncc_repo.list_codes())
+    for d in content["domains"]:
+        d["bncc_references"] = [c for c in d["bncc_references"] if c in valid_codes]
     try:
         return await repo.create(
             body.student_id, content, "ai", current_user, period_start=body.period_start,
