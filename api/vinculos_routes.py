@@ -53,3 +53,31 @@ async def set_student_teachers(
     if not ok:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Aluno não encontrado")
     return {"ok": True}
+
+
+class SetStudentsBody(BaseModel):
+    student_ids: list[str]
+
+
+@router.get("/relations")
+@inject
+async def relations(
+    current_user: dict = Depends(require_write("admin", "coordenacao")),
+    repo: VinculosRepository = Depends(Provide[Container.vinculos_repository]),
+):
+    """Escolas por município, professores por escola (com alunos) e alunos por escola/professor."""
+    return await repo.relations()
+
+
+@router.put("/teachers/{teacher_id}/students")
+@inject
+async def set_teacher_students(
+    teacher_id: str,
+    body: SetStudentsBody,
+    current_user: dict = Depends(require_write("admin", "coordenacao")),
+    repo: VinculosRepository = Depends(Provide[Container.vinculos_repository]),
+):
+    """Substitui os alunos vinculados a um professor."""
+    if not await repo.set_teacher_students(teacher_id, body.student_ids):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Professor não encontrado")
+    return {"ok": True}
