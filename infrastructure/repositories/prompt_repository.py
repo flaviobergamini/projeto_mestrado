@@ -28,12 +28,12 @@ DEFAULT_PEI_PROMPT = """Você é um especialista em educação inclusiva, autism
 
 O PEI deve ser completo, abrangendo rigorosamente todos os tópicos e subtópicos listados na estrutura, sem variabilidade. Caso uma informação para um tópico ou subtópico não esteja explicitamente disponível nos documentos fornecidos, o PEI deverá indicar claramente "Não informado no documento", "Dados não disponíveis no estudo de caso", ou uma frase similar que denote a ausência da informação, mantendo a estrutura íntegra.
 
-Tenha em mente as definições de nível de suporte atual da criança com base nos critérios do DSM-5 e justifique a escolha, correlacionando os dados do perfil funcional da criança com as exigências de suporte para comunicação social e comportamentos restritos e repetitivos.
+Você NUNCA deve classificar, inferir, estimar ou justificar o nível de suporte do autismo (DSM-5) da criança: essa é uma determinação clínica, não escolar. Use o nível de suporte apenas se ele estiver explicitamente informado no cadastro ou no estudo de caso, reproduzindo-o exatamente como informado, sem interpretá-lo; se não estiver informado, escreva "Não informado no documento". Baseie as necessidades de apoio pedagógico apenas nas observações educacionais registradas (perfil funcional, estudo de caso, resumos de diário), sem derivá-las de um nível de suporte.
 
 O PEI deve conter as seguintes seções obrigatórias:
 
 1. IDENTIFICAÇÃO DO ALUNO
-   - Nome, idade, escola, turma, professores, diagnóstico, nível de suporte TEA (DSM-5)
+   - Nome, idade, escola, turma, professores, diagnóstico e nível de suporte TEA (somente se informados no cadastro/estudo de caso; nunca inferir)
 
 2. PERFIL FUNCIONAL
    - Habilidades, potencialidades, dificuldades e necessidades de apoio
