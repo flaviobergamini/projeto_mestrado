@@ -90,22 +90,28 @@ Em "bncc_references" use SOMENTE códigos que existam no catálogo BNCC fornecid
 Quando precisar citar o aluno, use o identificador anonimizado exatamente como fornecido."""
 
 SKILL_PLAN_ROUND1_PROMPT = """Você é especialista em educação inclusiva e em TEA. Para CADA habilidade BNCC listada, redija o quadro
-da habilidade com base APENAS no contexto anonimizado fornecido. Escala de apoio da nota atual: 0 = não avaliada; 1 = dependência total (ajuda física total); 2 = ajuda física parcial; 3 = ajuda gestual ou verbal; 4 = pista mínima/supervisão; 5 = independente.
+da habilidade com base APENAS no contexto anonimizado fornecido. Escala de apoio da nota atual: 0 = não iniciado; 1 = dependência total (ajuda física total); 2 = ajuda física parcial; 3 = ajuda gestual ou verbal; 4 = pista mínima/supervisão; 5 = independente.
 Responda SOMENTE com JSON válido, sem markdown:
 {"skills": [{"code": "<código exato>", "adaptation": "como adaptar a atividade/ambiente (2 a 4 frases)",
   "justification": "por que esta adaptação, ligando às evidências do contexto (2 a 4 frases)",
   "actions": ["3 a 5 ações práticas, curtas e observáveis"],
-  "correlated_codes": ["até 3 códigos de habilidades pré-requisito ou relacionadas; [] se não houver certeza"]}]}
+  "experience_fields": ["chaves dos campos de experiência da BNCC relacionados à habilidade, escolhidas SOMENTE desta lista: selfOtherUs (O eu, o outro e o nós), bodyGestures (Corpo, gestos e movimentos), linesSounds (Traços, sons, cores e formas), listeningSpeaking (Escuta, fala, pensamento e imaginação), spacesTimes (Espaços, tempos, quantidades, relações e transformações); [] se não houver certeza"]}]}
 Não invente fatos nem diagnósticos que não estejam no contexto; se faltar evidência, diga isso na justificativa.
 Use SOMENTE os códigos fornecidos na lista. Use o identificador anonimizado do aluno exatamente como fornecido."""
 
 SKILL_PLAN_ROUND2_PROMPT = """Você é especialista em educação inclusiva e em TEA. Avalie, para cada habilidade BNCC, se o progresso registrado
-nos cards do Kanban (títulos, status, registros do dia, reação) justifica alterar a nota atual. Escala: 0 = não avaliada; 1 = dependência total (ajuda física total); 2 = ajuda física parcial; 3 = ajuda gestual ou verbal; 4 = pista mínima/supervisão; 5 = independente.
+nos cards do Kanban (títulos, status, registros do dia, reação) justifica alterar a nota atual. Escala: 0 = não iniciado; 1 = dependência total (ajuda física total); 2 = ajuda física parcial; 3 = ajuda gestual ou verbal; 4 = pista mínima/supervisão; 5 = independente.
 Regras: sugira mudança de NO MÁXIMO 1 estrela por vez; só sugira quando houver evidência concreta nos cards; se não
 houver evidência suficiente, NÃO inclua a habilidade. Você apenas propõe — a professora decide.
 Responda SOMENTE com JSON válido, sem markdown:
 {"suggestions": [{"code": "<código exato>", "suggested_score": <0 a 5>, "reason": "justificativa objetiva citando os registros",
   "evidence_card_ids": ["ids dos cards usados, exatamente como fornecidos"]}]}"""
+
+SKILL_SUMMARY_PROMPT = """Você é especialista em educação inclusiva e em TEA. Escreva um RESUMO objetivo da situação atual do aluno nesta habilidade BNCC, para constar no relatório entregue à equipe e à família.
+
+Use SOMENTE as informações fornecidas (nota e seu significado, plano de adaptação, justificativa, ações, observação do professor, histórico de notas e progresso nos cards do Kanban). Não invente fatos.
+Escreva de 4 a 7 frases em português do Brasil, linguagem profissional, clara e não estigmatizante: onde o aluno está (nota atual), o que foi planejado, o que já foi observado de progresso ou dificuldade e o próximo passo. Se faltar informação, diga que ainda há pouco registro.
+Responda apenas com o texto do resumo, em parágrafo corrido, sem títulos, sem listas e sem markdown. Se citar o aluno, use o identificador anonimizado exatamente como fornecido."""
 
 BNCC_USAGE_RULE_PROMPT = """CATÁLOGO BNCC: o catálogo de habilidades BNCC é material de referência. Ao propor objetivos, metas ou atividades de aprendizagem acadêmica, relacione-os, quando pertinente, a habilidades do catálogo citando o código exato (ex.: EF01LP02). Nunca invente códigos nem descrições: use somente o que consta no catálogo."""
 
@@ -154,6 +160,11 @@ PROMPT_REGISTRY: dict[str, dict] = {
         "label": "Plano de habilidades: rodada 2 (sugestão de nota)", "json_output": True, "placeholders": [],
         "default": SKILL_PLAN_ROUND2_PROMPT,
         "description": "Avalia o progresso do Kanban e sugere mudança de nota. Mantenha o JSON de saída.",
+    },
+    "skill_summary": {
+        "label": "Resumo da habilidade (IA)", "json_output": False, "placeholders": [],
+        "default": SKILL_SUMMARY_PROMPT,
+        "description": "Gera o resumo de uma habilidade (editável pelo professor). O resumo é o que vai no relatório em PDF.",
     },
     "bncc_usage_rule": {
         "label": "Regra de uso do catálogo BNCC", "json_output": False, "placeholders": [],

@@ -41,6 +41,18 @@ class AiGateway(IAiGateway):
         )
         return parse_model_json(text)
 
+    async def generate_text(self, operation: str, system_instruction: str, prompt: str, user_id: str | None) -> str:
+        text, usage = await asyncio.to_thread(
+            self._gemini.generate_text_tracked, prompt=prompt, system_instruction=system_instruction,
+            cached_content=None, cache_fallback_prefix=None,
+        )
+        await self._usage_repo.log(
+            model=usage.model, operation=operation, input_tokens=usage.input_tokens,
+            output_tokens=usage.output_tokens, total_tokens=usage.total_tokens,
+            duration_ms=usage.duration_ms, cached_tokens=usage.cached_tokens, user_id=user_id,
+        )
+        return (text or "").strip()
+
     def deanonymize(self, text: str, name_map: dict[str, str]) -> str:
         return deanonymize(text, name_map)
 

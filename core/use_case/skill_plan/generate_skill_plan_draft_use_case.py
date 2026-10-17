@@ -1,4 +1,5 @@
 import logging
+from core.constants.bncc_fields import EXPERIENCE_FIELDS
 from core.kernel.result import Result
 from core.interfaces.i_ai_gateway import IAiGateway
 from core.interfaces.i_prompt_provider import IPromptProvider
@@ -52,7 +53,7 @@ class GenerateSkillPlanDraftUseCase:
                 "actions": self.ai.deanonymize(
                     "\n".join(str(a).strip() for a in actions) if isinstance(actions, list) else str(actions), name_map,
                 ),
-                "correlated_codes": [c for c in (item.get("correlated_codes") or []) if isinstance(c, str)][:3],
+                "experience_fields": [f for f in (item.get("experience_fields") or []) if f in EXPERIENCE_FIELDS][:5],
             }
         changed = await self.repository.apply_round1(student_id, drafts, user)
         return Result.ok({"requested": len(targets), "filled": len(changed)})

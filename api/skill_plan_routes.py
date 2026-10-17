@@ -8,6 +8,7 @@ from core.kernel.container import Container
 from core.kernel.result import Result
 from core.use_case.skill_plan.generate_skill_plan_draft_use_case import GenerateSkillPlanDraftUseCase
 from core.use_case.skill_plan.suggest_skill_scores_use_case import SuggestSkillScoresUseCase
+from core.use_case.skill_plan.generate_skill_summary_use_case import GenerateSkillSummaryUseCase
 from core.use_case.skill_plan.list_skill_suggestions_use_case import ListSkillSuggestionsUseCase
 from core.use_case.skill_plan.decide_skill_suggestion_use_case import DecideSkillSuggestionUseCase
 
@@ -19,6 +20,11 @@ WRITERS = ("admin", "coordenacao", "professor")
 
 class StudentBody(BaseModel):
     student_id: str
+
+
+class SkillSummaryBody(BaseModel):
+    student_id: str
+    skill_id: str
 
 
 class DecideBody(BaseModel):
@@ -55,6 +61,17 @@ async def round2(
 ):
     """Rodada 2: sugere mudanças de nota a partir do Kanban (a professora aceita ou recusa)."""
     return _unwrap(await use_case.execute(body.student_id, current_user))
+
+
+@router.post("/summary")
+@inject
+async def generate_summary(
+    body: SkillSummaryBody,
+    current_user: dict = Depends(require_roles(*WRITERS)),
+    use_case: GenerateSkillSummaryUseCase = Depends(Provide[Container.generate_skill_summary_use_case]),
+):
+    """Gera o resumo da habilidade com IA (não salva: a professora revisa e grava com o plano)."""
+    return _unwrap(await use_case.execute(body.student_id, body.skill_id, current_user))
 
 
 @router.get("/suggestions")

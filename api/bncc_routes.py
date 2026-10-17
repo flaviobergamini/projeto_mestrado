@@ -29,10 +29,11 @@ class SkillBody(BaseModel):
 class ScoreBody(BaseModel):
     score: Optional[int] = Field(None, ge=0, le=5)
     observation: Optional[str] = Field(None, max_length=2000)
+    summary: Optional[str] = Field(None, max_length=4000)
     adaptation: Optional[str] = Field(None, max_length=4000)
     justification: Optional[str] = Field(None, max_length=4000)
     actions: Optional[str] = Field(None, max_length=4000)
-    correlated_codes: Optional[list[str]] = None
+    experience_fields: Optional[list[str]] = None
     ai_excluded: Optional[bool] = None
     in_plan: Optional[bool] = None
     change_note: Optional[str] = Field(None, max_length=2000)

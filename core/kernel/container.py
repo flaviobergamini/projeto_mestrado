@@ -47,6 +47,7 @@ from core.use_case.links.links_use_cases import (
 from core.use_case.skill_plan.generate_skill_plan_draft_use_case import GenerateSkillPlanDraftUseCase
 from core.use_case.skill_plan.suggest_skill_scores_use_case import SuggestSkillScoresUseCase
 from core.use_case.skill_plan.list_skill_suggestions_use_case import ListSkillSuggestionsUseCase
+from core.use_case.skill_plan.generate_skill_summary_use_case import GenerateSkillSummaryUseCase
 from core.use_case.skill_plan.decide_skill_suggestion_use_case import DecideSkillSuggestionUseCase
 from infrastructure.repositories.functional_profile_repository import FunctionalProfileRepository
 from infrastructure.repositories.pei_kanban_repository import PeiKanbanRepository
@@ -192,6 +193,10 @@ class Container(containers.DeclarativeContainer):
     )
     suggest_skill_scores_use_case = providers.Factory(
         SuggestSkillScoresUseCase, repository=skill_plan_repository, students=student_repository, ai=ai_gateway,
+        prompts=prompt_repository,
+    )
+    generate_skill_summary_use_case = providers.Factory(
+        GenerateSkillSummaryUseCase, repository=skill_plan_repository, students=student_repository, ai=ai_gateway,
         prompts=prompt_repository,
     )
     list_skill_suggestions_use_case = providers.Factory(ListSkillSuggestionsUseCase, repository=skill_plan_repository)

@@ -35,10 +35,11 @@ class StudentSkillScore(Base):
     )
     score: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=0, server_default="0")
     observation: Mapped[Optional[str]] = mapped_column(EncryptedText, nullable=True)
+    summary: Mapped[Optional[str]] = mapped_column(EncryptedText, nullable=True)  # resumo (IA ou professor); vai no relatório em vez da observação
     adaptation: Mapped[Optional[str]] = mapped_column(EncryptedText, nullable=True)
     justification: Mapped[Optional[str]] = mapped_column(EncryptedText, nullable=True)
     actions: Mapped[Optional[str]] = mapped_column(EncryptedText, nullable=True)
-    correlated_codes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON list de códigos
+    correlated_codes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON list: campos de experiência (BNCC). Nome da coluna é histórico (antes: habilidades correlatas)
     ai_excluded: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     in_plan: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     plan_ai_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)

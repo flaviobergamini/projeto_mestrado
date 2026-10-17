@@ -41,7 +41,7 @@ class SkillPlanRepository(ISkillPlanRepository):
                 "skill_id": sk.id, "code": sk.code, "grade": sk.grade, "area": sk.area,
                 "description": sk.description, "score": sc.score,
                 "adaptation": sc.adaptation or "", "justification": sc.justification or "",
-                "actions": sc.actions or "", "correlated_codes": _codes(sc.correlated_codes),
+                "actions": sc.actions or "", "experience_fields": _codes(sc.correlated_codes),
             } for sc, sk in rows.all()]
 
     async def apply_round1(self, student_id: str, drafts: dict[str, dict], user: dict) -> list[str]:
@@ -59,8 +59,8 @@ class SkillPlanRepository(ISkillPlanRepository):
                     if not (getattr(row, field) or "").strip() and (d.get(field) or "").strip():
                         setattr(row, field, d[field].strip())
                         touched = True
-                if not _codes(row.correlated_codes) and d.get("correlated_codes"):
-                    row.correlated_codes = json.dumps(d["correlated_codes"], ensure_ascii=False)
+                if not _codes(row.correlated_codes) and d.get("experience_fields"):
+                    row.correlated_codes = json.dumps(d["experience_fields"], ensure_ascii=False)
                     touched = True
                 if touched:
                     row.plan_ai_at = datetime.utcnow()
@@ -92,6 +92,31 @@ class SkillPlanRepository(ISkillPlanRepository):
                     "updated_at": c.updated_at.isoformat() if c.updated_at else None,
                 })
         return out
+
+    async def skill_context(self, student_id: str, skill_id: str) -> Optional[dict]:
+        async with self.database.session() as session:
+            skill = await session.get(BnccSkill, skill_id)
+            if not skill or skill.deleted:
+                return None
+            row = await session.get(StudentSkillScore, (student_id, skill_id))
+            events = (await session.execute(
+                select(StudentSkillEvent).where(
+                    StudentSkillEvent.student_id == student_id, StudentSkillEvent.skill_id == skill_id,
+                    StudentSkillEvent.kind.in_(("score", "ai_suggestion")),
+                ).order_by(StudentSkillEvent.created_at)
+            )).scalars().all()
+        cards = (await self.cards_by_skill(student_id, [skill_id])).get(skill_id, [])
+        return {
+            "code": skill.code, "description": skill.description, "grade": skill.grade, "area": skill.area,
+            "score": row.score if row else 0, "ai_excluded": bool(row.ai_excluded) if row else False,
+            "observation": (row.observation or "") if row else "", "adaptation": (row.adaptation or "") if row else "",
+            "justification": (row.justification or "") if row else "", "actions": (row.actions or "") if row else "",
+            "cards": cards,
+            "score_history": [
+                {"old": e.old_score, "new": e.new_score, "note": e.note or "",
+                 "at": e.created_at.isoformat()[:10] if e.created_at else ""} for e in events
+            ],
+        }
 
     async def replace_pending_suggestions(self, student_id: str, items: list[dict]) -> list[dict]:
         """Descarta sugestões pendentes antigas do aluno e grava as novas."""

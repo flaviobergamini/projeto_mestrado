@@ -33,7 +33,7 @@ def _to_dict(c: PeiKanbanCard) -> dict:
         "skill_id": c.skill_id,
         "adaptation": c.adaptation,
         "daily_log": c.daily_log,
-        "correlated_codes": _codes(c.correlated_codes),
+        "experience_fields": _codes(c.correlated_codes),
         "score_at_creation": c.score_at_creation,
         "reviewed_at": c.reviewed_at.isoformat() if c.reviewed_at else None,
         "position": c.position,
