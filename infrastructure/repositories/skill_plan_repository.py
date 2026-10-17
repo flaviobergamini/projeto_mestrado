@@ -91,7 +91,7 @@ class SkillPlanRepository(ISkillPlanRepository):
             )
             for c in rows.scalars().all():
                 out[c.skill_id].append({
-                    "id": c.id, "title": c.title, "status": c.status, "daily_log": c.daily_log or "",
+                    "id": c.id, "title": c.title, "status": c.status, "daily_log": c.daily_log or "", "summary": c.summary or "",
                     "reaction": c.reaction, "score_at_creation": c.score_at_creation,
                     "updated_at": c.updated_at.isoformat() if c.updated_at else None,
                 })

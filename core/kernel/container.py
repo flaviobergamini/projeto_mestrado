@@ -199,6 +199,10 @@ class Container(containers.DeclarativeContainer):
         GenerateSkillSummaryUseCase, repository=skill_plan_repository, students=student_repository, ai=ai_gateway,
         prompts=prompt_repository,
     )
+    generate_kanban_card_summary_use_case = providers.Factory(
+        kb_uc.GenerateKanbanCardSummaryUseCase, repository=pei_kanban_repository, skill_repository=skill_plan_repository,
+        students=student_repository, ai=ai_gateway, prompts=prompt_repository,
+    )
     list_skill_suggestions_use_case = providers.Factory(ListSkillSuggestionsUseCase, repository=skill_plan_repository)
     decide_skill_suggestion_use_case = providers.Factory(DecideSkillSuggestionUseCase, repository=skill_plan_repository)
 
