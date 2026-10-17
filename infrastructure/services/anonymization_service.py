@@ -94,13 +94,13 @@ def format_skill_report(title: str, content: dict, name_map: dict[str, str], max
             lines.append(f"{area['area']}:")
             zero_codes = []
             for sk in area["skills"]:
-                obs = sk.get("observation")
+                obs = sk.get("summary") or sk.get("observation")
                 if sk["score"] == 0 and not obs:
                     zero_codes.append(sk["code"])
                     continue
                 line = f"- {sk['code']} (nota {sk['score']}): {sk['description']}"
                 if obs:
-                    line += f" | Observação do professor: {reanonymize(obs, name_map)}"
+                    line += f" | Resumo: {reanonymize(obs, name_map)}"
                 lines.append(line)
             if zero_codes:
                 lines.append(f"- Nota 0 (ainda não consolidadas): {', '.join(zero_codes)}")

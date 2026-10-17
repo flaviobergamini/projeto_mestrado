@@ -24,8 +24,11 @@ class PeiKanbanCard(Base):
     position: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     skill_id: Mapped[Optional[str]] = mapped_column(String(64), ForeignKey("bncc_skills.id", ondelete="SET NULL"), nullable=True, index=True)
     adaptation: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    daily_log: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    correlated_codes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON list de códigos
+    daily_log: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # diário da ação (texto livre)
+    summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # resumo da IA sobre a execução da ação
+    action_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)  # id estável do conjunto no plano da habilidade
+    photos: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON list de object keys no storage
+    correlated_codes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON list: campos de experiência (BNCC). Nome da coluna é histórico (antes: habilidades correlatas)
     score_at_creation: Mapped[Optional[int]] = mapped_column(SmallInteger, nullable=True)
     reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     created_by: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)

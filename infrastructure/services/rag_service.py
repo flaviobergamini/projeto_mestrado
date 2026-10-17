@@ -325,8 +325,9 @@ def _split_closed_answers(section: dict) -> tuple[list[str], list[str], list[str
 # ── RagService ────────────────────────────────────────────────────────────────
 
 class RagService:
-    def __init__(self, database: Database, gemini: GeminiService, usage_repo: Optional[AiUsageRepository] = None, diary_repo=None):
+    def __init__(self, database: Database, gemini: GeminiService, usage_repo: Optional[AiUsageRepository] = None, diary_repo=None, prompts=None):
         self._db = database
+        self._prompts = prompts  # IPromptProvider (opcional): prompts editáveis pelo administrador
         self._gemini = gemini
         self._usage = usage_repo
         self._diary_repo = diary_repo  # DiaryRepository — injected for persisting normalized_observation
@@ -351,8 +352,9 @@ class RagService:
         obs_normalized = entry.get("normalized_observation")
         if not obs_normalized and raw_obs.strip():
             try:
+                template = await self._prompts.get("observation_normalize") if self._prompts else None
                 obs_normalized, obs_usage = await asyncio.to_thread(
-                    self._gemini.normalize_diary_observation, raw_obs
+                    self._gemini.normalize_diary_observation, raw_obs, template
                 )
                 if self._usage:
                     await self._usage.log(

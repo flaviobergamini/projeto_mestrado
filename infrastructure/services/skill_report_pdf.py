@@ -19,8 +19,8 @@ def _filters_text(f: dict) -> str:
     if lo is not None or hi is not None:
         parts.append(f"Notas de {lo if lo is not None else 0} a {hi if hi is not None else 5}")
     if f.get("only_with_observation"):
-        parts.append("somente com observação")
-    parts.append("com observações" if f.get("include_observations") else "sem observações")
+        parts.append("somente com resumo")
+    parts.append("com resumos" if f.get("include_observations") else "sem resumos")
     if f.get("query"):
         parts.append(f"busca: {f['query']}")
     return " | ".join(parts)
@@ -72,13 +72,14 @@ def generate_skill_report_pdf(report: dict, student_name: str) -> bytes:
             story.append(Paragraph(_escape(area["area"]), styles["h3"]))
             head = [Paragraph("Código", small_b), Paragraph("Habilidade", small_b), Paragraph("Nota", small_b)]
             if include_obs:
-                head.append(Paragraph("Observação", small_b))
+                head.append(Paragraph("Resumo", small_b))
             rows = [head]
             for sk in area["skills"]:
                 row = [Paragraph(_escape(sk["code"]), small), Paragraph(_escape(sk["description"]), small),
                        Paragraph(f"{sk['score']}/5", small_b)]
                 if include_obs:
-                    row.append(Paragraph(_escape(sk.get("observation", "")), small))
+                    # relatórios antigos guardavam a observação; os novos guardam o resumo
+                    row.append(Paragraph(_escape(sk.get("summary") or sk.get("observation", "")), small))
                 rows.append(row)
             tbl = Table(rows, colWidths=widths, repeatRows=1)
             tbl.setStyle(TableStyle([

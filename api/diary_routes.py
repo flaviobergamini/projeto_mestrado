@@ -13,6 +13,7 @@ from core.kernel.container import Container
 from infrastructure.repositories.diary_repository import DiaryRepository
 from infrastructure.repositories.student_repository import StudentRepository
 from infrastructure.repositories.ai_usage_repository import AiUsageRepository
+from infrastructure.repositories.prompt_repository import PromptRepository
 from infrastructure.repositories.diary_question_repository import DiaryQuestionRepository
 from infrastructure.utils.diary_custom import dump_custom_answers
 from core.constants.diary_questions import DEFAULT_LABELS
@@ -91,6 +92,7 @@ async def transcribe_diary_audio(
     current_user: dict = Depends(get_current_user_read_write),
     gemini: GeminiService = Depends(Provide[Container.gemini_service]),
     usage_repo: AiUsageRepository = Depends(Provide[Container.ai_usage_repository]),
+    prompt_repo: PromptRepository = Depends(Provide[Container.prompt_repository]),
 ):
     """Receive an audio recording and return pre-filled diary fields extracted by Gemini."""
     content_type = (file.content_type or "").split(";")[0].strip()
@@ -105,7 +107,8 @@ async def transcribe_diary_audio(
 
     try:
         fields, usage = await asyncio.to_thread(
-            gemini.transcribe_diary_audio, content, mime_type=normalized_mime
+            gemini.transcribe_diary_audio, content, mime_type=normalized_mime,
+            prompt=await prompt_repo.get("diary_audio"),
         )
         await usage_repo.log(
             model=usage.model,
