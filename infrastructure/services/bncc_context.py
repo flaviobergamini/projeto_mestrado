@@ -26,11 +26,7 @@ logger = logging.getLogger(__name__)
 
 CATALOG_HEADER = "=== CATÁLOGO DE HABILIDADES BNCC (material de referência; cite somente códigos que existam aqui) ==="
 
-BNCC_USAGE_RULE = (
-    "CATÁLOGO BNCC: o catálogo de habilidades BNCC é material de referência. Ao propor objetivos, metas ou "
-    "atividades de aprendizagem acadêmica, relacione-os, quando pertinente, a habilidades do catálogo citando o "
-    "código exato (ex.: EF01LP02). Nunca invente códigos nem descrições: use somente o que consta no catálogo."
-)
+from core.constants.prompt_defaults import BNCC_USAGE_RULE_PROMPT as BNCC_USAGE_RULE  # noqa: E402
 
 _BACKOFF_SECONDS = 300
 

@@ -1,8 +1,9 @@
 import asyncio
 from core.interfaces.i_ai_gateway import IAiGateway
+from core.interfaces.i_prompt_provider import IPromptProvider
 from infrastructure.repositories.ai_usage_repository import AiUsageRepository
 from infrastructure.services.anonymization_service import AnonymizationService, deanonymize, reanonymize
-from infrastructure.services.bncc_context import BnccContext, BNCC_USAGE_RULE
+from infrastructure.services.bncc_context import BnccContext
 from infrastructure.services.gemini_service import GeminiService
 from core.services.functional_profile_content import parse_model_json
 
@@ -11,7 +12,9 @@ class AiGateway(IAiGateway):
     def __init__(
         self, gemini: GeminiService, usage_repo: AiUsageRepository, anonymization: AnonymizationService,
         bncc_context: BnccContext,
+        prompts: IPromptProvider,
     ) -> None:
+        self._prompts = prompts
         self._bncc_context = bncc_context
         self._gemini = gemini
         self._usage_repo = usage_repo
@@ -26,7 +29,7 @@ class AiGateway(IAiGateway):
     ) -> dict:
         call: dict = {"prompt": prompt, "cached_content": None, "cache_fallback_prefix": None}
         if with_bncc_catalog:
-            call = await self._bncc_context.attach(BNCC_USAGE_RULE + "\n\n" + prompt)
+            call = await self._bncc_context.attach((await self._prompts.get("bncc_usage_rule")) + "\n\n" + prompt)
         text, usage = await asyncio.to_thread(
             self._gemini.generate_text_tracked, prompt=call["prompt"], system_instruction=system_instruction,
             cached_content=call["cached_content"], cache_fallback_prefix=call["cache_fallback_prefix"],

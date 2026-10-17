@@ -24,6 +24,7 @@ from infrastructure.repositories.student_repository import StudentRepository
 from infrastructure.services.rag_service import RagService
 from infrastructure.services.gemini_service import GeminiService
 from infrastructure.repositories.ai_usage_repository import AiUsageRepository
+from infrastructure.repositories.prompt_repository import PromptRepository
 from infrastructure.services.pdf_service import generate_diary_pdf
 from infrastructure.services.storage_service import StorageService
 from fastapi.responses import Response
@@ -441,6 +442,7 @@ async def transcribe_family_audio(
     current_user: dict = Depends(get_current_user),
     gemini: GeminiService = Depends(Provide[Container.gemini_service]),
     usage_repo: AiUsageRepository = Depends(Provide[Container.ai_usage_repository]),
+    prompt_repo: PromptRepository = Depends(Provide[Container.prompt_repository]),
 ):
     """Transcreve áudio fielmente para uso nos diários familiar e terapêutico."""
     role = current_user.get("role", "")
@@ -459,7 +461,8 @@ async def transcribe_family_audio(
 
     try:
         text, usage = await asyncio.to_thread(
-            gemini.transcribe_audio_verbatim, content, mime_type=mime_type
+            gemini.transcribe_audio_verbatim, content, mime_type=mime_type,
+            prompt=await prompt_repo.get("family_audio"),
         )
         await usage_repo.log(
             model=usage.model,

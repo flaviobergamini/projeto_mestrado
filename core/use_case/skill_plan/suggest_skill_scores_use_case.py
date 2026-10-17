@@ -1,9 +1,10 @@
 import logging
 from core.kernel.result import Result
 from core.interfaces.i_ai_gateway import IAiGateway
+from core.interfaces.i_prompt_provider import IPromptProvider
 from core.interfaces.i_skill_plan_repository import ISkillPlanRepository
 from core.interfaces.i_student_reader import IStudentReader
-from core.use_case.skill_plan.prompts import ROUND2_SOURCES, ROUND2_SYSTEM
+from core.use_case.skill_plan.prompts import ROUND2_SOURCES
 
 logger = logging.getLogger(__name__)
 
@@ -13,7 +14,8 @@ MAX_STEP = 1  # a IA só pode propor mudança de 1 estrela por vez
 class SuggestSkillScoresUseCase:
     """Rodada 2: lê o progresso dos cards do Kanban e SUGERE mudanças de nota (a professora decide)."""
 
-    def __init__(self, repository: ISkillPlanRepository, students: IStudentReader, ai: IAiGateway) -> None:
+    def __init__(self, repository: ISkillPlanRepository, students: IStudentReader, ai: IAiGateway, prompts: IPromptProvider) -> None:
+        self.prompts = prompts
         self.repository = repository
         self.students = students
         self.ai = ai
@@ -43,7 +45,7 @@ class SuggestSkillScoresUseCase:
             + self.ai.reanonymize("\n".join(blocks), name_map) + "\n\nGere o JSON."
         )
         try:
-            raw = await self.ai.generate_json("skill_plan_round2", ROUND2_SYSTEM, prompt, user.get("user_id"))
+            raw = await self.ai.generate_json("skill_plan_round2", await self.prompts.get("skill_plan_round2"), prompt, user.get("user_id"))
         except ValueError as e:
             logger.warning("Rodada 2: JSON inválido (aluno %s): %s", student_id, e)
             return Result.err(f"A IA não devolveu JSON válido ({e}). Tente novamente.")

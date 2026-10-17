@@ -1,16 +1,18 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+"""Prompts de IA (todos os escopos). Ver, criar, editar, ativar e excluir: administrador e coordenação."""
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 from dependency_injector.wiring import inject, Provide
 
-from api.dependencies import get_current_user
+from api.dependencies import require_roles
+from core.constants.prompt_defaults import PROMPT_REGISTRY, ALL_SCOPES
 from core.kernel.container import Container
 from infrastructure.repositories.prompt_repository import PromptRepository
 
 router = APIRouter(prefix="/prompts", tags=["Prompts"])
 
-VALID_SCOPES = {"chat", "pei", "diary_summary"}
-EDITOR_ROLES = {"admin", "coordenacao"}
+VALID_SCOPES = set(ALL_SCOPES)
+prompt_managers = require_roles("admin", "coordenacao")
 
 
 class PromptCreate(BaseModel):
@@ -25,22 +27,36 @@ class PromptUpdate(BaseModel):
     content: str
 
 
-def _require_editor(current_user: dict):
-    if current_user.get("role", "") not in EDITOR_ROLES:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
-                            detail="Apenas admin ou coordenação podem gerenciar prompts.")
-
-
 def _check_scope(scope: str):
     if scope not in VALID_SCOPES:
         raise HTTPException(status_code=400, detail=f"Escopo inválido. Use: {sorted(VALID_SCOPES)}")
+
+
+@router.get("")
+@inject
+async def list_scopes(
+    current_user: dict = Depends(prompt_managers),
+    repo: PromptRepository = Depends(Provide[Container.prompt_repository]),
+):
+    """Todos os escopos de prompt (rótulo, descrição, se exige JSON) e qual está em uso."""
+    out = []
+    for scope in ALL_SCOPES:
+        meta = PROMPT_REGISTRY[scope]
+        active = await repo.get_active(scope)
+        out.append({
+            "scope": scope, "label": meta["label"], "description": meta["description"],
+            "json_output": meta["json_output"], "placeholders": meta["placeholders"],
+            "active_name": active["name"], "using_default": bool(active.get("is_base")),
+            "updated_at": active.get("updated_at"),
+        })
+    return out
 
 
 @router.get("/{scope}/active")
 @inject
 async def get_active_prompt(
     scope: str,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(prompt_managers),
     repo: PromptRepository = Depends(Provide[Container.prompt_repository]),
 ):
     _check_scope(scope)
@@ -51,7 +67,7 @@ async def get_active_prompt(
 @inject
 async def list_prompts(
     scope: str,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(prompt_managers),
     repo: PromptRepository = Depends(Provide[Container.prompt_repository]),
 ):
     _check_scope(scope)
@@ -63,11 +79,10 @@ async def list_prompts(
 async def create_prompt(
     scope: str,
     body: PromptCreate,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(prompt_managers),
     repo: PromptRepository = Depends(Provide[Container.prompt_repository]),
 ):
     _check_scope(scope)
-    _require_editor(current_user)
     return await repo.create(scope, body.name, body.description or "", body.content)
 
 
@@ -77,11 +92,10 @@ async def update_prompt(
     scope: str,
     prompt_id: str,
     body: PromptUpdate,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(prompt_managers),
     repo: PromptRepository = Depends(Provide[Container.prompt_repository]),
 ):
     _check_scope(scope)
-    _require_editor(current_user)
     updated = await repo.update(prompt_id, body.name, body.description or "", body.content)
     if not updated:
         raise HTTPException(status_code=404, detail="Prompt não encontrado.")
@@ -93,11 +107,10 @@ async def update_prompt(
 async def activate_prompt(
     scope: str,
     prompt_id: str,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(prompt_managers),
     repo: PromptRepository = Depends(Provide[Container.prompt_repository]),
 ):
     _check_scope(scope)
-    _require_editor(current_user)
     result = await repo.activate(scope, prompt_id)
     if not result:
         raise HTTPException(status_code=404, detail="Prompt não encontrado.")
@@ -109,11 +122,10 @@ async def activate_prompt(
 async def delete_prompt(
     scope: str,
     prompt_id: str,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(prompt_managers),
     repo: PromptRepository = Depends(Provide[Container.prompt_repository]),
 ):
     _check_scope(scope)
-    _require_editor(current_user)
     deleted = await repo.delete(prompt_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Prompt não encontrado.")
@@ -123,11 +135,10 @@ async def delete_prompt(
 @inject
 async def deactivate_prompt(
     scope: str,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(prompt_managers),
     repo: PromptRepository = Depends(Provide[Container.prompt_repository]),
 ):
     _check_scope(scope)
-    _require_editor(current_user)
     return await repo.deactivate(scope)
 
 
@@ -135,9 +146,8 @@ async def deactivate_prompt(
 @inject
 async def reset_prompt(
     scope: str,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(prompt_managers),
     repo: PromptRepository = Depends(Provide[Container.prompt_repository]),
 ):
     _check_scope(scope)
-    _require_editor(current_user)
     return await repo.reset_to_default(scope)

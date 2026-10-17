@@ -30,7 +30,7 @@ class DiarySummaryChatRequest(BaseModel):
     session_id: Optional[str] = None
     message: str
     entry_ids: list[EntryRef]
-    instruction_prompt: str
+    instruction_prompt: str = ""
 
 
 class DiarySummaryChatResponse(BaseModel):
@@ -189,6 +189,7 @@ async def diary_summary_chat(
     chat_repo: ChatRepository = Depends(Provide[Container.chat_repository]),
     gemini: GeminiService = Depends(Provide[Container.gemini_service]),
     usage_repo: AiUsageRepository = Depends(Provide[Container.ai_usage_repository]),
+    prompt_repo: PromptRepository = Depends(Provide[Container.prompt_repository]),
 ):
     """Chat com a IA para elaborar o Resumo Diário, baseado nas entradas selecionadas."""
     _require_generate(current_user)
@@ -224,7 +225,8 @@ async def diary_summary_chat(
         selected_entries.extend([e for e in family_entries if e["id"] in requested_family_ids])
 
     entries_block = _format_entries_block(selected_entries)
-    system_prompt = f"{body.instruction_prompt}\n\n{entries_block}"
+    instruction = body.instruction_prompt.strip() or (await prompt_repo.get("diary_summary"))
+    system_prompt = f"{instruction}\n\n{entries_block}"
 
     await chat_repo.add_message(
         session_id=session_id,

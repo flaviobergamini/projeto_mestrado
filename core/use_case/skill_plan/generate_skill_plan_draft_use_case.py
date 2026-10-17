@@ -1,9 +1,10 @@
 import logging
 from core.kernel.result import Result
 from core.interfaces.i_ai_gateway import IAiGateway
+from core.interfaces.i_prompt_provider import IPromptProvider
 from core.interfaces.i_skill_plan_repository import ISkillPlanRepository
 from core.interfaces.i_student_reader import IStudentReader
-from core.use_case.skill_plan.prompts import ROUND1_SOURCES, ROUND1_SYSTEM
+from core.use_case.skill_plan.prompts import ROUND1_SOURCES
 
 logger = logging.getLogger(__name__)
 
@@ -11,7 +12,8 @@ logger = logging.getLogger(__name__)
 class GenerateSkillPlanDraftUseCase:
     """Rodada 1: rascunha adaptação/justificativa/ações das habilidades do PDI (só campos vazios)."""
 
-    def __init__(self, repository: ISkillPlanRepository, students: IStudentReader, ai: IAiGateway) -> None:
+    def __init__(self, repository: ISkillPlanRepository, students: IStudentReader, ai: IAiGateway, prompts: IPromptProvider) -> None:
+        self.prompts = prompts
         self.repository = repository
         self.students = students
         self.ai = ai
@@ -32,7 +34,7 @@ class GenerateSkillPlanDraftUseCase:
             f"=== HABILIDADES A TRABALHAR ===\n{listing}\n\nGere o JSON."
         )
         try:
-            raw = await self.ai.generate_json("skill_plan_round1", ROUND1_SYSTEM, prompt, user.get("user_id"))
+            raw = await self.ai.generate_json("skill_plan_round1", await self.prompts.get("skill_plan_round1"), prompt, user.get("user_id"))
         except ValueError as e:
             logger.warning("Rodada 1: JSON inválido (aluno %s): %s", student_id, e)
             return Result.err(f"A IA não devolveu JSON válido ({e}). Tente novamente.")
