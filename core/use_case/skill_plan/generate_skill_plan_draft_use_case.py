@@ -1,5 +1,6 @@
 import logging
 from core.constants.bncc_fields import EXPERIENCE_FIELDS
+from core.services.skill_actions import normalize_actions
 from core.kernel.result import Result
 from core.interfaces.i_ai_gateway import IAiGateway
 from core.interfaces.i_prompt_provider import IPromptProvider
@@ -50,9 +51,11 @@ class GenerateSkillPlanDraftUseCase:
             drafts[target["skill_id"]] = {
                 "adaptation": self.ai.deanonymize(str(item.get("adaptation") or ""), name_map),
                 "justification": self.ai.deanonymize(str(item.get("justification") or ""), name_map),
-                "actions": self.ai.deanonymize(
-                    "\n".join(str(a).strip() for a in actions) if isinstance(actions, list) else str(actions), name_map,
-                ),
+                # cada ação traz a sua adaptação (aceita também texto simples, sem adaptação)
+                "actions": [
+                    {"action": self.ai.deanonymize(a["action"], name_map), "adaptation": self.ai.deanonymize(a["adaptation"], name_map)}
+                    for a in normalize_actions(actions if isinstance(actions, list) else [str(actions)])
+                ],
                 "experience_fields": [f for f in (item.get("experience_fields") or []) if f in EXPERIENCE_FIELDS][:5],
             }
         changed = await self.repository.apply_round1(student_id, drafts, user)

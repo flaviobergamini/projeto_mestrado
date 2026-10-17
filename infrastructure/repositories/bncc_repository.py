@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from typing import Optional
 from sqlalchemy import select, func, or_
 from core.interfaces.i_bncc_repository import IBnccRepository, BnccError
+from core.services.skill_actions import normalize_actions, dump_actions
 from infrastructure.database_context.database import Database
 from infrastructure.models.bncc import BnccSkill, StudentSkillScore, SkillReport, StudentSkillEvent
 from infrastructure.models.student import Student
@@ -32,7 +33,7 @@ def _plan_dict(row: Optional[StudentSkillScore]) -> dict:
         "summary": (row.summary or "") if row else "",
         "adaptation": (row.adaptation or "") if row else "",
         "justification": (row.justification or "") if row else "",
-        "actions": (row.actions or "") if row else "",
+        "actions": normalize_actions(row.actions) if row else [],
         "experience_fields": _load_codes(row.correlated_codes) if row else [],
         "ai_excluded": bool(row.ai_excluded) if row else False,
         "in_plan": bool(row.in_plan) if row else False,
@@ -214,9 +215,11 @@ class BnccRepository(IBnccRepository):
                 row.score = int(fields["score"])
             if "observation" in fields:
                 row.observation = (fields["observation"] or "").strip() or None
-            for key in ("summary", "adaptation", "justification", "actions"):
+            for key in ("summary", "adaptation", "justification"):
                 if key in fields:
                     setattr(row, key, (fields[key] or "").strip() or None)
+            if "actions" in fields:
+                row.actions = dump_actions(fields["actions"])
             if "experience_fields" in fields:
                 codes = [str(c).strip() for c in (fields["experience_fields"] or []) if str(c).strip()]
                 row.correlated_codes = json.dumps(codes, ensure_ascii=False) if codes else None

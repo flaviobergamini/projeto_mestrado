@@ -8,6 +8,7 @@ from core.interfaces.i_kanban_repository import IKanbanRepository
 from infrastructure.database_context.database import Database
 from infrastructure.models.pei_kanban_card import PeiKanbanCard
 from infrastructure.models.bncc import BnccSkill, StudentSkillScore
+from core.services.skill_actions import normalize_actions
 
 VALID_STATUSES = KANBAN_STATUSES  # mantido por compatibilidade
 
@@ -56,11 +57,25 @@ class PeiKanbanRepository(IKanbanRepository):
             )
             cards = result.scalars().all()
             skill_ids = {c.skill_id for c in cards if c.skill_id}
-            codes: dict[str, str] = {}
+            skills: dict[str, tuple[str, str]] = {}
             if skill_ids:
-                rows = await session.execute(select(BnccSkill.id, BnccSkill.code).where(BnccSkill.id.in_(skill_ids)))
-                codes = {i: c for i, c in rows.all()}
-            return [{**_to_dict(c), "skill_code": codes.get(c.skill_id)} for c in cards]
+                rows = await session.execute(
+                    select(BnccSkill.id, BnccSkill.code, BnccSkill.description).where(BnccSkill.id.in_(skill_ids))
+                )
+                skills = {i: (c, d) for i, c, d in rows.all()}
+            return [
+                {**_to_dict(c), "skill_code": skills.get(c.skill_id, (None, None))[0],
+                 "skill_description": skills.get(c.skill_id, (None, None))[1]}
+                for c in cards
+            ]
+
+    async def get(self, card_id: str) -> Optional[dict]:
+        async with self.database.session() as session:
+            result = await session.execute(
+                select(PeiKanbanCard).where(PeiKanbanCard.id == card_id, PeiKanbanCard.deleted == False)  # noqa: E712
+            )
+            card = result.scalars().first()
+            return _to_dict(card) if card else None
 
     async def create(self, data: dict) -> dict:
         async with self.database.session() as session:
@@ -158,13 +173,9 @@ class PeiKanbanRepository(IKanbanRepository):
         async with self.database.session() as session:
             skill = await session.get(BnccSkill, skill_id)
             row = await session.get(StudentSkillScore, (student_id, skill_id))
-            if not skill or not row or not (row.actions or "").strip():
+            items = normalize_actions(row.actions) if row else []
+            if not skill or not row or not items:
                 return []
-            lines = [
-                ln.strip().lstrip("-•*0123456789.) ").strip()
-                for ln in (row.actions or "").splitlines()
-            ]
-            lines = [ln for ln in lines if ln]
             existing = await session.execute(
                 select(PeiKanbanCard.title).where(
                     PeiKanbanCard.student_id == student_id, PeiKanbanCard.skill_id == skill_id,
@@ -173,7 +184,8 @@ class PeiKanbanRepository(IKanbanRepository):
             )
             seen = {t.strip().lower() for (t,) in existing.all()}
             cards = []
-            for i, line in enumerate(lines):
+            for i, item in enumerate(items):
+                line = item["action"]
                 title = line[:255]
                 if title.lower() in seen:
                     continue
@@ -181,7 +193,7 @@ class PeiKanbanRepository(IKanbanRepository):
                 card = PeiKanbanCard(
                     id=str(uuid.uuid4()), student_id=student_id, skill_id=skill_id, status="todo",
                     title=title, description=line if len(line) > 255 else None,
-                    adaptation=row.adaptation, correlated_codes=row.correlated_codes,
+                    adaptation=item["adaptation"] or row.adaptation, correlated_codes=row.correlated_codes,
                     score_at_creation=row.score, source="skill_plan", position=i, created_by=created_by,
                 )
                 session.add(card)

@@ -8,6 +8,9 @@ class IKanbanRepository(ABC):
     async def list_by_student(self, student_id: str) -> list[dict]: ...
 
     @abstractmethod
+    async def get(self, card_id: str) -> Optional[dict]: ...
+
+    @abstractmethod
     async def create(self, data: dict) -> dict: ...
 
     @abstractmethod

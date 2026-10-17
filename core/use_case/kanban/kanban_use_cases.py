@@ -5,6 +5,8 @@ from core.kernel.result import Result
 from core.interfaces.i_kanban_repository import IKanbanRepository
 
 NOT_FOUND = "Card não encontrado"
+# Em cards ligados a uma habilidade, o que veio do plano (ação, descrição e adaptação) não pode ser alterado.
+LOCKED_FIELDS_ON_SKILL_CARDS = ("title", "description", "adaptation")
 
 
 def _invalid_status(status: Optional[str]) -> Optional[str]:
@@ -43,6 +45,14 @@ class UpdateKanbanCardUseCase:
         reaction = data.get("reaction")
         if reaction is not None and not 1 <= reaction <= 5:
             return Result.bad_request("reaction deve estar entre 1 e 5")
+        card = await self.repository.get(card_id)
+        if not card:
+            return Result.not_found(NOT_FOUND)
+        if card.get("skill_id"):
+            changed = [f for f in LOCKED_FIELDS_ON_SKILL_CARDS if f in data and (data[f] or "") != (card.get(f) or "")]
+            if changed:
+                return Result.bad_request("Cards ligados a uma habilidade: título, descrição e adaptação vêm do plano e não podem ser alterados aqui.")
+            data = {k: v for k, v in data.items() if k not in LOCKED_FIELDS_ON_SKILL_CARDS}
         updated = await self.repository.update(card_id, data)
         return Result.ok(updated) if updated else Result.not_found(NOT_FOUND)
 

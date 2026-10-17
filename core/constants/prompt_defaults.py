@@ -94,7 +94,7 @@ da habilidade com base APENAS no contexto anonimizado fornecido. Escala de apoio
 Responda SOMENTE com JSON válido, sem markdown:
 {"skills": [{"code": "<código exato>", "adaptation": "como adaptar a atividade/ambiente (2 a 4 frases)",
   "justification": "por que esta adaptação, ligando às evidências do contexto (2 a 4 frases)",
-  "actions": ["3 a 5 ações práticas, curtas e observáveis"],
+  "actions": [{"action": "ação prática curta e observável", "adaptation": "adaptação específica DESTA ação (1 a 2 frases)"}],  /* 3 a 5 ações */
   "experience_fields": ["chaves dos campos de experiência da BNCC relacionados à habilidade, escolhidas SOMENTE desta lista: selfOtherUs (O eu, o outro e o nós), bodyGestures (Corpo, gestos e movimentos), linesSounds (Traços, sons, cores e formas), listeningSpeaking (Escuta, fala, pensamento e imaginação), spacesTimes (Espaços, tempos, quantidades, relações e transformações); [] se não houver certeza"]}]}
 Não invente fatos nem diagnósticos que não estejam no contexto; se faltar evidência, diga isso na justificativa.
 Use SOMENTE os códigos fornecidos na lista. Use o identificador anonimizado do aluno exatamente como fornecido."""
