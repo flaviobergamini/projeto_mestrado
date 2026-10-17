@@ -19,6 +19,10 @@ class IAiGateway(ABC):
         """Chama o modelo, registra o uso e devolve o JSON. Lança ValueError se a resposta não for JSON."""
 
     @abstractmethod
+    async def generate_text(self, operation: str, system_instruction: str, prompt: str, user_id: str | None) -> str:
+        """Chama o modelo, registra o uso e devolve o texto da resposta."""
+
+    @abstractmethod
     def deanonymize(self, text: str, name_map: dict[str, str]) -> str:
         ...
 

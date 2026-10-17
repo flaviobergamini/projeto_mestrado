@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from typing import Optional
 from sqlalchemy import select, func, or_
 from core.interfaces.i_bncc_repository import IBnccRepository, BnccError
+from core.services.skill_actions import normalize_actions, dump_actions
 from infrastructure.database_context.database import Database
 from infrastructure.models.bncc import BnccSkill, StudentSkillScore, SkillReport, StudentSkillEvent
 from infrastructure.models.student import Student
@@ -29,10 +30,11 @@ def _load_codes(raw: Optional[str]) -> list[str]:
 
 def _plan_dict(row: Optional[StudentSkillScore]) -> dict:
     return {
+        "summary": (row.summary or "") if row else "",
         "adaptation": (row.adaptation or "") if row else "",
         "justification": (row.justification or "") if row else "",
-        "actions": (row.actions or "") if row else "",
-        "correlated_codes": _load_codes(row.correlated_codes) if row else [],
+        "actions": normalize_actions(row.actions) if row else [],
+        "experience_fields": _load_codes(row.correlated_codes) if row else [],
         "ai_excluded": bool(row.ai_excluded) if row else False,
         "in_plan": bool(row.in_plan) if row else False,
         "plan_ai_at": row.plan_ai_at.isoformat() if row and row.plan_ai_at else None,
@@ -163,7 +165,7 @@ class BnccRepository(IBnccRepository):
     async def student_skills(
         self, student_id: str, grades: Optional[list[str]] = None, areas: Optional[list[str]] = None,
         q: Optional[str] = None, min_score: Optional[int] = None, max_score: Optional[int] = None,
-        only_with_observation: bool = False, only_in_plan: bool = False,
+        only_with_observation: bool = False, only_in_plan: bool = False, only_with_summary: bool = False,
     ) -> list[dict]:
         async with self.database.session() as session:
             skills = await self._list_skills(session, grades, areas, q)
@@ -186,6 +188,8 @@ class BnccRepository(IBnccRepository):
             if only_with_observation and not observation.strip():
                 continue
             if only_in_plan and not (row and row.in_plan):
+                continue
+            if only_with_summary and not ((row.summary or "").strip() if row else ""):
                 continue
             out.append({
                 **s, "score": score, "observation": observation, **_plan_dict(row),
@@ -211,11 +215,13 @@ class BnccRepository(IBnccRepository):
                 row.score = int(fields["score"])
             if "observation" in fields:
                 row.observation = (fields["observation"] or "").strip() or None
-            for key in ("adaptation", "justification", "actions"):
+            for key in ("summary", "adaptation", "justification"):
                 if key in fields:
                     setattr(row, key, (fields[key] or "").strip() or None)
-            if "correlated_codes" in fields:
-                codes = [str(c).strip() for c in (fields["correlated_codes"] or []) if str(c).strip()]
+            if "actions" in fields:
+                row.actions = dump_actions(fields["actions"])
+            if "experience_fields" in fields:
+                codes = [str(c).strip() for c in (fields["experience_fields"] or []) if str(c).strip()]
                 row.correlated_codes = json.dumps(codes, ensure_ascii=False) if codes else None
             if "ai_excluded" in fields and fields["ai_excluded"] is not None:
                 row.ai_excluded = bool(fields["ai_excluded"])
@@ -267,7 +273,7 @@ class BnccRepository(IBnccRepository):
         items = await self.student_skills(
             student_id, grades=grades, areas=areas, q=filters.get("query"),
             min_score=filters.get("min_score"), max_score=filters.get("max_score"),
-            only_with_observation=bool(filters.get("only_with_observation")),
+            only_with_summary=bool(filters.get("only_with_observation")),  # no relatório, o filtro refere-se ao resumo
         )
         by_score = {str(n): 0 for n in range(6)}
         for it in items:
@@ -280,8 +286,8 @@ class BnccRepository(IBnccRepository):
             if not areas_list or areas_list[-1]["area"] != it["area"]:
                 areas_list.append({"area": it["area"], "skills": []})
             skill = {"code": it["code"], "description": it["description"], "score": it["score"]}
-            if include_obs and it["observation"]:
-                skill["observation"] = it["observation"]
+            if include_obs and it["summary"]:
+                skill["summary"] = it["summary"]  # o relatório mostra o resumo, não a observação
             areas_list[-1]["skills"].append(skill)
         content = {
             "version": 1,

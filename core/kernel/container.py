@@ -47,6 +47,7 @@ from core.use_case.links.links_use_cases import (
 from core.use_case.skill_plan.generate_skill_plan_draft_use_case import GenerateSkillPlanDraftUseCase
 from core.use_case.skill_plan.suggest_skill_scores_use_case import SuggestSkillScoresUseCase
 from core.use_case.skill_plan.list_skill_suggestions_use_case import ListSkillSuggestionsUseCase
+from core.use_case.skill_plan.generate_skill_summary_use_case import GenerateSkillSummaryUseCase
 from core.use_case.skill_plan.decide_skill_suggestion_use_case import DecideSkillSuggestionUseCase
 from infrastructure.repositories.functional_profile_repository import FunctionalProfileRepository
 from infrastructure.repositories.pei_kanban_repository import PeiKanbanRepository
@@ -171,13 +172,13 @@ class Container(containers.DeclarativeContainer):
 
     ai_gateway = providers.Factory(
         AiGateway, gemini=gemini_service, usage_repo=ai_usage_repository, anonymization=anonymization_service,
-        bncc_context=bncc_context,
+        bncc_context=bncc_context, prompts=prompt_repository,
     )
 
     list_functional_domains_use_case = providers.Factory(fp_uc.ListFunctionalDomainsUseCase)
     generate_functional_profile_use_case = providers.Factory(
         fp_uc.GenerateFunctionalProfileUseCase, repository=functional_profile_repository,
-        students=student_repository, bncc=bncc_repository, ai=ai_gateway,
+        students=student_repository, bncc=bncc_repository, ai=ai_gateway, prompts=prompt_repository,
     )
     create_manual_profile_use_case = providers.Factory(fp_uc.CreateManualProfileUseCase, repository=functional_profile_repository)
     list_student_profiles_use_case = providers.Factory(fp_uc.ListStudentProfilesUseCase, repository=functional_profile_repository)
@@ -188,14 +189,24 @@ class Container(containers.DeclarativeContainer):
 
     generate_skill_plan_draft_use_case = providers.Factory(
         GenerateSkillPlanDraftUseCase, repository=skill_plan_repository, students=student_repository, ai=ai_gateway,
+        prompts=prompt_repository,
     )
     suggest_skill_scores_use_case = providers.Factory(
         SuggestSkillScoresUseCase, repository=skill_plan_repository, students=student_repository, ai=ai_gateway,
+        prompts=prompt_repository,
+    )
+    generate_skill_summary_use_case = providers.Factory(
+        GenerateSkillSummaryUseCase, repository=skill_plan_repository, students=student_repository, ai=ai_gateway,
+        prompts=prompt_repository,
+    )
+    generate_kanban_card_summary_use_case = providers.Factory(
+        kb_uc.GenerateKanbanCardSummaryUseCase, repository=pei_kanban_repository, skill_repository=skill_plan_repository,
+        students=student_repository, ai=ai_gateway, prompts=prompt_repository,
     )
     list_skill_suggestions_use_case = providers.Factory(ListSkillSuggestionsUseCase, repository=skill_plan_repository)
     decide_skill_suggestion_use_case = providers.Factory(DecideSkillSuggestionUseCase, repository=skill_plan_repository)
 
-    rag_service = providers.Factory(RagService, database=database, gemini=gemini_service, usage_repo=ai_usage_repository, diary_repo=diary_repository)
+    rag_service = providers.Factory(RagService, database=database, gemini=gemini_service, usage_repo=ai_usage_repository, diary_repo=diary_repository, prompts=prompt_repository)
 
     create_user_use_case = providers.Factory(
         CreateUserUseCase,

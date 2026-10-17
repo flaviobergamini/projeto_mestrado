@@ -6,9 +6,9 @@ from core.kernel.result import Result
 from core.interfaces.i_ai_gateway import IAiGateway
 from core.interfaces.i_bncc_repository import IBnccRepository
 from core.interfaces.i_functional_profile_repository import IFunctionalProfileRepository, ProfileError
+from core.interfaces.i_prompt_provider import IPromptProvider
 from core.interfaces.i_student_reader import IStudentReader
 from core.services.functional_profile_content import normalize_content, map_strings
-from core.use_case.functional_profile.prompts import SYSTEM_INSTRUCTION
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +24,8 @@ class GenerateFunctionalProfileUseCase:
     """Gera o perfil funcional com IA a partir do contexto anonimizado do aluno."""
 
     def __init__(self, repository: IFunctionalProfileRepository, students: IStudentReader,
-                 bncc: IBnccRepository, ai: IAiGateway) -> None:
+                 bncc: IBnccRepository, ai: IAiGateway, prompts: IPromptProvider) -> None:
+        self.prompts = prompts
         self.repository = repository
         self.students = students
         self.bncc = bncc
@@ -44,13 +45,14 @@ class GenerateFunctionalProfileUseCase:
 
         raw: dict = {}
         last_error = ""
+        system_instruction = await self.prompts.get("functional_profile")
         for attempt in range(2):
             attempt_prompt = prompt if attempt == 0 else (
                 prompt + "\n\nATENÇÃO: sua resposta anterior não era um JSON válido. Responda apenas com o objeto JSON."
             )
             try:
                 raw = await self.ai.generate_json(
-                    "functional_profile_generation", SYSTEM_INSTRUCTION, attempt_prompt, user.get("user_id"),
+                    "functional_profile_generation", system_instruction, attempt_prompt, user.get("user_id"),
                     with_bncc_catalog="bncc_catalog" in chosen,
                 )
                 break

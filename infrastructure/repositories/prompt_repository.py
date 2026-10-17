@@ -4,6 +4,8 @@ import uuid
 from sqlalchemy import select, update, delete
 from sqlalchemy.exc import OperationalError
 
+from core.constants.prompt_defaults import PROMPT_REGISTRY
+from core.interfaces.i_prompt_provider import IPromptProvider
 from infrastructure.database_context.database import Database
 from infrastructure.models.ai_prompt import AiPrompt
 
@@ -85,22 +87,21 @@ O resumo deve:
 Responda sempre em português do Brasil, de forma clara e profissional."""
 
 
+def _default_text(scope: str) -> str:
+    legacy = {"chat": DEFAULT_CHAT_PROMPT, "pei": DEFAULT_PEI_PROMPT, "diary_summary": DEFAULT_DIARY_SUMMARY_PROMPT}
+    if scope in legacy:
+        return legacy[scope]
+    return PROMPT_REGISTRY[scope]["default"]
+
+
 def _default_prompt(scope: str) -> dict:
-    if scope == "chat":
-        content = DEFAULT_CHAT_PROMPT
-        name = "Prompt base do Chat - Anonimização"
-    elif scope == "diary_summary":
-        content = DEFAULT_DIARY_SUMMARY_PROMPT
-        name = "Prompt base do Resumo Diário"
-    else:
-        content = DEFAULT_PEI_PROMPT
-        name = "Prompt base do PEI"
+    meta = PROMPT_REGISTRY.get(scope, {})
     return {
         "id": f"__default_{scope}__",
         "scope": scope,
-        "name": f"{name} [base]",
+        "name": f"{meta.get('label', scope)} [base]",
         "description": "Prompt base",
-        "content": content,
+        "content": _default_text(scope),
         "is_active": True,
         "created_at": None,
         "updated_at": None,
@@ -108,7 +109,10 @@ def _default_prompt(scope: str) -> dict:
     }
 
 
-class PromptRepository:
+class PromptRepository(IPromptProvider):
+    async def get(self, scope: str) -> str:
+        return (await self.get_active(scope))["content"]
+
     def __init__(self, database: Database):
         self._db = database
 

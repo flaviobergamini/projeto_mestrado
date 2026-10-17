@@ -1,4 +1,8 @@
+from typing import Optional
 import time
+from core.constants.prompt_defaults import (
+    DIARY_AUDIO_PROMPT, FAMILY_AUDIO_PROMPT, OBSERVATION_NORMALIZE_PROMPT,
+)
 import logging
 from google import genai
 from google.genai import types
@@ -163,7 +167,7 @@ class GeminiService:
 
     # ── Diary normalization ──────────────────────────────────────────────────
 
-    def normalize_diary_observation(self, text: str) -> tuple[dict, UsageData]:
+    def normalize_diary_observation(self, text: str, prompt_template: Optional[str] = None) -> tuple[dict, UsageData]:
         """Send raw open_observation text to Gemini and return a structured summary dict.
 
         Returns a dict with keys: resumo, comportamentos_observados,
@@ -172,25 +176,9 @@ class GeminiService:
         """
         import json, re
 
-        prompt = f"""Você é um assistente especializado em educação inclusiva para alunos com TEA (Transtorno do Espectro Autista).
-
-Analise a seguinte observação livre escrita por um professor e normalize-a em um JSON estruturado.
-
-OBSERVAÇÃO:
-{text}
-
-Retorne APENAS o JSON abaixo preenchido, sem explicações, sem markdown, sem ```json:
-
-{{
-  "resumo": "<resumo objetivo em 1-2 frases>",
-  "comportamentos_observados": ["<lista de comportamentos mencionados ou inferidos>"],
-  "habilidades_demonstradas": ["<habilidades positivas observadas>"],
-  "dificuldades_identificadas": ["<dificuldades ou desafios mencionados>"],
-  "recomendacoes": ["<sugestões ou encaminhamentos mencionados pelo professor>"]
-}}
-
-Se alguma categoria não tiver informações, use lista vazia [].
-Não invente informações que não estejam na observação original."""
+        # O texto do prompt é editável pelo administrador; {observacao} marca onde a observação entra.
+        template = prompt_template or OBSERVATION_NORMALIZE_PROMPT
+        prompt = template.replace("{observacao}", text)
 
         client = genai.Client(api_key=self.api_key)
         t0 = time.monotonic()
@@ -212,43 +200,14 @@ Não invente informações que não estejam na observação original."""
 
     # ── Audio transcription ──────────────────────────────────────────────────
 
-    def transcribe_diary_audio(self, audio_bytes: bytes, mime_type: str = "audio/webm") -> dict:
+    def transcribe_diary_audio(self, audio_bytes: bytes, mime_type: str = "audio/webm", prompt: Optional[str] = None) -> dict:
         """Send audio to Gemini and extract structured diary fields.
 
         Returns a dict with the same keys as DiaryEntryCreate (minus student_id/diary_date).
         All answer fields use 'Sim' | 'Não' | 'Parcialmente' | null.
         """
-        prompt = """Você é um assistente que ajuda professores a registrar o diário de acompanhamento de alunos com TEA.
-
-Ouça o áudio e preencha o JSON abaixo com base no que o professor relatou.
-
-Regras:
-- Para os campos de atividade use SOMENTE: "Sim", "Não", "Parcialmente" ou null (se não mencionado).
-- Para "presence" use SOMENTE: "Presente", "Falta Justificada" ou "Falta Injustificada".
-- "open_observation": o RELATO DETALHADO do professor, o mais próximo possível do que foi dito no áudio. Registre
-  tudo o que foi falado além das respostas fechadas: situações ocorridas, falas e reações da criança, contexto,
-  momentos do dia, intensidade e frequência dos comportamentos, estratégias usadas e como o aluno respondeu.
-  Inclua também os detalhes e justificativas sobre as atividades (por exemplo, por que algo foi "Parcialmente").
-  NÃO resuma, NÃO generalize e NÃO omita detalhes: preserve as informações e o vocabulário do professor, apenas
-  corrigindo a pontuação e organizando em frases ou parágrafos. Quanto mais longo e detalhado o áudio, mais longa
-  deve ser a observação. Use null só se o professor não disse nada além das respostas fechadas.
-- "absence_reason": motivo da falta se for Falta Justificada, com os detalhes ditos, ou null.
-- Não invente informações que não foram ditas no áudio. Use null para campos não mencionados.
-
-Retorne APENAS o JSON, sem explicações, sem markdown, sem ```json.
-
-{
-  "presence": "Presente",
-  "teacher_attention": null,
-  "followed_agreements": null,
-  "activity_interest": null,
-  "had_lunch": null,
-  "participated_in_play": null,
-  "completed_activities": null,
-  "bathroom_use": null,
-  "open_observation": null,
-  "absence_reason": null
-}"""
+        # Texto editável pelo administrador (escopo 'diary_audio'); o padrão fica em core/constants/prompt_defaults.py.
+        prompt = prompt or DIARY_AUDIO_PROMPT
 
         client = genai.Client(api_key=self.api_key)
         contents = [
@@ -257,7 +216,11 @@ Retorne APENAS o JSON, sem explicações, sem markdown, sem ```json.
         ]
 
         t0 = time.monotonic()
-        response = client.models.generate_content(model=self.model_name, contents=contents)
+        # Temperatura baixa (fidelidade ao áudio) e teto de saída alto (relatos longos não são cortados).
+        response = client.models.generate_content(
+            model=self.model_name, contents=contents,
+            config=types.GenerateContentConfig(temperature=0.2, max_output_tokens=8192),
+        )
         duration_ms = int((time.monotonic() - t0) * 1000)
 
         import json, re
@@ -275,11 +238,11 @@ Retorne APENAS o JSON, sem explicações, sem markdown, sem ```json.
 
         return fields, usage
 
-    def transcribe_audio_verbatim(self, audio_bytes: bytes, mime_type: str = "audio/webm") -> tuple[str, "UsageData"]:
+    def transcribe_audio_verbatim(self, audio_bytes: bytes, mime_type: str = "audio/webm", prompt: Optional[str] = None) -> tuple[str, "UsageData"]:
         """Transcreve o áudio fielmente, sem resumir. Retorna o texto e os dados de uso."""
         import time as _time
 
-        prompt = """Transcreva exatamente o que foi dito no áudio, em português, sem resumir, sem interpretar, sem adicionar ou omitir nenhuma informação. Retorne apenas o texto transcrito, sem títulos, sem explicações adicionais."""
+        prompt = prompt or FAMILY_AUDIO_PROMPT
 
         client = genai.Client(api_key=self.api_key)
         contents = [
