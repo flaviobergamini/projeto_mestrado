@@ -29,7 +29,7 @@ class GenerateSkillSummaryUseCase:
 
         _, name_map = await self.ai.build_context(student_id, ["student"])
         cards = "\n".join(
-            f"  * {c['status']} | {c['title']}" + (f" | registro: {c['daily_log']}" if c["daily_log"] else "")
+            f"  * {c['status']} | {c['title']}" + (f" | resumo da ação: {c['summary']}" if c.get("summary") else (f" | diário: {c['daily_log']}" if c["daily_log"] else ""))
             for c in ctx["cards"]
         ) or "  (nenhum card)"
         history = "\n".join(

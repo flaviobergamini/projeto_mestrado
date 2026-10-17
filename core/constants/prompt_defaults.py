@@ -94,7 +94,7 @@ da habilidade com base APENAS no contexto anonimizado fornecido. Escala de apoio
 Responda SOMENTE com JSON válido, sem markdown:
 {"skills": [{"code": "<código exato>", "adaptation": "como adaptar a atividade/ambiente (2 a 4 frases)",
   "justification": "por que esta adaptação, ligando às evidências do contexto (2 a 4 frases)",
-  "actions": [{"action": "ação prática curta e observável", "adaptation": "adaptação específica DESTA ação (1 a 2 frases)"}],  /* 3 a 5 ações */
+  "actions": [{"action": "ação prática curta e observável", "adaptation": "adaptação específica DESTA ação (1 a 2 frases)", "justification": "por que esta ação (1 frase)"}],  /* 3 a 5 ações */
   "experience_fields": ["chaves dos campos de experiência da BNCC relacionados à habilidade, escolhidas SOMENTE desta lista: selfOtherUs (O eu, o outro e o nós), bodyGestures (Corpo, gestos e movimentos), linesSounds (Traços, sons, cores e formas), listeningSpeaking (Escuta, fala, pensamento e imaginação), spacesTimes (Espaços, tempos, quantidades, relações e transformações); [] se não houver certeza"]}]}
 Não invente fatos nem diagnósticos que não estejam no contexto; se faltar evidência, diga isso na justificativa.
 Use SOMENTE os códigos fornecidos na lista. Use o identificador anonimizado do aluno exatamente como fornecido."""
@@ -111,7 +111,13 @@ SKILL_SUMMARY_PROMPT = """Você é especialista em educação inclusiva e em TEA
 
 Use SOMENTE as informações fornecidas (nota e seu significado, plano de adaptação, justificativa, ações, observação do professor, histórico de notas e progresso nos cards do Kanban). Não invente fatos.
 Escreva de 4 a 7 frases em português do Brasil, linguagem profissional, clara e não estigmatizante: onde o aluno está (nota atual), o que foi planejado, o que já foi observado de progresso ou dificuldade e o próximo passo. Se faltar informação, diga que ainda há pouco registro.
-Responda apenas com o texto do resumo, em parágrafo corrido, sem títulos, sem listas e sem markdown. Se citar o aluno, use o identificador anonimizado exatamente como fornecido."""
+Responda apenas com o texto do resumo, em parágrafo corrido, sem títulos, sem listas e sem markdown. Se citar o aluno, use o identificador anonimizado exatamente como fornecido e não presuma o gênero (evite pronomes como ele/ela; prefira o nome ou \"o(a) aluno(a)\")."""
+
+KANBAN_CARD_SUMMARY_PROMPT = """Você é especialista em educação inclusiva e em TEA. Resuma a EXECUÇÃO de uma ação prática do plano do aluno, a partir do diário escrito pelo professor.
+
+Use SOMENTE as informações fornecidas (ação, adaptação, justificativa, coluna, reação do aluno e diário). Não invente fatos.
+Escreva de 3 a 5 frases em português do Brasil, linguagem profissional e não estigmatizante: o que foi feito, como o aluno respondeu, dificuldades e avanços observados e o próximo passo. Este resumo será usado depois para avaliar a habilidade.
+Responda apenas com o texto do resumo, em parágrafo corrido, sem títulos, sem listas e sem markdown. Se citar o aluno, use o identificador anonimizado exatamente como fornecido e não presuma o gênero (evite pronomes como ele/ela; prefira o nome ou \"o(a) aluno(a)\")."""
 
 BNCC_USAGE_RULE_PROMPT = """CATÁLOGO BNCC: o catálogo de habilidades BNCC é material de referência. Ao propor objetivos, metas ou atividades de aprendizagem acadêmica, relacione-os, quando pertinente, a habilidades do catálogo citando o código exato (ex.: EF01LP02). Nunca invente códigos nem descrições: use somente o que consta no catálogo."""
 
@@ -165,6 +171,11 @@ PROMPT_REGISTRY: dict[str, dict] = {
         "label": "Resumo da habilidade (IA)", "json_output": False, "placeholders": [],
         "default": SKILL_SUMMARY_PROMPT,
         "description": "Gera o resumo de uma habilidade (editável pelo professor). O resumo é o que vai no relatório em PDF.",
+    },
+    "kanban_card_summary": {
+        "label": "Resumo da ação do Kanban (IA)", "json_output": False, "placeholders": [],
+        "default": KANBAN_CARD_SUMMARY_PROMPT,
+        "description": "Resume o diário de uma ação do Kanban. O resumo alimenta a avaliação posterior da habilidade.",
     },
     "bncc_usage_rule": {
         "label": "Regra de uso do catálogo BNCC", "json_output": False, "placeholders": [],

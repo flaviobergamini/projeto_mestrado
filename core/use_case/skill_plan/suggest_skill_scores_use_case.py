@@ -34,7 +34,7 @@ class SuggestSkillScoresUseCase:
         for t in targets:
             lines = [
                 f"  * id={c['id']} | {c['status']} | {c['title']}"
-                + (f" | registro: {c['daily_log']}" if c["daily_log"] else "")
+                + (f" | resumo da ação: {c['summary']}" if c.get("summary") else (f" | diário: {c['daily_log']}" if c["daily_log"] else ""))
                 + (f" | reação: {c['reaction']}/5" if c["reaction"] else "")
                 for c in cards[t["skill_id"]]
             ]
