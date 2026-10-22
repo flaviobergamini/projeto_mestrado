@@ -163,6 +163,24 @@ async def student_skills(
     ))
 
 
+class ClearEventsBody(BaseModel):
+    event_ids: Optional[list[str]] = None
+    all: bool = False
+
+
+@router.post("/students/{student_id}/skills/{skill_id}/events/clear")
+@inject
+async def clear_skill_events(
+    student_id: str,
+    skill_id: str,
+    body: ClearEventsBody,
+    current_user: dict = Depends(require_roles("admin", "coordenacao")),
+    use_case: uc.ClearSkillEventsUseCase = Depends(Provide[Container.bncc_clear_skill_events_use_case]),
+):
+    """Limpa a linha do tempo (todos ou só os registros escolhidos) e zera/recalcula a nota. Só admin e coordenação."""
+    return _unwrap(await use_case.execute(student_id, skill_id, body.event_ids, body.all))
+
+
 @router.get("/students/{student_id}/skills/{skill_id}/events")
 @inject
 async def skill_events(
