@@ -161,6 +161,7 @@ class Container(containers.DeclarativeContainer):
     bncc_list_student_skills_use_case = providers.Factory(bncc_uc.ListStudentSkillsUseCase, repository=bncc_repository)
     bncc_set_skill_score_use_case = providers.Factory(bncc_uc.SetSkillScoreUseCase, repository=bncc_repository)
     bncc_list_skill_events_use_case = providers.Factory(bncc_uc.ListSkillEventsUseCase, repository=bncc_repository)
+    bncc_clear_skill_events_use_case = providers.Factory(bncc_uc.ClearSkillEventsUseCase, repository=bncc_repository)
     bncc_create_report_use_case = providers.Factory(bncc_uc.CreateSkillReportUseCase, repository=bncc_repository)
     bncc_list_reports_use_case = providers.Factory(bncc_uc.ListSkillReportsUseCase, repository=bncc_repository)
     bncc_get_report_use_case = providers.Factory(bncc_uc.GetSkillReportUseCase, repository=bncc_repository)

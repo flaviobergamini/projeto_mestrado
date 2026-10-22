@@ -255,6 +255,32 @@ class BnccRepository(IBnccRepository):
                     **_plan_dict(row),
                     "updated_at": row.updated_at.isoformat() if row.updated_at else None}
 
+    async def clear_events(self, student_id: str, skill_id: str, event_ids: Optional[list[str]]) -> dict:
+        """Apaga registros da linha do tempo (todos, se `event_ids` for None) e recalcula a nota pelo que sobrou:
+        a nota do último registro de nota restante, ou 0 se não sobrar nenhum (habilidade zerada)."""
+        async with self.database.session() as session:
+            query = select(StudentSkillEvent).where(
+                StudentSkillEvent.student_id == student_id, StudentSkillEvent.skill_id == skill_id,
+            )
+            if event_ids is not None:
+                query = query.where(StudentSkillEvent.id.in_(event_ids))
+            doomed = (await session.execute(query)).scalars().all()
+            for e in doomed:
+                await session.delete(e)
+            await session.flush()
+            last = (await session.execute(
+                select(StudentSkillEvent).where(
+                    StudentSkillEvent.student_id == student_id, StudentSkillEvent.skill_id == skill_id,
+                    StudentSkillEvent.kind == "score", StudentSkillEvent.new_score.is_not(None),
+                ).order_by(StudentSkillEvent.created_at.desc()).limit(1)
+            )).scalars().first()
+            score = last.new_score if last else 0
+            row = await session.get(StudentSkillScore, (student_id, skill_id))
+            if row:
+                row.score = score
+            await session.commit()
+            return {"deleted": len(doomed), "score": score}
+
     async def list_events(self, student_id: str, skill_id: str) -> list[dict]:
         async with self.database.session() as session:
             rows = await session.execute(
