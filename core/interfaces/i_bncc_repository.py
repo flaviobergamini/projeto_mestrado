@@ -36,7 +36,8 @@ class IBnccRepository(ABC):
     async def student_skills(self, student_id: str, grades: Optional[list[str]] = None,
                              areas: Optional[list[str]] = None, q: Optional[str] = None,
                              min_score: Optional[int] = None, max_score: Optional[int] = None,
-                             only_with_observation: bool = False, only_in_plan: bool = False) -> list[dict]: ...
+                             only_with_observation: bool = False, only_in_plan: bool = False,
+                             actor: Optional[dict] = None) -> list[dict]: ...
 
     @abstractmethod
     async def set_score(self, student_id: str, skill_id: str, fields: dict, user: dict) -> dict: ...

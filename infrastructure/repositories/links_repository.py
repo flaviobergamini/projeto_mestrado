@@ -1,7 +1,7 @@
 """Repositório de vínculos professor-aluno e da visão consolidada de relações."""
 
 import uuid
-from sqlalchemy import select, delete, update
+from sqlalchemy import select, delete, update, func
 from sqlalchemy.orm import selectinload
 
 from core.interfaces.i_links_repository import ILinksRepository
@@ -46,11 +46,11 @@ class LinksRepository(ILinksRepository):
 
         items = []
         for s in page_students:
-            teachers = [
-                {"id": lnk.teacher.id, "name": lnk.teacher.name}
-                for lnk in s.teacher_links
-                if lnk.teacher and not lnk.deleted
-            ]
+            active = sorted(
+                (lnk for lnk in s.teacher_links if lnk.teacher and not lnk.deleted),
+                key=lambda lnk: (lnk.rank is None, lnk.rank or 0, lnk.created_at),
+            )
+            teachers = [{"id": lnk.teacher.id, "name": lnk.teacher.name, "rank": i + 1} for i, lnk in enumerate(active)]
             items.append({
                 "id": s.id,
                 "name": s.name,
@@ -67,6 +67,11 @@ class LinksRepository(ILinksRepository):
             "pages": max(1, (total + page_size - 1) // page_size),
         }
 
+    async def student_responsibles(self, student_id: str) -> list[dict]:
+        from infrastructure.repositories.responsibles import student_responsibles
+        async with self._db.session() as session:
+            return await student_responsibles(session, student_id)
+
     async def set_student_teachers(self, student_id: str, teacher_ids: list[str]) -> bool:
         async with self._db.session() as session:
             student = await session.get(Student, student_id)
@@ -79,7 +84,8 @@ class LinksRepository(ILinksRepository):
             )
 
             # Insert new links (reactivate existing if deleted, else create new)
-            for tid in teacher_ids:
+            # a ordem da lista é a hierarquia: o primeiro é o responsável 1, o segundo o responsável 2...
+            for position, tid in enumerate(teacher_ids, start=1):
                 existing_result = await session.execute(
                     select(TeacherStudentLink).where(
                         TeacherStudentLink.teacher_id == tid,
@@ -89,11 +95,13 @@ class LinksRepository(ILinksRepository):
                 existing_link = existing_result.scalar_one_or_none()
                 if existing_link:
                     existing_link.deleted = False
+                    existing_link.rank = position
                 else:
                     session.add(TeacherStudentLink(
                         id=str(uuid.uuid4()),
                         teacher_id=tid,
                         student_id=student_id,
+                        rank=position,
                     ))
 
             await session.commit()
@@ -170,9 +178,16 @@ class LinksRepository(ILinksRepository):
                 existing = (await session.execute(select(TeacherStudentLink).where(
                     TeacherStudentLink.teacher_id == teacher_id, TeacherStudentLink.student_id == sid,
                 ))).scalar_one_or_none()
+                # vínculo novo (ou reativado) entra no fim da hierarquia do aluno
+                last = (await session.execute(select(func.max(TeacherStudentLink.rank)).where(
+                    TeacherStudentLink.student_id == sid, TeacherStudentLink.deleted == False,  # noqa: E712
+                    TeacherStudentLink.teacher_id != teacher_id,
+                ))).scalar() or 0
                 if existing:
+                    if existing.deleted:
+                        existing.rank = last + 1
                     existing.deleted = False
                 else:
-                    session.add(TeacherStudentLink(id=str(uuid.uuid4()), teacher_id=teacher_id, student_id=sid))
+                    session.add(TeacherStudentLink(id=str(uuid.uuid4()), teacher_id=teacher_id, student_id=sid, rank=last + 1))
             await session.commit()
         return True

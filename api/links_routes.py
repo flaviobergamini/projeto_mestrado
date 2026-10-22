@@ -9,7 +9,7 @@ from core.kernel.container import Container
 from core.kernel.result import Result
 from core.use_case.links.links_use_cases import (
     ListStudentsWithLinksUseCase, ListLinkableTeachersUseCase, SetStudentTeachersUseCase,
-    SetTeacherStudentsUseCase, GetRelationsUseCase,
+    SetTeacherStudentsUseCase, GetRelationsUseCase, ListStudentResponsiblesUseCase,
 )
 
 router = APIRouter(prefix="/links", tags=["Links"])
@@ -54,6 +54,17 @@ async def list_teachers(
 ):
     """Lista todos os professores (para preencher o multiselect)."""
     return _unwrap(await use_case.execute())
+
+
+@router.get("/students/{student_id}/responsibles")
+@inject
+async def list_student_responsibles(
+    student_id: str,
+    current_user: dict = Depends(get_current_user),
+    use_case: ListStudentResponsiblesUseCase = Depends(Provide[Container.list_student_responsibles_use_case]),
+):
+    """Professores do aluno em ordem de hierarquia (responsável 1, 2, 3...): alimenta a troca de responsável."""
+    return _unwrap(await use_case.execute(student_id))
 
 
 @router.put("/students/{student_id}/teachers")
