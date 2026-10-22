@@ -11,6 +11,9 @@ class ILinksRepository(ABC):
         ...
 
     @abstractmethod
+    async def student_responsibles(self, student_id: str) -> list[dict]: ...
+
+    @abstractmethod
     async def set_student_teachers(self, student_id: str, teacher_ids: list[str]) -> bool:
         ...
 

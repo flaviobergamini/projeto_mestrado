@@ -29,8 +29,21 @@ class SkillBody(BaseModel):
 class ActionItem(BaseModel):
     id: str = Field("", max_length=64)
     action: str = Field(max_length=500)
+
+
+class ResponsibleItem(BaseModel):
+    teacher_id: Optional[str] = None
+    user_id: Optional[str] = None
+    name: Optional[str] = None
+
+
+class AdaptationItem(BaseModel):
+    """Uma adaptação com a sua justificativa e uma ou mais ações práticas (cada ação vira um card no Kanban)."""
+    id: str = Field("", max_length=64)
     adaptation: str = Field("", max_length=2000)
     justification: str = Field("", max_length=2000)
+    responsible: Optional[ResponsibleItem] = None  # só a coordenação consegue trocar
+    actions: list[ActionItem] = []
 
 
 class ScoreBody(BaseModel):
@@ -39,7 +52,7 @@ class ScoreBody(BaseModel):
     summary: Optional[str] = Field(None, max_length=4000)
     adaptation: Optional[str] = Field(None, max_length=4000)
     justification: Optional[str] = Field(None, max_length=4000)
-    actions: Optional[list[ActionItem]] = None
+    adaptations: Optional[list[AdaptationItem]] = None
     experience_fields: Optional[list[str]] = None
     ai_excluded: Optional[bool] = None
     in_plan: Optional[bool] = None
@@ -153,8 +166,26 @@ async def student_skills(
 ):
     return _unwrap(await use_case.execute(
         student_id, grades=_csv(grades), areas=_csv(areas), q=q, min_score=min_score, max_score=max_score,
-        only_with_observation=only_with_observation, only_in_plan=only_in_plan,
+        only_with_observation=only_with_observation, only_in_plan=only_in_plan, actor=current_user,
     ))
+
+
+class ClearEventsBody(BaseModel):
+    event_ids: Optional[list[str]] = None
+    all: bool = False
+
+
+@router.post("/students/{student_id}/skills/{skill_id}/events/clear")
+@inject
+async def clear_skill_events(
+    student_id: str,
+    skill_id: str,
+    body: ClearEventsBody,
+    current_user: dict = Depends(require_roles("admin", "coordenacao")),
+    use_case: uc.ClearSkillEventsUseCase = Depends(Provide[Container.bncc_clear_skill_events_use_case]),
+):
+    """Limpa a linha do tempo (todos ou só os registros escolhidos) e zera/recalcula a nota. Só admin e coordenação."""
+    return _unwrap(await use_case.execute(student_id, skill_id, body.event_ids, body.all))
 
 
 @router.get("/students/{student_id}/skills/{skill_id}/events")

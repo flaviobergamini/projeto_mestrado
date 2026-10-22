@@ -69,6 +69,15 @@ class ListSkillEventsUseCase(_BnccUseCase):
         return Result.ok(await self.repository.list_events(student_id, skill_id))
 
 
+class ClearSkillEventsUseCase(_BnccUseCase):
+    """Limpa a linha do tempo de uma habilidade (todos os registros ou só os escolhidos) e recalcula a nota."""
+
+    async def execute(self, student_id: str, skill_id: str, event_ids: Optional[list[str]], clear_all: bool) -> Result:
+        if not clear_all and not event_ids:
+            return Result.bad_request("Escolha os registros a limpar (ou marque todos).")
+        return Result.ok(await self.repository.clear_events(student_id, skill_id, None if clear_all else event_ids))
+
+
 class CreateSkillReportUseCase(_BnccUseCase):
     async def execute(self, student_id: str, filters: dict, user: dict) -> Result:
         try:

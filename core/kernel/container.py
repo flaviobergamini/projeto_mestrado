@@ -42,7 +42,7 @@ from infrastructure.services.report_pdf_generator import ReportPdfGenerator
 from core.use_case.bncc import bncc_use_cases as bncc_uc
 from core.use_case.links.links_use_cases import (
     ListStudentsWithLinksUseCase, ListLinkableTeachersUseCase, SetStudentTeachersUseCase,
-    SetTeacherStudentsUseCase, GetRelationsUseCase,
+    SetTeacherStudentsUseCase, GetRelationsUseCase, ListStudentResponsiblesUseCase,
 )
 from core.use_case.skill_plan.generate_skill_plan_draft_use_case import GenerateSkillPlanDraftUseCase
 from core.use_case.skill_plan.suggest_skill_scores_use_case import SuggestSkillScoresUseCase
@@ -143,6 +143,7 @@ class Container(containers.DeclarativeContainer):
     list_students_with_links_use_case = providers.Factory(ListStudentsWithLinksUseCase, repository=links_repository)
     list_linkable_teachers_use_case = providers.Factory(ListLinkableTeachersUseCase, teachers=teacher_repository)
     set_student_teachers_use_case = providers.Factory(SetStudentTeachersUseCase, repository=links_repository)
+    list_student_responsibles_use_case = providers.Factory(ListStudentResponsiblesUseCase, repository=links_repository)
     set_teacher_students_use_case = providers.Factory(SetTeacherStudentsUseCase, repository=links_repository)
     get_relations_use_case = providers.Factory(GetRelationsUseCase, repository=links_repository)
 
@@ -161,6 +162,7 @@ class Container(containers.DeclarativeContainer):
     bncc_list_student_skills_use_case = providers.Factory(bncc_uc.ListStudentSkillsUseCase, repository=bncc_repository)
     bncc_set_skill_score_use_case = providers.Factory(bncc_uc.SetSkillScoreUseCase, repository=bncc_repository)
     bncc_list_skill_events_use_case = providers.Factory(bncc_uc.ListSkillEventsUseCase, repository=bncc_repository)
+    bncc_clear_skill_events_use_case = providers.Factory(bncc_uc.ClearSkillEventsUseCase, repository=bncc_repository)
     bncc_create_report_use_case = providers.Factory(bncc_uc.CreateSkillReportUseCase, repository=bncc_repository)
     bncc_list_reports_use_case = providers.Factory(bncc_uc.ListSkillReportsUseCase, repository=bncc_repository)
     bncc_get_report_use_case = providers.Factory(bncc_uc.GetSkillReportUseCase, repository=bncc_repository)

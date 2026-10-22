@@ -19,6 +19,16 @@ class ListLinkableTeachersUseCase:
         return Result.ok(await self.teachers.list_all())
 
 
+class ListStudentResponsiblesUseCase:
+    """Professores do aluno em ordem de hierarquia (responsável 1, 2, 3...)."""
+
+    def __init__(self, repository: ILinksRepository) -> None:
+        self.repository = repository
+
+    async def execute(self, student_id: str) -> Result:
+        return Result.ok(await self.repository.student_responsibles(student_id))
+
+
 class SetStudentTeachersUseCase:
     """Substitui todos os professores vinculados a um aluno."""
 
