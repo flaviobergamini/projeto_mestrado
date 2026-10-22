@@ -12,7 +12,8 @@ from core.use_case.functional_profile import functional_profile_use_cases as uc
 router = APIRouter(prefix="/functional-profiles", tags=["Functional Profile"])
 
 READERS = ("admin", "coordenacao", "professor", "viewer")
-WRITERS = ("admin", "coordenacao", "professor")
+# Só a coordenação (e o admin) gera, cria, edita e apaga perfis; o professor apenas consulta.
+WRITERS = ("admin", "coordenacao")
 
 
 class GenerateBody(BaseModel):

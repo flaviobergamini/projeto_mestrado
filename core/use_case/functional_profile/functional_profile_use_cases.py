@@ -9,6 +9,8 @@ from core.interfaces.i_functional_profile_repository import IFunctionalProfileRe
 from core.interfaces.i_prompt_provider import IPromptProvider
 from core.interfaces.i_student_reader import IStudentReader
 from core.services.functional_profile_content import normalize_content, map_strings
+from core.services.semester import same_semester
+from datetime import date
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +39,15 @@ class GenerateFunctionalProfileUseCase:
         student = await self.students.get_by_id(student_id)
         if not student:
             return Result.not_found("Aluno não encontrado.")
+
+        # Só uma geração por semestre por aluno; se o perfil gerado for apagado, dá para gerar de novo.
+        already = [p for p in await self.repository.list_for_student(student_id)
+                   if p.get("origin") == "ai" and same_semester(p.get("created_at"), date.today())]
+        if already:
+            return Result.bad_request(
+                "Já existe um perfil funcional gerado neste semestre para este aluno. "
+                "Para gerar outro, apague o existente."
+            )
 
         # O perfil funcional nunca usa a si mesmo como fonte.
         chosen = [s for s in (sources or DEFAULT_SOURCES) if s != "functional_profile"] or DEFAULT_SOURCES
