@@ -27,14 +27,14 @@ class SkillPlanRepository(ISkillPlanRepository):
         self.database = database
 
     async def plan_skills(self, student_id: str) -> list[dict]:
-        """Habilidades no PDI do aluno que a IA PODE trabalhar: não marcadas como 'sem IA' e com 1 a 4 estrelas
+        """Habilidades do aluno que a IA PODE trabalhar: com "Trabalhar com a IA" marcado e com 1 a 4 estrelas
         (0 = ainda não iniciada; 5 = concluída, não se trabalha mais)."""
         async with self.database.session() as session:
             rows = await session.execute(
                 select(StudentSkillScore, BnccSkill)
                 .join(BnccSkill, BnccSkill.id == StudentSkillScore.skill_id)
                 .where(
-                    StudentSkillScore.student_id == student_id, StudentSkillScore.in_plan == True,  # noqa: E712
+                    StudentSkillScore.student_id == student_id,
                     StudentSkillScore.ai_excluded == False, BnccSkill.deleted == False,  # noqa: E712
                     StudentSkillScore.score >= 1, StudentSkillScore.score <= 4,
                 )
@@ -55,7 +55,7 @@ class SkillPlanRepository(ISkillPlanRepository):
         async with self.database.session() as session:
             for skill_id, d in drafts.items():
                 row = await session.get(StudentSkillScore, (student_id, skill_id))
-                if not row or row.ai_excluded or not row.in_plan or not 1 <= (row.score or 0) <= 4:
+                if not row or row.ai_excluded or not 1 <= (row.score or 0) <= 4:
                     continue
                 touched = False
                 # gerar de novo ACRESCENTA adaptações; as que já existem (da professora ou de uma geração anterior) ficam
