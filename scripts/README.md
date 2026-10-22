@@ -94,6 +94,18 @@ Opções: `--out <pasta>`, `--bucket <nome>`, `--workers <n>` (padrão 6), `--re
 
 Gera `files/<caminho no bucket>`, `object_storage_files.json` (cópia da tabela do banco) e `manifest.json` (tamanho e SHA-256 de cada arquivo). Termina com erro se algum arquivo falhar ou vier com tamanho diferente.
 
+### Só um período (por exemplo, de 21/09 até hoje)
+```bash
+python scripts/backup_all.py --since 2026-09-21
+python scripts/backup_database.py --since 21/09/2026
+python scripts/backup_storage.py --since 2026-09-21 --until 2026-10-19
+```
+- `--since` aceita `AAAA-MM-DD` ou `DD/MM/AAAA`; `--until` é opcional (padrão: hoje) e inclui o dia inteiro. Funciona nos três scripts.
+- **Storage:** baixa só os arquivos criados no período (data de criação no bucket). A pasta leva o período no nome.
+- **Banco:** em vez do `pg_dump`, exporta só as **linhas criadas** no período, uma tabela por arquivo em `tables/<tabela>.jsonl`, mais `manifest.json` (linhas por tabela). A data usada é `created_at` (ou `submitted_at`/`generated_at`/`updated_at` nas poucas tabelas sem `created_at`; em `student_skill_scores` vale o `updated_at`). Só `SELECT`, não altera nada.
+- Limites: linhas **criadas antes** do período e apenas editadas nele não entram (exceto `student_skill_scores`). Esse formato **não** restaura com `pg_restore`: serve para trazer o que é novo para outro banco com `INSERT ... ON CONFLICT DO NOTHING` (o script de importação ainda não existe). Os campos sensíveis continuam criptografados: guarde a `ENCRYPTION_KEY`.
+- Os horários no banco estão em UTC; 21/09 às 00:00 UTC equivale a 20/09 às 21:00 em Brasília, então algumas linhas das últimas horas de 20/09 podem vir junto.
+
 ---
 
 ## 4. Restaurar em um projeto Supabase novo

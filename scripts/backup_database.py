@@ -20,6 +20,17 @@ O que grava em <out>/smartpei_db_<data-hora>/:
     manifest.json      tamanho, SHA-256, versão do pg_dump e do banco
     RESTORE.md         comandos de restauração
 
+SÓ UM PERÍODO (--since): em vez do dump completo, exporta apenas as LINHAS criadas no período
+    (de --since até --until, inclusive; padrão: hoje), uma tabela por arquivo .jsonl:
+
+        python scripts/backup_database.py --since 2026-09-21
+        python scripts/backup_database.py --since 21/09/2026 --until 19/10/2026
+
+    A data usada em cada tabela é `created_at` (ou `submitted_at` / `generated_at` / `updated_at` nas poucas
+    tabelas que não têm created_at). Linhas só EDITADAS no período, mas criadas antes, não entram (exceto em
+    student_skill_scores, que usa updated_at). Não é um dump restaurável com pg_restore: é para trazer o que é
+    novo para outro banco (INSERT ... ON CONFLICT DO NOTHING). Os campos continuam criptografados.
+
 ATENÇÃO:
     * O backup contém dados sensíveis (alunos, saúde). Guarde em disco criptografado e fora de pastas sincronizadas.
     * Campos sensíveis são criptografados com ENCRYPTION_KEY. SEM essa chave o backup NÃO é legível.
@@ -107,6 +118,95 @@ async def collect_counts(database_url: str) -> dict:
     return out
 
 
+# Coluna de data usada para decidir se a linha é do período (a primeira que a tabela tiver).
+DATE_COLUMNS = ("created_at", "submitted_at", "generated_at", "updated_at")
+
+
+def parse_day(value: str, flag: str) -> datetime:
+    for fmt in ("%Y-%m-%d", "%d/%m/%Y"):
+        try:
+            return datetime.strptime(value.strip(), fmt)
+        except ValueError:
+            pass
+    sys.exit(f"{flag}: data inválida '{value}' (use AAAA-MM-DD ou DD/MM/AAAA)")
+
+
+async def export_period(database_url: str, dest: Path, since: datetime, until: datetime) -> dict:
+    """Exporta, em JSON Lines, as linhas de cada tabela de `public` cuja data cai em [since, until] (dias inteiros).
+
+    Só SELECT. O JSON é gerado pelo próprio Postgres (row_to_json), então tipos como vetor, UUID e datas
+    voltam fielmente com json_populate_recordset na hora de importar."""
+    from datetime import timedelta
+    from sqlalchemy import text
+    from infrastructure.database_context.database import Database
+
+    end = until + timedelta(days=1)  # limite exclusivo
+    tables_dir = dest / "tables"
+    tables_dir.mkdir(parents=True, exist_ok=True)
+    db = Database(database_url)
+    summary: dict = {"tables": {}, "skipped_without_date": []}
+    async with db.session() as s:
+        cols = (await s.execute(text(
+            "SELECT table_name, column_name FROM information_schema.columns WHERE table_schema='public' "
+            "AND column_name = ANY(:cols)"
+        ), {"cols": list(DATE_COLUMNS)})).all()
+        by_table: dict[str, set] = {}
+        for table, col in cols:
+            by_table.setdefault(table, set()).add(col)
+        names = (await s.execute(text(
+            "SELECT table_name FROM information_schema.tables WHERE table_schema='public' "
+            "AND table_type='BASE TABLE' AND table_name <> 'alembic_version' ORDER BY 1"
+        ))).scalars().all()
+        for name in names:
+            col = next((c for c in DATE_COLUMNS if c in by_table.get(name, set())), None)
+            if not col:
+                summary["skipped_without_date"].append(name)
+                continue
+            query = text(
+                f'SELECT row_to_json(t)::text FROM "{name}" t '
+                f'WHERE t."{col}"::timestamp >= :since AND t."{col}"::timestamp < :until ORDER BY t."{col}"'
+            )
+            count = 0
+            with (tables_dir / f"{name}.jsonl").open("w", encoding="utf-8") as f:
+                result = await s.stream(query, {"since": since, "until": end})
+                async for (line,) in result:
+                    f.write(line + "\n")
+                    count += 1
+            if count == 0:
+                (tables_dir / f"{name}.jsonl").unlink()
+            else:
+                summary["tables"][name] = {"rows": count, "date_column": col}
+    return summary
+
+
+def delta_main(args, raw: str) -> None:
+    since = parse_day(args.since, "--since")
+    until = parse_day(args.until, "--until") if args.until else datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    if until < since:
+        sys.exit("--until não pode ser antes de --since.")
+    conn = parse_database_url(raw)
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    dest = Path(args.out) / f"smartpei_db_de_{since:%Y%m%d}_ate_{until:%Y%m%d}_{stamp}"
+    dest.mkdir(parents=True, exist_ok=True)
+    print(f"Banco: {conn['dbname']} @ {conn['host']}:{conn['port']}")
+    print(f"Período: {since:%d/%m/%Y} a {until:%d/%m/%Y} (dias inteiros, inclusive)")
+    print(f"Destino: {dest}\n")
+    summary = asyncio.run(export_period(raw, dest, since, until))
+    total = sum(t["rows"] for t in summary["tables"].values())
+    manifest = {
+        "created_at": datetime.now().isoformat(), "database": conn["dbname"], "host": conn["host"],
+        "mode": "period", "since": f"{since:%Y-%m-%d}", "until": f"{until:%Y-%m-%d}",
+        "rows_total": total, "tables": summary["tables"], "skipped_without_date": summary["skipped_without_date"],
+    }
+    (dest / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+    for name, info in sorted(summary["tables"].items(), key=lambda kv: -kv[1]["rows"]):
+        print(f"  {name:<40} {info['rows']:>6}")
+    print(f"\n✔ {total} linhas em {len(summary['tables'])} tabelas.  Pasta: {dest}")
+    if summary["skipped_without_date"]:
+        print(f"  (sem coluna de data, ignoradas: {', '.join(summary['skipped_without_date'])})")
+    print("Lembrete: guarde a ENCRYPTION_KEY de produção — sem ela os campos criptografados não abrem.")
+
+
 RESTORE_MD = """# Restaurar este backup
 
 Pré-requisitos: um PostgreSQL VAZIO (mesma versão ou superior) com a extensão pgvector disponível, e a
@@ -142,11 +242,17 @@ def main() -> None:
     parser.add_argument("--out", default=str(default_out), help=f"Pasta de destino (padrão: {default_out})")
     parser.add_argument("--all-schemas", action="store_true", help="Inclui todos os schemas (padrão: só 'public')")
     parser.add_argument("--pg-image", default=DEFAULT_IMAGE, help=f"Imagem Docker do cliente (padrão: {DEFAULT_IMAGE})")
+    parser.add_argument("--since", default=None, help="Só linhas criadas a partir desta data (AAAA-MM-DD ou DD/MM/AAAA); não faz pg_dump")
+    parser.add_argument("--until", default=None, help="Só linhas criadas até esta data, inclusive (padrão: hoje)")
     args = parser.parse_args()
 
     raw = os.getenv("DATABASE_URL")
     if not raw:
         sys.exit("DATABASE_URL não definida (coloque a de PRODUÇÃO no .env ou no ambiente).")
+    if args.since or args.until:
+        if not args.since:
+            sys.exit("--until só funciona junto com --since.")
+        return delta_main(args, raw)
     conn = parse_database_url(raw)
 
     mode, prefix = pick_runner(args.pg_image)

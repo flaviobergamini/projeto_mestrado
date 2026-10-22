@@ -5,7 +5,10 @@ from datetime import datetime, timezone
 from typing import Optional
 from sqlalchemy import select, func, or_
 from core.interfaces.i_bncc_repository import IBnccRepository, BnccError
-from core.services.skill_actions import normalize_actions, dump_actions
+from core.services.skill_actions import (
+    normalize_adaptations, dump_adaptations, merge_adaptations, actor_from_user, owns, is_coordinator,
+)
+from infrastructure.repositories.responsibles import default_responsible, fill_responsibles
 from infrastructure.database_context.database import Database
 from infrastructure.models.bncc import BnccSkill, StudentSkillScore, SkillReport, StudentSkillEvent
 from infrastructure.models.student import Student
@@ -28,12 +31,21 @@ def _load_codes(raw: Optional[str]) -> list[str]:
         return []
 
 
-def _plan_dict(row: Optional[StudentSkillScore]) -> dict:
+# Com 5 estrelas a habilidade fica travada; só estes perfis ainda conseguem corrigir (ex.: nota marcada por engano).
+LOCK_OVERRIDE_ROLES = ("admin", "coordenacao")
+
+
+def _plan_dict(row: Optional[StudentSkillScore], actor: Optional[dict] = None) -> dict:
     return {
         "summary": (row.summary or "") if row else "",
         "adaptation": (row.adaptation or "") if row else "",
         "justification": (row.justification or "") if row else "",
-        "actions": normalize_actions(row.actions) if row else [],
+        # `editable`: o usuário logado é o responsável (ou da coordenação) e pode alterar esta adaptação
+        "adaptations": [
+            {**g, "editable": owns(g.get("responsible"), actor) if actor else True}
+            for g in (normalize_adaptations(row.actions) if row else [])
+        ],
+        "can_assign_responsible": is_coordinator(actor) if actor else False,
         "experience_fields": _load_codes(row.correlated_codes) if row else [],
         "ai_excluded": bool(row.ai_excluded) if row else False,
         "in_plan": bool(row.in_plan) if row else False,
@@ -165,7 +177,7 @@ class BnccRepository(IBnccRepository):
     async def student_skills(
         self, student_id: str, grades: Optional[list[str]] = None, areas: Optional[list[str]] = None,
         q: Optional[str] = None, min_score: Optional[int] = None, max_score: Optional[int] = None,
-        only_with_observation: bool = False, only_in_plan: bool = False, only_with_summary: bool = False,
+        only_with_observation: bool = False, only_in_plan: bool = False, actor: Optional[dict] = None,
     ) -> list[dict]:
         async with self.database.session() as session:
             skills = await self._list_skills(session, grades, areas, q)
@@ -189,10 +201,8 @@ class BnccRepository(IBnccRepository):
                 continue
             if only_in_plan and not (row and row.in_plan):
                 continue
-            if only_with_summary and not ((row.summary or "").strip() if row else ""):
-                continue
             out.append({
-                **s, "score": score, "observation": observation, **_plan_dict(row),
+                **s, "score": score, "observation": observation, **_plan_dict(row, actor),
                 "updated_at": row.updated_at.isoformat() if row and row.updated_at else None,
             })
         return out
@@ -211,6 +221,8 @@ class BnccRepository(IBnccRepository):
                 )
                 session.add(row)
             old_score = row.score or 0
+            if old_score >= 5 and user.get("role") not in LOCK_OVERRIDE_ROLES:
+                raise BnccError("Habilidade com 5 estrelas: não pode mais ser alterada (peça à coordenação).")
             if "score" in fields and fields["score"] is not None:
                 row.score = int(fields["score"])
             if "observation" in fields:
@@ -218,8 +230,12 @@ class BnccRepository(IBnccRepository):
             for key in ("summary", "adaptation", "justification"):
                 if key in fields:
                     setattr(row, key, (fields[key] or "").strip() or None)
-            if "actions" in fields:
-                row.actions = dump_actions(fields["actions"])
+            if "adaptations" in fields:
+                merged = merge_adaptations(
+                    normalize_adaptations(row.actions), normalize_adaptations(fields["adaptations"]),
+                    actor_from_user(user), await default_responsible(session, student_id),
+                )
+                row.actions = dump_adaptations(await fill_responsibles(session, merged))
             if "experience_fields" in fields:
                 codes = [str(c).strip() for c in (fields["experience_fields"] or []) if str(c).strip()]
                 row.correlated_codes = json.dumps(codes, ensure_ascii=False) if codes else None
@@ -248,8 +264,34 @@ class BnccRepository(IBnccRepository):
             await session.commit()
             await session.refresh(row)
             return {**_skill_dict(skill), "score": row.score, "observation": row.observation or "",
-                    **_plan_dict(row),
+                    **_plan_dict(row, actor_from_user(user)),
                     "updated_at": row.updated_at.isoformat() if row.updated_at else None}
+
+    async def clear_events(self, student_id: str, skill_id: str, event_ids: Optional[list[str]]) -> dict:
+        """Apaga registros da linha do tempo (todos, se `event_ids` for None) e recalcula a nota pelo que sobrou:
+        a nota do último registro de nota restante, ou 0 se não sobrar nenhum (habilidade zerada)."""
+        async with self.database.session() as session:
+            query = select(StudentSkillEvent).where(
+                StudentSkillEvent.student_id == student_id, StudentSkillEvent.skill_id == skill_id,
+            )
+            if event_ids is not None:
+                query = query.where(StudentSkillEvent.id.in_(event_ids))
+            doomed = (await session.execute(query)).scalars().all()
+            for e in doomed:
+                await session.delete(e)
+            await session.flush()
+            last = (await session.execute(
+                select(StudentSkillEvent).where(
+                    StudentSkillEvent.student_id == student_id, StudentSkillEvent.skill_id == skill_id,
+                    StudentSkillEvent.kind == "score", StudentSkillEvent.new_score.is_not(None),
+                ).order_by(StudentSkillEvent.created_at.desc()).limit(1)
+            )).scalars().first()
+            score = last.new_score if last else 0
+            row = await session.get(StudentSkillScore, (student_id, skill_id))
+            if row:
+                row.score = score
+            await session.commit()
+            return {"deleted": len(doomed), "score": score}
 
     async def list_events(self, student_id: str, skill_id: str) -> list[dict]:
         async with self.database.session() as session:
@@ -273,7 +315,7 @@ class BnccRepository(IBnccRepository):
         items = await self.student_skills(
             student_id, grades=grades, areas=areas, q=filters.get("query"),
             min_score=filters.get("min_score"), max_score=filters.get("max_score"),
-            only_with_summary=bool(filters.get("only_with_observation")),  # no relatório, o filtro refere-se ao resumo
+            only_with_observation=bool(filters.get("only_with_observation")),
         )
         by_score = {str(n): 0 for n in range(6)}
         for it in items:
@@ -286,8 +328,8 @@ class BnccRepository(IBnccRepository):
             if not areas_list or areas_list[-1]["area"] != it["area"]:
                 areas_list.append({"area": it["area"], "skills": []})
             skill = {"code": it["code"], "description": it["description"], "score": it["score"]}
-            if include_obs and it["summary"]:
-                skill["summary"] = it["summary"]  # o relatório mostra o resumo, não a observação
+            if include_obs and it["observation"]:
+                skill["observation"] = it["observation"]
             areas_list[-1]["skills"].append(skill)
         content = {
             "version": 1,

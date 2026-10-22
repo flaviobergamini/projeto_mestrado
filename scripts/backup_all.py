@@ -51,12 +51,17 @@ def main() -> None:
     parser.add_argument("--only", choices=["db", "storage"], help="Rodar só uma das partes")
     parser.add_argument("--dry-run", action="store_true", help="Só mostra o alvo e o destino, sem copiar nada")
     parser.add_argument("--yes", action="store_true", help="Não pedir confirmação")
+    parser.add_argument("--since", default=None, help="Só o que foi criado a partir desta data (AAAA-MM-DD ou DD/MM/AAAA)")
+    parser.add_argument("--until", default=None, help="Só o que foi criado até esta data, inclusive (padrão: hoje)")
     args = parser.parse_args()
+    period = (["--since", args.since] if args.since else []) + (["--until", args.until] if args.until else [])
 
     root = Path(args.out) / datetime.now().strftime("%Y%m%d_%H%M%S")
     print("Alvo do backup (leitura apenas):")
     for ln in target_summary():
         print("  " + ln)
+    if args.since:
+        print(f"Período:  desde {args.since}" + (f" até {args.until}" if args.until else " até hoje"))
     print(f"Destino: {root}\n")
     if args.dry_run:
         return
@@ -65,9 +70,9 @@ def main() -> None:
 
     steps = []
     if args.only in (None, "db"):
-        steps.append(("Banco de dados", [sys.executable, str(HERE / "backup_database.py"), "--out", str(root / "db")]))
+        steps.append(("Banco de dados", [sys.executable, str(HERE / "backup_database.py"), "--out", str(root / "db"), *period]))
     if args.only in (None, "storage"):
-        steps.append(("Storage", [sys.executable, str(HERE / "backup_storage.py"), "--out", str(root / "storage")]))
+        steps.append(("Storage", [sys.executable, str(HERE / "backup_storage.py"), "--out", str(root / "storage"), *period]))
 
     failures = []
     for name, cmd in steps:

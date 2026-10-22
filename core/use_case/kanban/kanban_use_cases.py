@@ -3,6 +3,7 @@ from typing import Optional
 from core.constants.kanban import KANBAN_STATUSES
 from core.kernel.result import Result
 from core.interfaces.i_kanban_repository import IKanbanRepository
+from core.services.skill_actions import actor_from_user, card_responsible, owns, own_responsible
 
 NOT_FOUND = "Card não encontrado"
 # Em cards ligados a uma habilidade, o que veio do plano (ação, descrição e adaptação) não pode ser alterado.
@@ -19,26 +20,34 @@ class ListKanbanCardsUseCase:
     def __init__(self, repository: IKanbanRepository) -> None:
         self.repository = repository
 
-    async def execute(self, student_id: str) -> Result:
-        return Result.ok(await self.repository.list_by_student(student_id))
+    async def execute(self, student_id: str, user: Optional[dict] = None) -> Result:
+        cards = await self.repository.list_by_student(student_id)
+        if user is None:
+            return Result.ok(cards)
+        # cada professor vê só os cards dos quais é responsável; a coordenação (e o admin) vê todos
+        actor = actor_from_user(user)
+        return Result.ok([c for c in cards if owns(card_responsible(c), actor)])
 
 
 class CreateKanbanCardUseCase:
     def __init__(self, repository: IKanbanRepository) -> None:
         self.repository = repository
 
-    async def execute(self, data: dict, created_by: str) -> Result:
+    async def execute(self, data: dict, created_by: str, user: Optional[dict] = None) -> Result:
         error = _invalid_status(data.get("status") or "todo")
         if error:
             return Result.bad_request(error)
-        return Result.ok(await self.repository.create({**data, "created_by": created_by, "source": "manual"}))
+        owner = own_responsible(actor_from_user(user)) if user else None  # card manual de professor é dele
+        extra = {"responsible_teacher_id": owner["teacher_id"], "responsible_user_id": owner["user_id"],
+                 "responsible_name": owner["name"]} if owner else {}
+        return Result.ok(await self.repository.create({**data, **extra, "created_by": created_by, "source": "manual"}))
 
 
 class UpdateKanbanCardUseCase:
     def __init__(self, repository: IKanbanRepository) -> None:
         self.repository = repository
 
-    async def execute(self, card_id: str, data: dict) -> Result:
+    async def execute(self, card_id: str, data: dict, user: Optional[dict] = None) -> Result:
         error = _invalid_status(data.get("status"))
         if error:
             return Result.bad_request(error)
@@ -46,8 +55,8 @@ class UpdateKanbanCardUseCase:
         if reaction is not None and not 1 <= reaction <= 5:
             return Result.bad_request("reaction deve estar entre 1 e 5")
         card = await self.repository.get(card_id)
-        if not card:
-            return Result.not_found(NOT_FOUND)
+        if not card or (user is not None and not owns(card_responsible(card), actor_from_user(user))):
+            return Result.not_found(NOT_FOUND)  # card de outro professor: para este usuário ele não existe
         if card.get("skill_id"):
             changed = [f for f in LOCKED_FIELDS_ON_SKILL_CARDS if f in data and (data[f] or "") != (card.get(f) or "")]
             if changed:
@@ -67,9 +76,10 @@ class DeleteKanbanCardUseCase:
     def __init__(self, repository: IKanbanRepository) -> None:
         self.repository = repository
 
-    async def execute(self, card_id: str) -> Result:
+    async def execute(self, card_id: str, user: Optional[dict] = None) -> Result:
         card = await self.repository.get(card_id)
-        if not card or not await self.repository.delete(card_id):
+        if not card or (user is not None and not owns(card_responsible(card), actor_from_user(user))) \
+                or not await self.repository.delete(card_id):
             return Result.not_found(NOT_FOUND)
         if card.get("skill_id"):
             await self.repository.sync_skill_score(card["student_id"], card["skill_id"])
@@ -102,7 +112,7 @@ class GenerateKanbanCardSummaryUseCase:
 
     async def execute(self, card_id: str, user: dict) -> Result:
         card = await self.repository.get(card_id)
-        if not card:
+        if not card or not owns(card_responsible(card), actor_from_user(user)):
             return Result.not_found(NOT_FOUND)
         if not (card.get("daily_log") or "").strip():
             return Result.bad_request("Escreva o diário da ação antes de gerar o resumo.")

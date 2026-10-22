@@ -16,6 +16,9 @@ Grava em <out>/smartpei_storage_<data-hora>/:
     object_storage_files.json      cópia da tabela do banco que mapeia arquivos ↔ registros
     manifest.json                  lista de arquivos, tamanhos e SHA-256 (+ falhas, se houver)
 
+Só um período: --since 2026-09-21 (até hoje) ou --since 2026-09-21 --until 2026-10-19. Vale a data de criação do
+arquivo no bucket; a pasta fica com o período no nome. (A tabela object_storage_files sai inteira, é pequena.)
+
 Para economizar tempo/espaço em backups seguidos, use --reuse <pasta de um backup anterior>: arquivos
 idênticos (mesmo tamanho) são copiados dali em vez de baixados de novo.
 
@@ -56,14 +59,19 @@ def main() -> None:
     parser.add_argument("--bucket", default=bi.BUCKET, help=f"Bucket (padrão: {bi.BUCKET})")
     parser.add_argument("--workers", type=int, default=6, help="Downloads em paralelo (padrão 6)")
     parser.add_argument("--reuse", default=None, help="Pasta de um backup anterior para reaproveitar arquivos idênticos")
+    parser.add_argument("--since", default=None, help="Só arquivos criados a partir desta data (AAAA-MM-DD ou DD/MM/AAAA)")
+    parser.add_argument("--until", default=None, help="Só arquivos criados até esta data, inclusive (padrão: hoje, quando há --since)")
     args = parser.parse_args()
+    since = bi.parse_day(args.since, "--since") if args.since else None
+    until = bi.parse_day(args.until, "--until") if args.until else (datetime.now().replace(hour=0, minute=0, second=0, microsecond=0) if since else None)
 
     url, key = os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY")
     if not url or not key:
         sys.exit("SUPABASE_URL / SUPABASE_KEY não definidos (use os de PRODUÇÃO no .env ou no ambiente).")
     bi.BUCKET = args.bucket  # as funções reaproveitadas leem o bucket deste módulo
 
-    dest = Path(args.out) / f"smartpei_storage_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    tag = f"_de_{since:%Y%m%d}_ate_{until:%Y%m%d}" if since else ""
+    dest = Path(args.out) / f"smartpei_storage{tag}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     files_dir = dest / "files"
     files_dir.mkdir(parents=True, exist_ok=True)
     reuse_root = Path(args.reuse) if args.reuse else None
@@ -71,6 +79,10 @@ def main() -> None:
     client = create_client(url, key)
     print(f"Bucket: {args.bucket}\nDestino: {dest}\n\nListando arquivos do bucket...")
     remote = bi.list_bucket(client)
+    if since or until:
+        all_count = len(remote)
+        remote = bi.filter_by_period(remote, since, until)
+        print(f"  Período {since:%d/%m/%Y} a {until:%d/%m/%Y}: {len(remote)} de {all_count} arquivos")
     total = sum(f["size"] or 0 for f in remote)
     print(f"  {len(remote)} arquivos, {total / 1048576:.1f} MB\n")
 
@@ -99,6 +111,7 @@ def main() -> None:
 
     manifest = {
         "created_at": datetime.now().isoformat(), "bucket": args.bucket,
+        "period": {"since": f"{since:%Y-%m-%d}", "until": f"{until:%Y-%m-%d}"} if since else None,
         "files_listed": len(remote), "files_ok": len(manifest_files) - len(failed),
         "total_bytes": sum(f.get("size", 0) for f in manifest_files), "files": manifest_files,
     }
