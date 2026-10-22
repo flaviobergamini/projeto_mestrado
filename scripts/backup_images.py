@@ -57,11 +57,40 @@ def list_bucket(client, prefix: str = "") -> list[dict]:
                 files.extend(list_bucket(client, path))
             else:
                 size = (it.get("metadata") or {}).get("size")
-                files.append({"path": path, "size": size})
+                files.append({"path": path, "size": size, "created_at": it.get("created_at") or it.get("updated_at")})
         if len(items) < PAGE:
             break
         offset += PAGE
     return files
+
+
+def parse_day(value: str, flag: str) -> "datetime":
+    """Aceita AAAA-MM-DD ou DD/MM/AAAA."""
+    for fmt in ("%Y-%m-%d", "%d/%m/%Y"):
+        try:
+            return datetime.strptime(value.strip(), fmt)
+        except ValueError:
+            pass
+    sys.exit(f"{flag}: data inválida '{value}' (use AAAA-MM-DD ou DD/MM/AAAA)")
+
+
+def filter_by_period(files: list[dict], since, until) -> list[dict]:
+    """Mantém só os arquivos criados em [since, until] (dias inteiros, inclusive). Sem data de criação → mantém
+    (melhor sobrar um arquivo do que perder um). `since`/`until` são datetime sem hora ou None."""
+    if since is None and until is None:
+        return files
+    from datetime import timedelta
+    end = (until + timedelta(days=1)) if until else None
+    kept = []
+    for f in files:
+        raw = f.get("created_at")
+        if not raw:
+            kept.append(f)
+            continue
+        day = datetime.fromisoformat(str(raw).replace("Z", "+00:00")).replace(tzinfo=None)
+        if (since is None or day >= since) and (end is None or day < end):
+            kept.append(f)
+    return kept
 
 
 def download_one(client, path: str, dest: Path, expected_size) -> dict:

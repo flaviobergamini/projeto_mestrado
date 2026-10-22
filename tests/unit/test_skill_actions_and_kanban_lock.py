@@ -2,25 +2,39 @@
 import asyncio
 
 from core.kernel.container import Container  # noqa: F401  (carrega core.kernel na ordem certa; evita import circular)
-from core.services.skill_actions import actions_as_text, dump_actions, normalize_actions
+from core.services.skill_actions import (
+    adaptations_as_text, dump_adaptations, flatten_actions, normalize_adaptations,
+)
 from core.use_case.kanban.kanban_use_cases import UpdateKanbanCardUseCase
 
 
-def test_actions_accept_list_json_and_legacy_text():
-    items = [{"action": "Usar fichas visuais", "adaptation": "Fichas com fotos reais"}, "Praticar turnos"]
-    n = normalize_actions(items)
-    assert n == [{"id": "", "action": "Usar fichas visuais", "adaptation": "Fichas com fotos reais", "justification": ""},
-                 {"id": "", "action": "Praticar turnos", "adaptation": "", "justification": ""}]
-    stored = normalize_actions(dump_actions(items))                        # ida e volta em JSON
-    assert [{k: v for k, v in a.items() if k != 'id'} for a in stored] == [{k: v for k, v in a.items() if k != 'id'} for a in n]
-    legacy = "- Primeira ação\n2) Segunda ação\n\n"                       # texto antigo, uma ação por linha
-    assert [a["action"] for a in normalize_actions(legacy)] == ["Primeira ação", "Segunda ação"]
-    assert normalize_actions(None) == [] and normalize_actions("   ") == [] and dump_actions([]) is None
+def test_adaptation_groups_accept_new_flat_and_legacy_formats():
+    new = [{"adaptation": "Fichas visuais", "justification": "Aluno responde a imagens",
+            "actions": [{"action": "Usar fichas no lanche"}, "Usar fichas na roda"]}]
+    g = normalize_adaptations(new)
+    assert len(g) == 1 and [a["action"] for a in g[0]["actions"]] == ["Usar fichas no lanche", "Usar fichas na roda"]
+    flat = [{"id": "a1", "action": "Praticar turnos", "adaptation": "Timer", "justification": "Antecipa"}]  # formato da versão anterior
+    f = normalize_adaptations(flat)
+    assert f[0]["adaptation"] == "Timer" and f[0]["actions"] == [{"id": "a1", "action": "Praticar turnos"}]   # id da ação preservado
+    legacy = "- Primeira ação\n2) Segunda ação\n\n"                                                            # texto antigo
+    assert [x["actions"][0]["action"] for x in normalize_adaptations(legacy)] == ["Primeira ação", "Segunda ação"]
+    assert normalize_adaptations(None) == [] and normalize_adaptations("  ") == [] and dump_adaptations([]) is None
+    assert normalize_adaptations(dump_adaptations(new))[0]["adaptation"] == "Fichas visuais"                  # ida e volta em JSON
 
 
-def test_actions_as_text_for_prompts():
-    txt = actions_as_text([{"action": "A", "adaptation": "x"}, {"action": "B", "adaptation": ""}])
-    assert txt == "- A (adaptação: x)\n- B"
+def test_flatten_gives_one_card_per_action_with_its_adaptation():
+    groups = normalize_adaptations(dump_adaptations([
+        {"adaptation": "A1", "justification": "J1", "actions": ["x", "y"]},
+        {"adaptation": "A2", "justification": "J2", "actions": ["z"]},
+    ]))
+    flat = flatten_actions(groups)
+    assert [(f["action"], f["adaptation"], f["justification"]) for f in flat] == [("x", "A1", "J1"), ("y", "A1", "J1"), ("z", "A2", "J2")]
+    assert len({f["id"] for f in flat}) == 3 and flat[0]["adaptation_id"] == flat[1]["adaptation_id"] != flat[2]["adaptation_id"]
+
+
+def test_adaptations_as_text_for_prompts():
+    txt = adaptations_as_text([{"adaptation": "A", "justification": "J", "actions": ["x"]}])
+    assert txt == "- Adaptação: A | justificativa: J\n    * ação: x"
 
 
 class FakeKanbanRepo:
@@ -108,11 +122,13 @@ def test_summary_requires_diary_and_respects_no_ai():
     assert blocked.is_bad_request and ai.calls == 0
 
 
-def test_set_id_is_stable_across_edits_and_unique():
-    first = normalize_actions(dump_actions([{"action": "A"}, {"action": "B"}]))
-    assert all(a["id"] for a in first) and first[0]["id"] != first[1]["id"]
-    edited = [{**first[0], "action": "A editada", "adaptation": "nova"}, first[1], {"action": "C"}]  # só o id mantém o vínculo com o card
-    again = normalize_actions(dump_actions(edited))
-    assert again[0]["id"] == first[0]["id"] and again[1]["id"] == first[1]["id"] and again[2]["id"] not in {a["id"] for a in first}
-    dup = normalize_actions(dump_actions([{"id": "x", "action": "A"}, {"id": "x", "action": "B"}]))
-    assert dup[0]["id"] != dup[1]["id"]
+def test_ids_are_stable_across_edits_and_unique():
+    first = normalize_adaptations(dump_adaptations([{"adaptation": "A", "actions": ["a", "b"]}]))
+    ga, (x, y) = first[0]["id"], first[0]["actions"]
+    assert ga and x["id"] and y["id"] and x["id"] != y["id"]
+    edited = [{**first[0], "adaptation": "A editada", "actions": [{**x, "action": "a editada"}, y, {"action": "c"}]}]
+    again = normalize_adaptations(dump_adaptations(edited))
+    assert again[0]["id"] == ga and again[0]["actions"][0]["id"] == x["id"] and again[0]["actions"][1]["id"] == y["id"]
+    assert again[0]["actions"][2]["id"] not in (x["id"], y["id"])
+    dup = normalize_adaptations(dump_adaptations([{"id": "g", "actions": [{"id": "x", "action": "A"}, {"id": "x", "action": "B"}]}]))
+    assert dup[0]["actions"][0]["id"] != dup[0]["actions"][1]["id"]

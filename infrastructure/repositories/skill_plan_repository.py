@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Optional
 from sqlalchemy import select
 from core.interfaces.i_skill_plan_repository import ISkillPlanRepository
-from core.services.skill_actions import actions_as_text, normalize_actions, dump_actions
+from core.services.skill_actions import adaptations_as_text, normalize_adaptations, dump_adaptations
 from infrastructure.database_context.database import Database
 from infrastructure.models.bncc import (
     BnccSkill, StudentSkillScore, StudentSkillEvent, SkillSuggestion,
@@ -27,7 +27,8 @@ class SkillPlanRepository(ISkillPlanRepository):
         self.database = database
 
     async def plan_skills(self, student_id: str) -> list[dict]:
-        """Habilidades no PDI do aluno que a IA PODE trabalhar (não marcadas como 'sem IA')."""
+        """Habilidades no PDI do aluno que a IA PODE trabalhar: não marcadas como 'sem IA' e com 1 a 4 estrelas
+        (0 = ainda não iniciada; 5 = concluída, não se trabalha mais)."""
         async with self.database.session() as session:
             rows = await session.execute(
                 select(StudentSkillScore, BnccSkill)
@@ -35,6 +36,7 @@ class SkillPlanRepository(ISkillPlanRepository):
                 .where(
                     StudentSkillScore.student_id == student_id, StudentSkillScore.in_plan == True,  # noqa: E712
                     StudentSkillScore.ai_excluded == False, BnccSkill.deleted == False,  # noqa: E712
+                    StudentSkillScore.score >= 1, StudentSkillScore.score <= 4,
                 )
                 .order_by(BnccSkill.grade_order, BnccSkill.code)
             )
@@ -42,7 +44,7 @@ class SkillPlanRepository(ISkillPlanRepository):
                 "skill_id": sk.id, "code": sk.code, "grade": sk.grade, "area": sk.area,
                 "description": sk.description, "score": sc.score,
                 "adaptation": sc.adaptation or "", "justification": sc.justification or "",
-                "actions": actions_as_text(sc.actions), "experience_fields": _codes(sc.correlated_codes),
+                "existing": adaptations_as_text(sc.actions), "experience_fields": _codes(sc.correlated_codes),
             } for sc, sk in rows.all()]
 
     async def apply_round1(self, student_id: str, drafts: dict[str, dict], user: dict) -> list[str]:
@@ -53,15 +55,13 @@ class SkillPlanRepository(ISkillPlanRepository):
         async with self.database.session() as session:
             for skill_id, d in drafts.items():
                 row = await session.get(StudentSkillScore, (student_id, skill_id))
-                if not row or row.ai_excluded or not row.in_plan:
+                if not row or row.ai_excluded or not row.in_plan or not 1 <= (row.score or 0) <= 4:
                     continue
                 touched = False
-                for field in ("adaptation", "justification"):
-                    if not (getattr(row, field) or "").strip() and (d.get(field) or "").strip():
-                        setattr(row, field, d[field].strip())
-                        touched = True
-                if not normalize_actions(row.actions) and normalize_actions(d.get("actions")):
-                    row.actions = dump_actions(d["actions"])
+                # gerar de novo ACRESCENTA adaptações; as que já existem (da professora ou de uma geração anterior) ficam
+                new = normalize_adaptations(d.get("adaptations"))
+                if new:
+                    row.actions = dump_adaptations(normalize_adaptations(row.actions) + new)
                     touched = True
                 if not _codes(row.correlated_codes) and d.get("experience_fields"):
                     row.correlated_codes = json.dumps(d["experience_fields"], ensure_ascii=False)
@@ -114,7 +114,7 @@ class SkillPlanRepository(ISkillPlanRepository):
             "code": skill.code, "description": skill.description, "grade": skill.grade, "area": skill.area,
             "score": row.score if row else 0, "ai_excluded": bool(row.ai_excluded) if row else False,
             "observation": (row.observation or "") if row else "", "adaptation": (row.adaptation or "") if row else "",
-            "justification": (row.justification or "") if row else "", "actions": actions_as_text(row.actions) if row else "",
+            "justification": (row.justification or "") if row else "", "actions": adaptations_as_text(row.actions) if row else "",
             "cards": cards,
             "score_history": [
                 {"old": e.old_score, "new": e.new_score, "note": e.note or "",
