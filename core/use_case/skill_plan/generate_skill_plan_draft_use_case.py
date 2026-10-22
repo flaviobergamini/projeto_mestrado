@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 class GenerateSkillPlanDraftUseCase:
-    """Rodada 1: propõe adaptações (justificativa + ações) para habilidades do PDI com 1 a 4 estrelas; acrescenta, nunca sobrescreve."""
+    """Rodada 1: propõe adaptações (justificativa + ações) para habilidades com 1 a 4 estrelas; acrescenta, nunca sobrescreve."""
 
     def __init__(self, repository: ISkillPlanRepository, students: IStudentReader, ai: IAiGateway, prompts: IPromptProvider) -> None:
         self.prompts = prompts
@@ -25,7 +25,7 @@ class GenerateSkillPlanDraftUseCase:
             return Result.not_found("Aluno não encontrado.")
         targets = await self.repository.plan_skills(student_id)
         if not targets:
-            return Result.bad_request("Nenhuma habilidade elegível: precisa estar no PDI, sem 'não trabalhar com a IA' e com 1 a 4 estrelas.")
+            return Result.bad_request("Nenhuma habilidade elegível: precisa ter 'Trabalhar com a IA' marcado e de 1 a 4 estrelas.")
 
         context, name_map = await self.ai.build_context(student_id, ROUND1_SOURCES)
         listing = "\n".join(
