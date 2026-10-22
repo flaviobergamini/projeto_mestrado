@@ -89,12 +89,15 @@ dados nem preencha por suposição. Linguagem profissional, objetiva e não esti
 Em "bncc_references" use SOMENTE códigos que existam no catálogo BNCC fornecido; nunca invente códigos.
 Quando precisar citar o aluno, use o identificador anonimizado exatamente como fornecido."""
 
-SKILL_PLAN_ROUND1_PROMPT = """Você é especialista em educação inclusiva e em TEA. Para CADA habilidade BNCC listada, redija o quadro
-da habilidade com base APENAS no contexto anonimizado fornecido. Escala de apoio da nota atual: 0 = não iniciado; 1 = dependência total (ajuda física total); 2 = ajuda física parcial; 3 = ajuda gestual ou verbal; 4 = pista mínima/supervisão; 5 = independente.
+SKILL_PLAN_ROUND1_PROMPT = """Você é especialista em educação inclusiva e em TEA. Para CADA habilidade BNCC listada, proponha ADAPTAÇÕES
+com base APENAS no contexto anonimizado fornecido (pré-cadastro do aluno, perfil funcional e relatório de habilidades). Cada adaptação tem a sua justificativa
+e UMA OU MAIS ações práticas (cada ação vira um card de acompanhamento): proponha de 1 a 3 adaptações por habilidade e, em cada uma, quantas ações forem necessárias (no mínimo 1).
+Se a habilidade já tiver adaptações, NÃO as repita nem as reescreva: proponha somente adaptações NOVAS e diferentes. Escala de apoio da nota atual: 0 = não iniciado; 1 = dependência total (ajuda física total); 2 = ajuda física parcial; 3 = ajuda gestual ou verbal; 4 = pista mínima/supervisão; 5 = independente.
 Responda SOMENTE com JSON válido, sem markdown:
-{"skills": [{"code": "<código exato>", "adaptation": "como adaptar a atividade/ambiente (2 a 4 frases)",
-  "justification": "por que esta adaptação, ligando às evidências do contexto (2 a 4 frases)",
-  "actions": [{"action": "ação prática curta e observável", "adaptation": "adaptação específica DESTA ação (1 a 2 frases)", "justification": "por que esta ação (1 frase)"}],  /* 3 a 5 ações */
+{"skills": [{"code": "<código exato>",
+  "adaptations": [{"adaptation": "como adaptar a atividade/ambiente (2 a 4 frases)",
+    "justification": "por que esta adaptação, ligando às evidências do contexto (2 a 4 frases)",
+    "actions": ["ação prática curta e observável (pelo menos 1)", "..."]}],
   "experience_fields": ["chaves dos campos de experiência da BNCC relacionados à habilidade, escolhidas SOMENTE desta lista: selfOtherUs (O eu, o outro e o nós), bodyGestures (Corpo, gestos e movimentos), linesSounds (Traços, sons, cores e formas), listeningSpeaking (Escuta, fala, pensamento e imaginação), spacesTimes (Espaços, tempos, quantidades, relações e transformações); [] se não houver certeza"]}]}
 Não invente fatos nem diagnósticos que não estejam no contexto; se faltar evidência, diga isso na justificativa.
 Use SOMENTE os códigos fornecidos na lista. Use o identificador anonimizado do aluno exatamente como fornecido."""

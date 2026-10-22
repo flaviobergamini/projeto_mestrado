@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from typing import Optional
 from sqlalchemy import select, func, or_
 from core.interfaces.i_bncc_repository import IBnccRepository, BnccError
-from core.services.skill_actions import normalize_actions, dump_actions
+from core.services.skill_actions import normalize_adaptations, dump_adaptations
 from infrastructure.database_context.database import Database
 from infrastructure.models.bncc import BnccSkill, StudentSkillScore, SkillReport, StudentSkillEvent
 from infrastructure.models.student import Student
@@ -28,12 +28,16 @@ def _load_codes(raw: Optional[str]) -> list[str]:
         return []
 
 
+# Com 5 estrelas a habilidade fica travada; só estes perfis ainda conseguem corrigir (ex.: nota marcada por engano).
+LOCK_OVERRIDE_ROLES = ("admin", "coordenacao")
+
+
 def _plan_dict(row: Optional[StudentSkillScore]) -> dict:
     return {
         "summary": (row.summary or "") if row else "",
         "adaptation": (row.adaptation or "") if row else "",
         "justification": (row.justification or "") if row else "",
-        "actions": normalize_actions(row.actions) if row else [],
+        "adaptations": normalize_adaptations(row.actions) if row else [],
         "experience_fields": _load_codes(row.correlated_codes) if row else [],
         "ai_excluded": bool(row.ai_excluded) if row else False,
         "in_plan": bool(row.in_plan) if row else False,
@@ -165,7 +169,7 @@ class BnccRepository(IBnccRepository):
     async def student_skills(
         self, student_id: str, grades: Optional[list[str]] = None, areas: Optional[list[str]] = None,
         q: Optional[str] = None, min_score: Optional[int] = None, max_score: Optional[int] = None,
-        only_with_observation: bool = False, only_in_plan: bool = False, only_with_summary: bool = False,
+        only_with_observation: bool = False, only_in_plan: bool = False,
     ) -> list[dict]:
         async with self.database.session() as session:
             skills = await self._list_skills(session, grades, areas, q)
@@ -189,8 +193,6 @@ class BnccRepository(IBnccRepository):
                 continue
             if only_in_plan and not (row and row.in_plan):
                 continue
-            if only_with_summary and not ((row.summary or "").strip() if row else ""):
-                continue
             out.append({
                 **s, "score": score, "observation": observation, **_plan_dict(row),
                 "updated_at": row.updated_at.isoformat() if row and row.updated_at else None,
@@ -211,6 +213,8 @@ class BnccRepository(IBnccRepository):
                 )
                 session.add(row)
             old_score = row.score or 0
+            if old_score >= 5 and user.get("role") not in LOCK_OVERRIDE_ROLES:
+                raise BnccError("Habilidade com 5 estrelas: não pode mais ser alterada (peça à coordenação).")
             if "score" in fields and fields["score"] is not None:
                 row.score = int(fields["score"])
             if "observation" in fields:
@@ -218,8 +222,8 @@ class BnccRepository(IBnccRepository):
             for key in ("summary", "adaptation", "justification"):
                 if key in fields:
                     setattr(row, key, (fields[key] or "").strip() or None)
-            if "actions" in fields:
-                row.actions = dump_actions(fields["actions"])
+            if "adaptations" in fields:
+                row.actions = dump_adaptations(fields["adaptations"])
             if "experience_fields" in fields:
                 codes = [str(c).strip() for c in (fields["experience_fields"] or []) if str(c).strip()]
                 row.correlated_codes = json.dumps(codes, ensure_ascii=False) if codes else None
@@ -273,7 +277,7 @@ class BnccRepository(IBnccRepository):
         items = await self.student_skills(
             student_id, grades=grades, areas=areas, q=filters.get("query"),
             min_score=filters.get("min_score"), max_score=filters.get("max_score"),
-            only_with_summary=bool(filters.get("only_with_observation")),  # no relatório, o filtro refere-se ao resumo
+            only_with_observation=bool(filters.get("only_with_observation")),
         )
         by_score = {str(n): 0 for n in range(6)}
         for it in items:
@@ -286,8 +290,8 @@ class BnccRepository(IBnccRepository):
             if not areas_list or areas_list[-1]["area"] != it["area"]:
                 areas_list.append({"area": it["area"], "skills": []})
             skill = {"code": it["code"], "description": it["description"], "score": it["score"]}
-            if include_obs and it["summary"]:
-                skill["summary"] = it["summary"]  # o relatório mostra o resumo, não a observação
+            if include_obs and it["observation"]:
+                skill["observation"] = it["observation"]
             areas_list[-1]["skills"].append(skill)
         content = {
             "version": 1,

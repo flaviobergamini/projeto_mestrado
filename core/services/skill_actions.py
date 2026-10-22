@@ -1,32 +1,55 @@
-"""Ações práticas de uma habilidade: uma lista de conjuntos {action, adaptation, justification}.
+"""Plano de uma habilidade: ADAPTAÇÕES, cada uma com a sua justificativa e uma ou mais AÇÕES PRÁTICAS.
 
-Cada conjunto vira um card no Kanban e tem a SUA adaptação e justificativa. O campo `actions` do plano guarda essa lista em JSON; planos antigos guardavam
-um texto com uma ação por linha, e continuam sendo lidos (cada linha vira uma ação sem adaptação)."""
+    [{"id", "adaptation", "justification", "actions": [{"id", "action"}]}]
+
+Cada ação vira um card no Kanban (o card fica ligado ao `id` da ação, não ao título; por isso editar o texto
+atualiza o mesmo card). O JSON fica na coluna `student_skill_scores.actions`. Formatos antigos continuam sendo
+lidos: itens planos {id, action, adaptation, justification} (cada um vira uma adaptação com uma ação) e o texto
+com uma ação por linha."""
 import json
 import uuid
 from typing import Any, Optional
 
 
-def _clean(item: Any) -> Optional[dict]:
+def _text(value: Any, limit: int) -> str:
+    return str(value or "").strip()[:limit]
+
+
+def _clean_action(item: Any) -> Optional[dict]:
     if hasattr(item, "model_dump"):
         item = item.model_dump()
     if isinstance(item, str):
-        item = {"action": item, "adaptation": "", "justification": ""}
+        item = {"action": item}
     if not isinstance(item, dict):
         return None
-    action = str(item.get("action") or "").strip().lstrip("-•*0123456789.) ").strip()
+    action = _text(item.get("action"), 600).lstrip("-•*0123456789.) ").strip()
     if not action:
         return None
-    return {
-        "id": str(item.get("id") or "").strip()[:64],
-        "action": action[:500],
-        "adaptation": str(item.get("adaptation") or "").strip()[:2000],
-        "justification": str(item.get("justification") or "").strip()[:2000],
-    }
+    return {"id": _text(item.get("id"), 64), "action": action[:500]}
 
 
-def normalize_actions(value: Any) -> list[dict]:
-    """Aceita lista de objetos/strings, JSON ou texto antigo (uma ação por linha)."""
+def _clean_group(item: Any) -> Optional[dict]:
+    if hasattr(item, "model_dump"):
+        item = item.model_dump()
+    if isinstance(item, str):
+        item = {"action": item}
+    if not isinstance(item, dict):
+        return None
+    if "actions" in item:  # formato atual
+        actions = [a for a in (_clean_action(x) for x in (item.get("actions") or [])) if a]
+        group_id = _text(item.get("id"), 64)
+    else:  # item plano antigo: o id dele era o id da ação (é a ele que o card do Kanban está ligado)
+        action = _clean_action(item)
+        actions = [action] if action else []
+        group_id = ""
+    adaptation, justification = _text(item.get("adaptation"), 2000), _text(item.get("justification"), 2000)
+    if not actions and not adaptation and not justification:
+        return None
+    return {"id": group_id, "adaptation": adaptation, "justification": justification, "actions": actions}
+
+
+def normalize_adaptations(value: Any) -> list[dict]:
+    """Aceita lista (objetos/strings), JSON ou texto antigo (uma ação por linha)."""
     if value is None:
         return []
     if isinstance(value, str):
@@ -35,37 +58,47 @@ def normalize_actions(value: Any) -> list[dict]:
             return []
         try:
             parsed = json.loads(text)
-            if isinstance(parsed, list):
-                value = parsed
-            else:
-                value = text.splitlines()
+            value = parsed if isinstance(parsed, list) else text.splitlines()
         except Exception:
             value = text.splitlines()
-    return [c for c in (_clean(i) for i in value) if c]
+    return [g for g in (_clean_group(i) for i in value) if g]
 
 
-def with_ids(items: list[dict]) -> list[dict]:
-    """Garante um id estável por conjunto: é ele (e não o título) que liga o conjunto ao card do Kanban."""
+def with_ids(groups: list[dict]) -> list[dict]:
+    """Garante um id estável e único por adaptação e por ação."""
     seen: set[str] = set()
-    out = []
-    for it in items:
-        i = it.get("id") or ""
-        if not i or i in seen:
-            i = str(uuid.uuid4())
+
+    def fresh(current: str) -> str:
+        i = current if current and current not in seen else str(uuid.uuid4())
         seen.add(i)
-        out.append({**it, "id": i})
-    return out
+        return i
+
+    return [
+        {**g, "id": fresh(g.get("id") or ""),
+         "actions": [{**a, "id": fresh(a.get("id") or "")} for a in g.get("actions", [])]}
+        for g in groups
+    ]
 
 
-def dump_actions(value: Any) -> Optional[str]:
-    items = with_ids(normalize_actions(value))
-    return json.dumps(items, ensure_ascii=False) if items else None
+def dump_adaptations(value: Any) -> Optional[str]:
+    groups = with_ids(normalize_adaptations(value))
+    return json.dumps(groups, ensure_ascii=False) if groups else None
 
 
-def actions_as_text(value: Any) -> str:
-    """Texto para prompts: '- ação (adaptação: ...)'."""
+def flatten_actions(groups: list[dict]) -> list[dict]:
+    """Uma linha por ação, já com a adaptação e a justificativa dela (o que vira card no Kanban)."""
+    return [
+        {"id": a["id"], "action": a["action"], "adaptation": g["adaptation"], "justification": g["justification"],
+         "adaptation_id": g["id"]}
+        for g in groups for a in g["actions"]
+    ]
+
+
+def adaptations_as_text(value: Any) -> str:
+    """Texto para prompts."""
     lines = []
-    for it in normalize_actions(value):
-        extra = [f"{k}: {it[f]}" for k, f in (("adaptação", "adaptation"), ("justificativa", "justification")) if it[f]]
-        lines.append(f"- {it['action']}" + (f" ({'; '.join(extra)})" if extra else ""))
+    for g in normalize_adaptations(value):
+        lines.append(f"- Adaptação: {g['adaptation'] or '(sem texto)'}"
+                     + (f" | justificativa: {g['justification']}" if g["justification"] else ""))
+        lines.extend(f"    * ação: {a['action']}" for a in g["actions"])
     return "\n".join(lines)

@@ -29,8 +29,14 @@ class SkillBody(BaseModel):
 class ActionItem(BaseModel):
     id: str = Field("", max_length=64)
     action: str = Field(max_length=500)
+
+
+class AdaptationItem(BaseModel):
+    """Uma adaptação com a sua justificativa e uma ou mais ações práticas (cada ação vira um card no Kanban)."""
+    id: str = Field("", max_length=64)
     adaptation: str = Field("", max_length=2000)
     justification: str = Field("", max_length=2000)
+    actions: list[ActionItem] = []
 
 
 class ScoreBody(BaseModel):
@@ -39,7 +45,7 @@ class ScoreBody(BaseModel):
     summary: Optional[str] = Field(None, max_length=4000)
     adaptation: Optional[str] = Field(None, max_length=4000)
     justification: Optional[str] = Field(None, max_length=4000)
-    actions: Optional[list[ActionItem]] = None
+    adaptations: Optional[list[AdaptationItem]] = None
     experience_fields: Optional[list[str]] = None
     ai_excluded: Optional[bool] = None
     in_plan: Optional[bool] = None

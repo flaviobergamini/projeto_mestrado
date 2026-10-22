@@ -8,7 +8,7 @@ from core.interfaces.i_kanban_repository import IKanbanRepository
 from infrastructure.database_context.database import Database
 from infrastructure.models.pei_kanban_card import PeiKanbanCard
 from infrastructure.models.bncc import BnccSkill, StudentSkillScore, StudentSkillEvent
-from core.services.skill_actions import normalize_actions, with_ids, dump_actions
+from core.services.skill_actions import normalize_adaptations, with_ids, dump_adaptations, flatten_actions
 
 VALID_STATUSES = KANBAN_STATUSES  # mantido por compatibilidade
 
@@ -170,20 +170,23 @@ class PeiKanbanRepository(IKanbanRepository):
 
     async def create_from_skill(self, student_id: str, skill_id: str, created_by: Optional[str] = None,
                                 only_existing: bool = False) -> list[dict]:
-        """Sincroniza os conjuntos (ação + adaptação + justificativa) do plano com o Kanban.
+        """Sincroniza as ações do plano (cada uma com a adaptação e a justificativa da sua adaptação) com o Kanban.
 
-        Cada conjunto tem um id estável; o card ligado a ele é ATUALIZADO quando o conjunto muda (título, adaptação,
-        justificativa), mantendo coluna, diário, fotos e resumo. Conjunto novo cria um card, exceto com
+        Cada ação tem um id estável; o card ligado a ela é ATUALIZADO quando algo muda (título, adaptação,
+        justificativa), mantendo coluna, diário, fotos e resumo. Ação nova cria um card, exceto com
         only_existing=True (usado ao salvar o plano). Cards antigos, sem id, são ligados pelo título uma única vez."""
         async with self.database.session() as session:
             skill = await session.get(BnccSkill, skill_id)
             row = await session.get(StudentSkillScore, (student_id, skill_id))
-            items = normalize_actions(row.actions) if row else []
-            if not skill or not row or not items:
+            groups = normalize_adaptations(row.actions) if row else []
+            if not skill or not row or (row.score or 0) >= 5:  # 5 estrelas: habilidade concluída, nada mais muda
                 return []
-            if any(not it["id"] for it in items):  # plano antigo: fixa os ids para sempre
-                items = with_ids(items)
-                row.actions = dump_actions(items)
+            if any(not g["id"] or any(not a["id"] for a in g["actions"]) for g in groups):  # plano antigo: fixa os ids
+                groups = with_ids(groups)
+                row.actions = dump_adaptations(groups)
+            items = flatten_actions(groups)
+            if not items:
+                return []
             existing = (await session.execute(
                 select(PeiKanbanCard).where(
                     PeiKanbanCard.student_id == student_id, PeiKanbanCard.skill_id == skill_id,
