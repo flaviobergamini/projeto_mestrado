@@ -5,7 +5,10 @@ from datetime import datetime, timezone
 from typing import Optional
 from sqlalchemy import select, func, or_
 from core.interfaces.i_bncc_repository import IBnccRepository, BnccError
-from core.services.skill_actions import normalize_adaptations, dump_adaptations
+from core.services.skill_actions import (
+    normalize_adaptations, dump_adaptations, merge_adaptations, actor_from_user, owns, is_coordinator,
+)
+from infrastructure.repositories.responsibles import default_responsible, fill_responsibles
 from infrastructure.database_context.database import Database
 from infrastructure.models.bncc import BnccSkill, StudentSkillScore, SkillReport, StudentSkillEvent
 from infrastructure.models.student import Student
@@ -32,12 +35,17 @@ def _load_codes(raw: Optional[str]) -> list[str]:
 LOCK_OVERRIDE_ROLES = ("admin", "coordenacao")
 
 
-def _plan_dict(row: Optional[StudentSkillScore]) -> dict:
+def _plan_dict(row: Optional[StudentSkillScore], actor: Optional[dict] = None) -> dict:
     return {
         "summary": (row.summary or "") if row else "",
         "adaptation": (row.adaptation or "") if row else "",
         "justification": (row.justification or "") if row else "",
-        "adaptations": normalize_adaptations(row.actions) if row else [],
+        # `editable`: o usuário logado é o responsável (ou da coordenação) e pode alterar esta adaptação
+        "adaptations": [
+            {**g, "editable": owns(g.get("responsible"), actor) if actor else True}
+            for g in (normalize_adaptations(row.actions) if row else [])
+        ],
+        "can_assign_responsible": is_coordinator(actor) if actor else False,
         "experience_fields": _load_codes(row.correlated_codes) if row else [],
         "ai_excluded": bool(row.ai_excluded) if row else False,
         "in_plan": bool(row.in_plan) if row else False,
@@ -169,7 +177,7 @@ class BnccRepository(IBnccRepository):
     async def student_skills(
         self, student_id: str, grades: Optional[list[str]] = None, areas: Optional[list[str]] = None,
         q: Optional[str] = None, min_score: Optional[int] = None, max_score: Optional[int] = None,
-        only_with_observation: bool = False, only_in_plan: bool = False,
+        only_with_observation: bool = False, only_in_plan: bool = False, actor: Optional[dict] = None,
     ) -> list[dict]:
         async with self.database.session() as session:
             skills = await self._list_skills(session, grades, areas, q)
@@ -194,7 +202,7 @@ class BnccRepository(IBnccRepository):
             if only_in_plan and not (row and row.in_plan):
                 continue
             out.append({
-                **s, "score": score, "observation": observation, **_plan_dict(row),
+                **s, "score": score, "observation": observation, **_plan_dict(row, actor),
                 "updated_at": row.updated_at.isoformat() if row and row.updated_at else None,
             })
         return out
@@ -223,7 +231,11 @@ class BnccRepository(IBnccRepository):
                 if key in fields:
                     setattr(row, key, (fields[key] or "").strip() or None)
             if "adaptations" in fields:
-                row.actions = dump_adaptations(fields["adaptations"])
+                merged = merge_adaptations(
+                    normalize_adaptations(row.actions), normalize_adaptations(fields["adaptations"]),
+                    actor_from_user(user), await default_responsible(session, student_id),
+                )
+                row.actions = dump_adaptations(await fill_responsibles(session, merged))
             if "experience_fields" in fields:
                 codes = [str(c).strip() for c in (fields["experience_fields"] or []) if str(c).strip()]
                 row.correlated_codes = json.dumps(codes, ensure_ascii=False) if codes else None
@@ -252,7 +264,7 @@ class BnccRepository(IBnccRepository):
             await session.commit()
             await session.refresh(row)
             return {**_skill_dict(skill), "score": row.score, "observation": row.observation or "",
-                    **_plan_dict(row),
+                    **_plan_dict(row, actor_from_user(user)),
                     "updated_at": row.updated_at.isoformat() if row.updated_at else None}
 
     async def clear_events(self, student_id: str, skill_id: str, event_ids: Optional[list[str]]) -> dict:

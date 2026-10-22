@@ -35,6 +35,9 @@ def _to_dict(c: PeiKanbanCard) -> dict:
         "adaptation": c.adaptation,
         "daily_log": c.daily_log,
         "summary": c.summary,
+        "responsible_teacher_id": c.responsible_teacher_id,
+        "responsible_user_id": c.responsible_user_id,
+        "responsible_name": c.responsible_name,
         "photos": _codes(c.photos),
         "experience_fields": _codes(c.correlated_codes),
         "score_at_creation": c.score_at_creation,
@@ -92,6 +95,9 @@ class PeiKanbanRepository(IKanbanRepository):
                 source=data.get("source") or "manual",
                 position=data.get("position") or 0,
                 created_by=data.get("created_by"),
+                responsible_teacher_id=data.get("responsible_teacher_id"),
+                responsible_user_id=data.get("responsible_user_id"),
+                responsible_name=data.get("responsible_name"),
             )
             session.add(card)
             await session.commit()
@@ -202,8 +208,12 @@ class PeiKanbanRepository(IKanbanRepository):
                 description = item["justification"] or (line if len(line) > 255 else None)
                 adaptation = item["adaptation"] or None
                 card = by_action.get(item["id"]) or legacy.pop(title.lower(), None)
+                r = item.get("responsible") or {}
+                resp = {"responsible_teacher_id": r.get("teacher_id"), "responsible_user_id": r.get("user_id"),
+                        "responsible_name": r.get("name")}
                 if card:
-                    values = {"action_id": item["id"], "title": title, "description": description, "adaptation": adaptation}
+                    values = {"action_id": item["id"], "title": title, "description": description, "adaptation": adaptation,
+                              **resp}
                     if any(getattr(card, k) != v for k, v in values.items()):
                         for k, v in values.items():
                             setattr(card, k, v)
@@ -214,7 +224,7 @@ class PeiKanbanRepository(IKanbanRepository):
                 card = PeiKanbanCard(
                     id=str(uuid.uuid4()), student_id=student_id, skill_id=skill_id, status="todo", action_id=item["id"],
                     title=title, description=description, adaptation=adaptation, correlated_codes=row.correlated_codes,
-                    score_at_creation=row.score, source="skill_plan", position=i, created_by=created_by,
+                    score_at_creation=row.score, source="skill_plan", position=i, created_by=created_by, **resp,
                 )
                 session.add(card)
                 changed.append(card)

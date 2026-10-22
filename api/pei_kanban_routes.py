@@ -10,6 +10,7 @@ from api.dependencies import require_roles
 from core.kernel.container import Container
 from core.kernel.result import Result
 from core.use_case.kanban import kanban_use_cases as uc
+from core.services.skill_actions import actor_from_user, card_responsible, owns
 from infrastructure.services.storage_service import StorageService
 from infrastructure.utils.image_compression import compress_image, InvalidImageError
 
@@ -50,6 +51,14 @@ def _unwrap(result: Result):
     raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=result.bad_request_error or result.error)
 
 
+async def _own_card_or_404(repo, card_id: str, user: dict) -> dict:
+    """Card de outro professor não existe para este usuário (a coordenação vê todos)."""
+    card = await repo.get(card_id)
+    if not card or not owns(card_responsible(card), actor_from_user(user)):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Card não encontrado")
+    return card
+
+
 def _author(user: dict) -> str:
     return user.get("full_name") or user.get("username", "")
 
@@ -73,7 +82,7 @@ async def list_kanban_cards(
     current_user: dict = Depends(require_roles(*VIEW_ROLES)),
     use_case: uc.ListKanbanCardsUseCase = Depends(Provide[Container.list_kanban_cards_use_case]),
 ):
-    cards = _unwrap(await use_case.execute(student_id))
+    cards = _unwrap(await use_case.execute(student_id, current_user))
     await _sign_photos(cards)
     return cards
 
@@ -85,7 +94,7 @@ async def create_kanban_card(
     current_user: dict = Depends(require_roles(*VIEW_ROLES)),
     use_case: uc.CreateKanbanCardUseCase = Depends(Provide[Container.create_kanban_card_use_case]),
 ):
-    return _unwrap(await use_case.execute(body.model_dump(), _author(current_user)))
+    return _unwrap(await use_case.execute(body.model_dump(), _author(current_user), current_user))
 
 
 @router.post("/from-skill", status_code=status.HTTP_201_CREATED)
@@ -107,7 +116,7 @@ async def update_kanban_card(
     current_user: dict = Depends(require_roles(*VIEW_ROLES)),
     use_case: uc.UpdateKanbanCardUseCase = Depends(Provide[Container.update_kanban_card_use_case]),
 ):
-    card = _unwrap(await use_case.execute(card_id, body.model_dump(exclude_none=True)))
+    card = _unwrap(await use_case.execute(card_id, body.model_dump(exclude_none=True), current_user))
     await _sign_photos([card])
     return card
 
@@ -119,7 +128,7 @@ async def delete_kanban_card(
     current_user: dict = Depends(require_roles(*VIEW_ROLES)),
     use_case: uc.DeleteKanbanCardUseCase = Depends(Provide[Container.delete_kanban_card_use_case]),
 ):
-    _unwrap(await use_case.execute(card_id))
+    _unwrap(await use_case.execute(card_id, current_user))
 
 
 @router.post("/{card_id}/summary")
@@ -152,8 +161,7 @@ async def add_card_photo(
         compressed = await asyncio.to_thread(compress_image, content)
     except InvalidImageError:
         raise HTTPException(status_code=422, detail="Arquivo de imagem inválido ou corrompido.")
-    if not await repo.get(card_id):
-        raise HTTPException(status_code=404, detail="Card não encontrado")
+    await _own_card_or_404(repo, card_id, current_user)
     key = f"kanban/{card_id}/{uuid.uuid4()}.jpg"
     await asyncio.to_thread(StorageService().upload, key, compressed.content, compressed.mime_type)
     card = await repo.add_photo(card_id, key)
@@ -171,6 +179,7 @@ async def remove_card_photo(
 ):
     if not key.startswith(f"kanban/{card_id}/"):
         raise HTTPException(status_code=422, detail="Foto inválida para este card.")
+    await _own_card_or_404(repo, card_id, current_user)
     card = await repo.remove_photo(card_id, key)
     if not card:
         raise HTTPException(status_code=404, detail="Card não encontrado")

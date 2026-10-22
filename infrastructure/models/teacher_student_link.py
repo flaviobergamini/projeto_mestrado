@@ -1,6 +1,6 @@
 from datetime import datetime
-from typing import TYPE_CHECKING
-from sqlalchemy import String, Boolean, DateTime, ForeignKey, UniqueConstraint, func
+from typing import TYPE_CHECKING, Optional
+from sqlalchemy import String, Boolean, DateTime, ForeignKey, SmallInteger, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from infrastructure.database_context.database import Base
 import uuid
@@ -21,6 +21,8 @@ class TeacherStudentLink(Base):
     student_id: Mapped[str] = mapped_column(
         String(64), ForeignKey("students.id", ondelete="CASCADE", onupdate="CASCADE"), nullable=False, index=True
     )
+    # hierarquia dos professores do aluno: 1 = responsável 1 (padrão), 2 = responsável 2...
+    rank: Mapped[Optional[int]] = mapped_column(SmallInteger, nullable=True)
     deleted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
