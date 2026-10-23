@@ -11,6 +11,7 @@ from infrastructure.models.bncc import (
     BnccSkill, StudentSkillScore, StudentSkillEvent, SkillSuggestion,
 )
 from infrastructure.models.pei_kanban_card import PeiKanbanCard
+from infrastructure.models.pei_kanban_entry import PeiKanbanEntry
 
 
 def _codes(raw: Optional[str]) -> list[str]:
@@ -94,9 +95,20 @@ class SkillPlanRepository(ISkillPlanRepository):
                     PeiKanbanCard.deleted == False,  # noqa: E712
                 ).order_by(PeiKanbanCard.created_at)
             )
-            for c in rows.scalars().all():
+            cards = rows.scalars().all()
+            entries: dict[str, list[str]] = {}
+            if cards:
+                erows = await session.execute(
+                    select(PeiKanbanEntry).where(PeiKanbanEntry.card_id.in_([c.id for c in cards]))
+                    .order_by(PeiKanbanEntry.entry_date)
+                )
+                for e in erows.scalars().all():
+                    if (e.text or "").strip():
+                        entries.setdefault(e.card_id, []).append(f"{e.entry_date:%d/%m/%Y}: {e.text.strip()}")
+            for c in cards:
                 out[c.skill_id].append({
-                    "id": c.id, "title": c.title, "status": c.status, "daily_log": c.daily_log or "", "summary": c.summary or "",
+                    "id": c.id, "title": c.title, "status": c.status,
+                    "daily_log": " | ".join(entries.get(c.id, [])) or (c.daily_log or ""), "summary": c.summary or "",
                     "reaction": c.reaction, "score_at_creation": c.score_at_creation,
                     "updated_at": c.updated_at.isoformat() if c.updated_at else None,
                 })

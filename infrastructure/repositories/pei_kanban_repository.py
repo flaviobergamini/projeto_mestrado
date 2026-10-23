@@ -1,12 +1,13 @@
 import json
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional
 from sqlalchemy import select
 from core.constants.kanban import KANBAN_STATUSES, KANBAN_REVIEW_STATUS
 from core.interfaces.i_kanban_repository import IKanbanRepository
 from infrastructure.database_context.database import Database
 from infrastructure.models.pei_kanban_card import PeiKanbanCard
+from infrastructure.models.pei_kanban_entry import PeiKanbanEntry
 from infrastructure.models.bncc import BnccSkill, StudentSkillScore, StudentSkillEvent
 from core.services.skill_actions import normalize_adaptations, with_ids, dump_adaptations, flatten_actions
 
@@ -282,3 +283,75 @@ class PeiKanbanRepository(IKanbanRepository):
             row.score = new
             await session.commit()
             return new
+
+    # ----- lançamentos do diário da ação -----
+    @staticmethod
+    def _entry_dict(e: PeiKanbanEntry) -> dict:
+        return {
+            "id": e.id, "card_id": e.card_id, "entry_date": e.entry_date.isoformat(), "text": e.text or "",
+            "photos": _codes(e.photos), "created_by": e.created_by,
+            "created_at": e.created_at.isoformat() if e.created_at else None,
+        }
+
+    async def list_entries(self, card_id: str) -> list[dict]:
+        async with self.database.session() as session:
+            rows = await session.execute(
+                select(PeiKanbanEntry).where(PeiKanbanEntry.card_id == card_id)
+                .order_by(PeiKanbanEntry.entry_date.desc(), PeiKanbanEntry.created_at.desc())
+            )
+            return [self._entry_dict(e) for e in rows.scalars().all()]
+
+    async def get_entry(self, card_id: str, entry_id: str) -> Optional[dict]:
+        async with self.database.session() as session:
+            e = await session.get(PeiKanbanEntry, entry_id)
+            return self._entry_dict(e) if e and e.card_id == card_id else None
+
+    async def add_entry(self, card_id: str, entry_date: date, text: str, author: Optional[str], author_id: Optional[str]) -> dict:
+        async with self.database.session() as session:
+            e = PeiKanbanEntry(id=str(uuid.uuid4()), card_id=card_id, entry_date=entry_date, text=text,
+                               created_by=author, created_by_user_id=author_id)
+            session.add(e)
+            await session.commit()
+            await session.refresh(e)
+            return self._entry_dict(e)
+
+    async def update_entry(self, card_id: str, entry_id: str, entry_date: Optional[date], text: Optional[str]) -> Optional[dict]:
+        async with self.database.session() as session:
+            e = await session.get(PeiKanbanEntry, entry_id)
+            if not e or e.card_id != card_id:
+                return None
+            if entry_date is not None:
+                e.entry_date = entry_date
+            if text is not None:
+                e.text = text
+            await session.commit()
+            await session.refresh(e)
+            return self._entry_dict(e)
+
+    async def delete_entry(self, card_id: str, entry_id: str) -> list[str]:
+        """Apaga o lançamento e devolve as chaves das fotos (para remover do storage). None se não existir."""
+        async with self.database.session() as session:
+            e = await session.get(PeiKanbanEntry, entry_id)
+            if not e or e.card_id != card_id:
+                return None  # type: ignore[return-value]
+            keys = _codes(e.photos)
+            await session.delete(e)
+            await session.commit()
+            return keys
+
+    async def _entry_photos(self, card_id: str, entry_id: str, change) -> Optional[dict]:
+        async with self.database.session() as session:
+            e = await session.get(PeiKanbanEntry, entry_id)
+            if not e or e.card_id != card_id:
+                return None
+            keys = change(_codes(e.photos))
+            e.photos = json.dumps(keys, ensure_ascii=False) if keys else None
+            await session.commit()
+            await session.refresh(e)
+            return self._entry_dict(e)
+
+    async def add_entry_photo(self, card_id: str, entry_id: str, object_key: str) -> Optional[dict]:
+        return await self._entry_photos(card_id, entry_id, lambda keys: [*keys, object_key])
+
+    async def remove_entry_photo(self, card_id: str, entry_id: str, object_key: str) -> Optional[dict]:
+        return await self._entry_photos(card_id, entry_id, lambda keys: [k for k in keys if k != object_key])

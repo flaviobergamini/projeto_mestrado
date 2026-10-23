@@ -1,25 +1,30 @@
-"""Compressão de imagens de diário antes de irem pro Supabase Storage.
+"""Compressão de imagens antes de irem pro Supabase Storage.
 
 Fotos de celular têm 3-6 MB (12+ megapixels) e o storage encheu com poucas
-imagens. Aqui cada imagem é:
+imagens. Aqui cada imagem vira um JPEG de **1024 x 576 px (16:9)**, bem leve
+(normalmente 40-120 KB):
   - girada conforme o EXIF (fotos de celular vêm "deitadas" com uma flag de
     orientação — sem isso a imagem ficaria de lado depois de remover o EXIF);
-  - reduzida para caber em 1920x1080 (1080x1920 se for retrato), sem NUNCA
-    ampliar imagens menores que isso;
-  - convertida para JPEG qualidade 80 (otimizado + progressivo), que é o ponto
-    onde a perda de qualidade ainda é praticamente invisível a olho nu, mas o
-    arquivo costuma cair ~85-95%;
+  - encaixada inteira num quadro 1024x576, sem cortar nada e sem ampliar: se a
+    foto não for 16:9 (retrato, 4:3...), as laterais/bordas são preenchidas com
+    a própria foto desfocada. Fotos quase 16:9 (±3%) apenas são redimensionadas;
+  - convertida para JPEG progressivo com qualidade 78, reduzida em passos até
+    ~150 KB se for preciso (ruído e texturas pesam mais);
   - sem metadados (EXIF): remove GPS/data/modelo do aparelho — são fotos de
     crianças, então não há motivo pra guardar localização.
 """
 import io
 from dataclasses import dataclass
 
-from PIL import Image, ImageOps, UnidentifiedImageError
+from PIL import Image, ImageEnhance, ImageFilter, ImageOps, UnidentifiedImageError
 
-MAX_LONG_SIDE = 1920
-MAX_SHORT_SIDE = 1080
-JPEG_QUALITY = 80
+TARGET_WIDTH = 1024
+TARGET_HEIGHT = 576
+JPEG_QUALITY = 78
+# Se a imagem passar disto, tenta qualidades menores (nunca abaixo de MIN_QUALITY).
+SIZE_BUDGET_BYTES = 150 * 1024
+MIN_QUALITY = 60
+RATIO_TOLERANCE = 0.03
 
 # Proteção contra "decompression bomb": recusa imagens absurdamente grandes
 # (o Pillow já avisa acima de ~89 MP; aqui vira erro explícito acima de 100 MP).
@@ -43,18 +48,35 @@ class CompressedImage:
         return len(self.content)
 
 
-def _target_box(width: int, height: int) -> tuple[int, int]:
-    # Paisagem: 1920x1080; retrato: 1080x1920 — mesma "área" nos dois casos.
-    if width >= height:
-        return (MAX_LONG_SIDE, MAX_SHORT_SIDE)
-    return (MAX_SHORT_SIDE, MAX_LONG_SIDE)
+def _fit_16_9(img: Image.Image) -> Image.Image:
+    """Devolve exatamente 1024x576 com a foto inteira (sem cortar nem ampliar)."""
+    w, h = img.size
+    target_ratio = TARGET_WIDTH / TARGET_HEIGHT
+    if abs(w / h - target_ratio) / target_ratio <= RATIO_TOLERANCE:
+        # já é (quase) 16:9: só redimensiona para o quadro, sem barras
+        return img.resize((TARGET_WIDTH, TARGET_HEIGHT), Image.LANCZOS) if (w, h) != (TARGET_WIDTH, TARGET_HEIGHT) else img
+
+    # primeiro plano: a foto inteira, reduzida para caber (nunca ampliada)
+    scale = min(TARGET_WIDTH / w, TARGET_HEIGHT / h, 1.0)
+    fg = img.resize((max(1, round(w * scale)), max(1, round(h * scale))), Image.LANCZOS) if scale < 1.0 else img
+
+    # fundo: a mesma foto preenchendo o quadro (cover), desfocada e um pouco mais escura
+    cover = max(TARGET_WIDTH / w, TARGET_HEIGHT / h)
+    bg = img.resize((max(TARGET_WIDTH, round(w * cover)), max(TARGET_HEIGHT, round(h * cover))), Image.LANCZOS)
+    left, top = (bg.width - TARGET_WIDTH) // 2, (bg.height - TARGET_HEIGHT) // 2
+    bg = bg.crop((left, top, left + TARGET_WIDTH, top + TARGET_HEIGHT))
+    bg = bg.filter(ImageFilter.GaussianBlur(radius=24))
+    bg = ImageEnhance.Brightness(bg).enhance(0.8)
+
+    bg.paste(fg, ((TARGET_WIDTH - fg.width) // 2, (TARGET_HEIGHT - fg.height) // 2))
+    return bg
 
 
 def compress_image(
     content: bytes,
     quality: int = JPEG_QUALITY,
 ) -> CompressedImage:
-    """Redimensiona (sem ampliar) e converte para JPEG. Levanta InvalidImageError
+    """Encaixa a imagem num quadro 1024x576 (16:9) e converte para JPEG. Levanta InvalidImageError
     se o conteúdo não for uma imagem. GIFs animados viram só o 1º quadro."""
     try:
         img = Image.open(io.BytesIO(content))
@@ -74,11 +96,17 @@ def compress_image(
     elif img.mode != "RGB":
         img = img.convert("RGB")
 
-    # thumbnail() só reduz (nunca amplia) e preserva a proporção.
-    img.thumbnail(_target_box(*img.size), Image.LANCZOS)
+    img = _fit_16_9(img)
 
     out = io.BytesIO()
-    img.save(out, format="JPEG", quality=quality, optimize=True, progressive=True)
+    q = quality
+    while True:
+        out.seek(0)
+        out.truncate()
+        img.save(out, format="JPEG", quality=q, optimize=True, progressive=True)
+        if out.tell() <= SIZE_BUDGET_BYTES or q <= MIN_QUALITY:
+            break
+        q -= 6
     data = out.getvalue()
 
     return CompressedImage(
