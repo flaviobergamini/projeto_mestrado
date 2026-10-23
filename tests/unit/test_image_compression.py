@@ -25,23 +25,42 @@ def _open(data):
     return Image.open(io.BytesIO(data))
 
 
-def test_large_landscape_is_resized_to_1920x1080_box():
-    result = compress_image(_noise_image((4000, 3000)))
-    assert result.mime_type == "image/jpeg"
-    assert result.width <= 1920 and result.height <= 1080
-    # 4000x3000 (4:3) -> limitado pela altura: 1440x1080
-    assert (result.width, result.height) == (1440, 1080)
-    assert result.size < result.original_size
+def test_every_image_becomes_exactly_1024x576_jpeg():
+    for size in ((4000, 3000), (3000, 4000), (1920, 1080), (640, 480), (800, 800)):
+        result = compress_image(_noise_image(size))
+        assert result.mime_type == "image/jpeg"
+        assert (result.width, result.height) == (1024, 576), size
+        out = _open(result.content)
+        assert out.format == "JPEG" and out.size == (1024, 576)
 
 
-def test_portrait_uses_rotated_box():
-    result = compress_image(_noise_image((3000, 4000)))
-    assert (result.width, result.height) == (1080, 1440)
+def test_large_photo_is_much_lighter_than_the_original():
+    original = _noise_image((4000, 3000))
+    result = compress_image(original)
+    assert result.size < result.original_size * 0.05
+    assert result.size <= 160 * 1024  # limite de ~150 KB mesmo com ruído (pior caso)
 
 
-def test_small_image_is_never_upscaled():
-    result = compress_image(_noise_image((640, 480)))
-    assert (result.width, result.height) == (640, 480)
+def test_portrait_photo_is_kept_whole_with_blurred_sides():
+    img = Image.new("RGB", (600, 1000), (255, 0, 0))   # retrato todo vermelho
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG")
+    out = _open(compress_image(buf.getvalue()).content).convert("RGB")
+    cx = out.getpixel((512, 288))
+    assert cx[0] > 200 and cx[1] < 60       # centro: a foto vermelha
+    # a foto ocupa 346x576 no centro (1000 -> 576); fora dela há o fundo desfocado, não bordas pretas
+    side = out.getpixel((60, 288))
+    assert side[0] > 100                    # ainda avermelhado (desfoque da própria foto), não preto
+
+
+def test_small_image_is_never_upscaled_inside_the_frame():
+    img = Image.new("RGB", (200, 200), (0, 200, 0))
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG")
+    out = _open(compress_image(buf.getvalue()).content).convert("RGB")
+    assert out.size == (1024, 576)
+    # a imagem 200x200 fica no centro com o tamanho original (100px de cada lado do centro)
+    assert out.getpixel((512, 288))[1] > 150
 
 
 def test_png_with_transparency_becomes_jpeg_on_white():
@@ -51,7 +70,7 @@ def test_png_with_transparency_becomes_jpeg_on_white():
     result = compress_image(buf.getvalue())
     out = _open(result.content)
     assert out.format == "JPEG" and out.mode == "RGB"
-    r, g, b = out.getpixel((100, 100))
+    r, g, b = out.getpixel((512, 288))  # centro do quadro 1024x576, onde fica a imagem de 200x200
     assert r > 240 and g > 240 and b > 240  # fundo branco
 
 
@@ -64,7 +83,8 @@ def test_exif_orientation_is_applied_and_metadata_dropped():
     img.save(buf, format="JPEG", exif=exif)
     result = compress_image(buf.getvalue())
     out = _open(result.content)
-    assert (out.width, out.height) == (200, 400)  # ficou em pé
+    assert (out.width, out.height) == (1024, 576)
+    # 400x200 com rotação EXIF vira 200x400 (em pé): o centro é a foto, as laterais o fundo desfocado
     assert not out.getexif()  # EXIF removido
 
 
