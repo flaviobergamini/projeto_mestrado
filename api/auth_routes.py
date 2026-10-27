@@ -18,11 +18,13 @@ from core.use_case.list_users_use_case import ListUsersUseCase
 from core.use_case.update_user_role_use_case import UpdateUserRoleUseCase
 from api.dependencies import require_roles, get_current_user
 from domain.schema import (
-    UserRegister, UserLogin, ConfirmEmail, ResendConfirmation,
+    UserRegister, UserLogin, UpdateOwnEmail, ConfirmEmail, ResendConfirmation,
     ForgotPassword, ConfirmResetPassword, RefreshToken, UpdateRoleRequest,
     UpdateOwnDemographics,
 )
 from infrastructure.repositories.user_repository import UserRepository
+from core.interfaces.i_auth_service import IAuthService
+from core.exceptions.auth_exceptions import AuthException
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
@@ -230,3 +232,24 @@ async def update_user_role(
         return JSONResponse(status_code=HTTP_200_OK, content=result.value)
     except Exception:
         return JSONResponse(status_code=HTTP_500_INTERNAL_SERVER_ERROR, content={"error": "Erro interno"})
+
+
+@router.put("/me/email")
+@inject
+async def update_own_email(
+    request: UpdateOwnEmail,
+    current_user: dict = Depends(get_current_user),
+    repo: UserRepository = Depends(Provide[Container.user_repository]),
+):
+    """Usuário (ex.: migrado com e-mail @poc.migrado.net) troca o próprio e-mail de login.
+    O e-mail novo já é marcado como verificado no Cognito (sem código) e o perfil é reativado."""
+    new_email = request.email.strip().lower()
+    existing = await repo.get_by_id(current_user["user_id"])
+    if not existing:
+        return JSONResponse(status_code=HTTP_404_NOT_FOUND, content={"error": "Usuário não encontrado"})
+    if new_email != existing["username"].lower():
+        other = await repo.get_by_username(new_email)
+        if other and other["id"] != existing["id"]:
+            return JSONResponse(status_code=HTTP_400_BAD_REQUEST, content={"error": "Este e-mail já está em uso por outro usuário"})
+        await repo.update_username(existing["id"], new_email)
+    return JSONResponse(status_code=HTTP_200_OK, content={"username": new_email})

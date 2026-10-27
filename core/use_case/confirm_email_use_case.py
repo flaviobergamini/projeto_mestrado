@@ -11,6 +11,7 @@ class ConfirmEmailUseCase:
         self.auth_service = auth_service
 
     async def execute(self, username: str, code: str):
+        return Result.bad_request("Recurso desativado: o login agora é local. Peça ao administrador para redefinir sua senha.")
         try:
             self.auth_service.confirm_sign_up(username, code)
             return Result.ok({"message": "E-mail confirmado com sucesso. Você já pode fazer login."})

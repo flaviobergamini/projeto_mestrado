@@ -1,8 +1,7 @@
 import logging
 from core.kernel.result import Result
 from core.interfaces.i_user_repository import IUserRepository
-from core.interfaces.i_auth_service import IAuthService
-from core.exceptions.auth_exceptions import AuthException
+from core.services.jwt_service import JwtService
 
 logger = logging.getLogger(__name__)
 
@@ -17,17 +16,15 @@ class ValidateTokenUseCase:
     no token; são sempre buscados da tabela user_profiles.
     """
 
-    def __init__(self, auth_service: IAuthService, user_repository: IUserRepository):
-        self.auth_service = auth_service
+    def __init__(self, jwt_service: JwtService, user_repository: IUserRepository):
+        self.jwt = jwt_service
         self.user_repository = user_repository
 
     async def execute(self, access_token: str):
-        try:
-            # get_username_from_token retorna o 'sub' (UUID estável do Cognito)
-            # que corresponde ao campo 'id' em user_profiles
-            cognito_sub = self.auth_service.get_username_from_token(access_token)
-        except AuthException as e:
-            return Result.unauthorized(e.message)
+        payload = self.jwt.decode_token(access_token)
+        if not payload or payload.get("type") != "access" or not payload.get("sub"):
+            return Result.unauthorized("Token inválido ou expirado")
+        cognito_sub = payload["sub"]
 
         user = await self.user_repository.get_by_id(cognito_sub)
         if not user:

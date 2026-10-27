@@ -213,19 +213,19 @@ class Container(containers.DeclarativeContainer):
     create_user_use_case = providers.Factory(
         CreateUserUseCase,
         user_repository=user_repository,
-        auth_service=cognito_service,
+        jwt_service=jwt_service,
     )
 
     login_user_use_case = providers.Factory(
         LoginUserUseCase,
         user_repository=user_repository,
-        auth_service=cognito_service,
+        jwt_service=jwt_service,
     )
 
     refresh_token_use_case = providers.Factory(
         RefreshTokenUseCase,
         user_repository=user_repository,
-        auth_service=cognito_service,
+        jwt_service=jwt_service,
     )
 
     confirm_email_use_case = providers.Factory(
@@ -250,7 +250,7 @@ class Container(containers.DeclarativeContainer):
 
     validate_token_use_case = providers.Factory(
         ValidateTokenUseCase,
-        auth_service=cognito_service,
+        jwt_service=jwt_service,
         user_repository=user_repository,
     )
 

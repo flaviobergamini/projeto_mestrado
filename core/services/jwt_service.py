@@ -1,5 +1,5 @@
 from core.config import settings
-from passlib.context import CryptContext
+import bcrypt
 import jwt
 from datetime import datetime, timedelta
 import secrets
@@ -8,13 +8,15 @@ class JwtService:
     def __init__(self):
         self.secret_key = settings.JWT_SECRET
         self.algorithm = "HS256"
-        self.pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
     def hash_password(self, password: str) -> str:
-        return self.pwd_context.hash(password)
+        return bcrypt.hashpw(password.encode("utf-8")[:72], bcrypt.gensalt()).decode("utf-8")
 
     def verify_password(self, plain: str, hashed: str) -> bool:
-        return self.pwd_context.verify(plain, hashed)
+        try:
+            return bcrypt.checkpw(plain.encode("utf-8")[:72], hashed.encode("utf-8"))
+        except ValueError:
+            return False
 
     def create_access_token(self, data: dict, expires_delta: int = 60):
         to_encode = data.copy()
