@@ -63,15 +63,18 @@ class PeiKanbanRepository(IKanbanRepository):
             )
             cards = result.scalars().all()
             skill_ids = {c.skill_id for c in cards if c.skill_id}
-            skills: dict[str, tuple[str, str]] = {}
+            skills: dict[str, tuple[str, str, str, str]] = {}
             if skill_ids:
                 rows = await session.execute(
-                    select(BnccSkill.id, BnccSkill.code, BnccSkill.description).where(BnccSkill.id.in_(skill_ids))
+                    select(BnccSkill.id, BnccSkill.code, BnccSkill.description, BnccSkill.area, BnccSkill.grade)
+                    .where(BnccSkill.id.in_(skill_ids))
                 )
-                skills = {i: (c, d) for i, c, d in rows.all()}
+                skills = {i: (c, d, a, g) for i, c, d, a, g in rows.all()}
+            empty = (None, None, None, None)
             return [
-                {**_to_dict(c), "skill_code": skills.get(c.skill_id, (None, None))[0],
-                 "skill_description": skills.get(c.skill_id, (None, None))[1]}
+                {**_to_dict(c), "skill_code": skills.get(c.skill_id, empty)[0],
+                 "skill_description": skills.get(c.skill_id, empty)[1],
+                 "skill_area": skills.get(c.skill_id, empty)[2], "skill_grade": skills.get(c.skill_id, empty)[3]}
                 for c in cards
             ]
 
@@ -288,7 +291,7 @@ class PeiKanbanRepository(IKanbanRepository):
     @staticmethod
     def _entry_dict(e: PeiKanbanEntry) -> dict:
         return {
-            "id": e.id, "card_id": e.card_id, "entry_date": e.entry_date.isoformat(), "text": e.text or "",
+            "id": e.id, "card_id": e.card_id, "entry_date": e.entry_date.isoformat(), "text": e.text or "", "reaction": e.reaction,
             "photos": _codes(e.photos), "created_by": e.created_by,
             "created_at": e.created_at.isoformat() if e.created_at else None,
         }
@@ -306,16 +309,18 @@ class PeiKanbanRepository(IKanbanRepository):
             e = await session.get(PeiKanbanEntry, entry_id)
             return self._entry_dict(e) if e and e.card_id == card_id else None
 
-    async def add_entry(self, card_id: str, entry_date: date, text: str, author: Optional[str], author_id: Optional[str]) -> dict:
+    async def add_entry(self, card_id: str, entry_date: date, text: str, author: Optional[str], author_id: Optional[str],
+                        reaction: Optional[int] = None) -> dict:
         async with self.database.session() as session:
             e = PeiKanbanEntry(id=str(uuid.uuid4()), card_id=card_id, entry_date=entry_date, text=text,
-                               created_by=author, created_by_user_id=author_id)
+                               created_by=author, created_by_user_id=author_id, reaction=reaction)
             session.add(e)
             await session.commit()
             await session.refresh(e)
             return self._entry_dict(e)
 
-    async def update_entry(self, card_id: str, entry_id: str, entry_date: Optional[date], text: Optional[str]) -> Optional[dict]:
+    async def update_entry(self, card_id: str, entry_id: str, entry_date: Optional[date], text: Optional[str],
+                           reaction: Optional[int] = None, set_reaction: bool = False) -> Optional[dict]:
         async with self.database.session() as session:
             e = await session.get(PeiKanbanEntry, entry_id)
             if not e or e.card_id != card_id:
@@ -324,6 +329,8 @@ class PeiKanbanRepository(IKanbanRepository):
                 e.entry_date = entry_date
             if text is not None:
                 e.text = text
+            if set_reaction:  # permite limpar a reação (None) sem confundir com 'não enviado'
+                e.reaction = reaction
             await session.commit()
             await session.refresh(e)
             return self._entry_dict(e)

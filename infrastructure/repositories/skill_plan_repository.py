@@ -103,8 +103,9 @@ class SkillPlanRepository(ISkillPlanRepository):
                     .order_by(PeiKanbanEntry.entry_date)
                 )
                 for e in erows.scalars().all():
-                    if (e.text or "").strip():
-                        entries.setdefault(e.card_id, []).append(f"{e.entry_date:%d/%m/%Y}: {e.text.strip()}")
+                    if (e.text or "").strip() or e.reaction:
+                        react = f" (reação do aluno {e.reaction}/5)" if e.reaction else ""
+                        entries.setdefault(e.card_id, []).append(f"{e.entry_date:%d/%m/%Y}{react}: {(e.text or '').strip()}")
             for c in cards:
                 out[c.skill_id].append({
                     "id": c.id, "title": c.title, "status": c.status,
