@@ -62,12 +62,10 @@ class UpdateKanbanCardUseCase:
             if changed:
                 return Result.bad_request("Cards ligados a uma habilidade: título, descrição e adaptação vêm do plano e não podem ser alterados aqui.")
             data = {k: v for k, v in data.items() if k not in LOCKED_FIELDS_ON_SKILL_CARDS}
-        if reaction == 5:  # 5 estrelas na ação = ação concluída
-            data = {**data, "status": "done"}
         updated = await self.repository.update(card_id, data)
         if not updated:
             return Result.not_found(NOT_FOUND)
-        if updated.get("skill_id") and ("status" in data or "reaction" in data):
+        if updated.get("skill_id") and "status" in data:
             await self.repository.sync_skill_score(updated["student_id"], updated["skill_id"])
         return Result.ok(updated)
 

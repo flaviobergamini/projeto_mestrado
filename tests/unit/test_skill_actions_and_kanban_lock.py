@@ -82,10 +82,12 @@ def test_manual_card_stays_fully_editable():
     assert result.is_ok and repo.updated == {"title": "Novo", "description": "x"}
 
 
-def test_reaction_5_moves_card_to_done_and_recalculates_skill_score():
+def test_moving_to_done_recalculates_skill_score_but_reaction_does_not_move_the_card():
+    # concluir = mover o card; a reação do aluno agora é registrada em cada lançamento do diário
+    result, repo = _update(SKILL_CARD, {"status": "done"})
+    assert result.is_ok and repo.updated == {"status": "done"} and repo.synced == [("s1", "k1")]
     result, repo = _update(SKILL_CARD, {"reaction": 5})
-    assert result.is_ok and repo.updated == {"reaction": 5, "status": "done"}
-    assert repo.synced == [("s1", "k1")]
+    assert result.is_ok and repo.updated == {"reaction": 5} and repo.synced == []   # 5 estrelas não conclui mais o card
 
 
 def test_manual_card_does_not_touch_skill_score():
