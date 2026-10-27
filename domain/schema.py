@@ -16,7 +16,7 @@ class UserRegister(BaseModel):
 
 
 class UserLogin(BaseModel):
-    email: EmailStr
+    email: str  # e-mail OU nome de usuário (parte antes do @)
     password: str
 
 
@@ -65,3 +65,7 @@ class UpdateOwnDemographics(BaseModel):
         if v is not None and v not in INCOME_BRACKETS:
             raise ValueError(f"income_bracket deve ser um de: {sorted(INCOME_BRACKETS)}")
         return v
+
+
+class UpdateOwnEmail(BaseModel):
+    email: EmailStr

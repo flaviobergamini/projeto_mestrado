@@ -9,7 +9,7 @@ from sqlalchemy import select, func
 
 from api.dependencies import require_roles
 from core.kernel.container import Container
-from core.interfaces.i_auth_service import IAuthService
+from core.services.jwt_service import JwtService
 from core.exceptions.auth_exceptions import AuthException
 from domain.schema import UpdateOwnDemographics
 from infrastructure.database_context.database import Database
@@ -65,22 +65,21 @@ async def update_user(
     body: UserUpdateBody,
     current_user: dict = Depends(require_roles("admin")),
     user_repo: UserRepository = Depends(Provide[Container.user_repository]),
-    auth_service: IAuthService = Depends(Provide[Container.cognito_service]),
+    jwt: JwtService = Depends(Provide[Container.jwt_service]),
 ):
     if body.email:
         existing = await user_repo.get_by_id(user_id)
         if not existing:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuário não encontrado.")
         new_email = body.email.strip().lower()
+        if "@" not in new_email:
+            # O Cognito exige e-mail válido como identificador; nome de usuário puro vira "nome@poc.migrado.net"
+            # (o login por nome de usuário continua funcionando, ver find_by_login).
+            new_email = f"{new_email}@poc.migrado.net"
         if new_email != existing["username"]:
-            # Cognito primeiro: se o e-mail já estiver em uso (AliasExistsException),
-            # falha aqui e o perfil local fica intacto — sem essa ordem, um e-mail
-            # duplicado deixaria o perfil local apontando pra um login que o
-            # Cognito não reconhece.
-            try:
-                auth_service.update_email(existing["username"], new_email)
-            except AuthException as e:
-                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=e.message)
+            other = await user_repo.get_by_username(new_email)
+            if other and other["id"] != user_id:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Este e-mail já está em uso por outro usuário")
             await user_repo.update_username(user_id, new_email)
 
     links = {k: getattr(body, k) for k in ("municipality_id", "school_id", "school_ids", "teacher_id") if k in body.model_fields_set}
@@ -101,15 +100,14 @@ async def set_user_password(
     body: UserPasswordBody,
     current_user: dict = Depends(require_roles("admin")),
     user_repo: UserRepository = Depends(Provide[Container.user_repository]),
-    auth_service: IAuthService = Depends(Provide[Container.cognito_service]),
+    jwt: JwtService = Depends(Provide[Container.jwt_service]),
 ):
     existing = await user_repo.get_by_id(user_id)
     if not existing:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuário não encontrado.")
-    try:
-        auth_service.admin_set_password(existing["username"], body.new_password)
-    except AuthException as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=e.message)
+    if not body.new_password:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Informe a nova senha")
+    await user_repo.set_password_hash(user_id, jwt.hash_password(body.new_password))
     return {"success": True}
 
 
@@ -139,15 +137,13 @@ async def delete_user(
     user_id: str,
     current_user: dict = Depends(require_roles("admin")),
     user_repo: UserRepository = Depends(Provide[Container.user_repository]),
-    auth_service: IAuthService = Depends(Provide[Container.cognito_service]),
+    jwt: JwtService = Depends(Provide[Container.jwt_service]),
 ):
     if user_id == current_user.get("user_id"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Não é possível apagar o próprio usuário.")
     user = await user_repo.get_by_id(user_id)
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuário não encontrado.")
-    # Remove do Cognito primeiro; se falhar, o banco permanece intacto
-    auth_service.delete_user(user["username"])
     await user_repo.delete(user_id)
 
 
