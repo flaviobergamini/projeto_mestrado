@@ -54,3 +54,8 @@ class IAuthService(ABC):
     def admin_set_password(self, username: str, new_password: str) -> None:
         """Define a senha do usuário diretamente (via admin), sem código de confirmação."""
         ...
+
+    @abstractmethod
+    def admin_confirm_user(self, username: str) -> None:
+        """Confirma o cadastro e marca o e-mail como verificado, sem código (bypass da validação)."""
+        ...

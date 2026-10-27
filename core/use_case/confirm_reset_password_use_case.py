@@ -11,6 +11,7 @@ class ConfirmResetPasswordUseCase:
         self.auth_service = auth_service
 
     async def execute(self, username: str, code: str, new_password: str):
+        return Result.bad_request("Recurso desativado: o login agora é local. Peça ao administrador para redefinir sua senha.")
         try:
             self.auth_service.confirm_forgot_password(username, code, new_password)
             return Result.ok({"message": "Senha redefinida com sucesso."})

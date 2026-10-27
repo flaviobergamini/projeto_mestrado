@@ -11,6 +11,7 @@ class ResendConfirmationUseCase:
         self.auth_service = auth_service
 
     async def execute(self, username: str):
+        return Result.bad_request("Recurso desativado: o login agora é local. Peça ao administrador para redefinir sua senha.")
         try:
             self.auth_service.resend_confirmation_code(username)
             return Result.ok({"message": "Código reenviado para o e-mail cadastrado."})

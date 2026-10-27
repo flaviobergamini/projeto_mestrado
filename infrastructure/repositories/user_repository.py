@@ -197,6 +197,35 @@ class UserRepository(IUserRepository):
             user = result.scalars().first()
             return (await _attach_school_ids(session, [_to_dict(user)]))[0] if user else None
 
+    async def get_password_hash(self, user_id: str) -> Optional[str]:
+        async with self.database.session() as session:
+            result = await session.execute(select(UserProfile.password_hash).where(UserProfile.id == user_id))
+            return result.scalar_one_or_none()
+
+    async def set_password_hash(self, user_id: str, password_hash: str) -> bool:
+        async with self.database.session() as session:
+            result = await session.execute(select(UserProfile).where(UserProfile.id == user_id, UserProfile.deleted == False))
+            user = result.scalars().first()
+            if not user:
+                return False
+            user.password_hash = password_hash
+            await session.commit()
+            return True
+
+    async def find_by_login(self, identifier: str) -> Optional[dict]:
+        """Resolve o login: e-mail exato, ou nome de usuário sem domínio (único perfil `nome@...`)."""
+        ident = identifier.strip().lower()
+        async with self.database.session() as session:
+            result = await session.execute(select(UserProfile).where(
+                func.lower(UserProfile.username) == ident, UserProfile.deleted == False))
+            user = result.scalars().first()
+            if not user and "@" not in ident:
+                result = await session.execute(select(UserProfile).where(
+                    func.lower(UserProfile.username).like(ident.replace("%", "") + "@%"), UserProfile.deleted == False))
+                matches = result.scalars().all()
+                user = matches[0] if len(matches) == 1 else None
+            return (await _attach_school_ids(session, [_to_dict(user)]))[0] if user else None
+
     async def get_by_id(self, user_id: str) -> Optional[dict]:
         async with self.database.session() as session:
             result = await session.execute(select(UserProfile).where(UserProfile.id == user_id, UserProfile.deleted == False))

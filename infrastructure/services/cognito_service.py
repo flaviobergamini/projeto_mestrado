@@ -40,7 +40,7 @@ _COGNITO_MESSAGES = {
     "ExpiredCodeException": "Código expirado — solicite um novo",
     "LimitExceededException": "Muitas tentativas — aguarde alguns minutos",
     "TooManyRequestsException": "Muitas requisições — tente mais tarde",
-    "InvalidParameterException": "Parâmetros inválidos",
+    "InvalidParameterException": "Parâmetros inválidos — o e-mail deve ter formato válido (ex.: nome@dominio.com)",
 }
 
 
@@ -205,6 +205,22 @@ class CognitoService(IAuthService):
                     {"Name": "email", "Value": new_email},
                     {"Name": "email_verified", "Value": "true"},
                 ],
+            )
+        except ClientError as e:
+            raise _to_domain_exception(e)
+
+    def admin_confirm_user(self, username: str) -> None:
+        """Bypass da validação de e-mail: confirma o usuário e marca email_verified sem exigir código."""
+        try:
+            try:
+                self.client.admin_confirm_sign_up(UserPoolId=self.user_pool_id, Username=username)
+            except ClientError as e:
+                if e.response["Error"]["Code"] != "NotAuthorizedException":  # já confirmado
+                    raise
+            self.client.admin_update_user_attributes(
+                UserPoolId=self.user_pool_id,
+                Username=username,
+                UserAttributes=[{"Name": "email_verified", "Value": "true"}],
             )
         except ClientError as e:
             raise _to_domain_exception(e)
