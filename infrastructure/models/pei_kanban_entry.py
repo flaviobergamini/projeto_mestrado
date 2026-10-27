@@ -1,6 +1,6 @@
 from datetime import date, datetime
 from typing import Optional
-from sqlalchemy import String, Text, Date, DateTime, ForeignKey, func
+from sqlalchemy import String, Text, Date, DateTime, ForeignKey, SmallInteger, func
 from sqlalchemy.orm import Mapped, mapped_column
 from infrastructure.database_context.database import Base
 
@@ -15,6 +15,7 @@ class PeiKanbanEntry(Base):
     card_id: Mapped[str] = mapped_column(String(64), ForeignKey("pei_kanban_cards.id", ondelete="CASCADE"), nullable=False, index=True)
     entry_date: Mapped[date] = mapped_column(Date, nullable=False)
     text: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    reaction: Mapped[Optional[int]] = mapped_column(SmallInteger, nullable=True)  # reação do aluno nesta execução (1 a 5)
     photos: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON list de object keys no storage
     created_by: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
     created_by_user_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)

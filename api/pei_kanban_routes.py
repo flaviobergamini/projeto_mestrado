@@ -41,6 +41,7 @@ class KanbanCardUpdate(BaseModel):
 class EntryBody(BaseModel):
     entry_date: Optional[date] = None
     text: Optional[str] = Field(None, max_length=4000)
+    reaction: Optional[int] = Field(None, ge=1, le=5)  # reação do aluno nesta execução
 
 
 class FromSkillBody(BaseModel):
@@ -225,7 +226,7 @@ async def add_entry(
 ):
     await _own_card_or_404(repo, card_id, current_user)
     entry = await repo.add_entry(card_id, body.entry_date or date.today(), (body.text or "").strip(),
-                                 _author(current_user), current_user.get("user_id"))
+                                 _author(current_user), current_user.get("user_id"), body.reaction)
     return (await _sign_entries([entry]))[0]
 
 
@@ -240,7 +241,7 @@ async def update_entry(
 ):
     await _own_card_or_404(repo, card_id, current_user)
     text = body.text.strip() if body.text is not None else None
-    entry = await repo.update_entry(card_id, entry_id, body.entry_date, text)
+    entry = await repo.update_entry(card_id, entry_id, body.entry_date, text, body.reaction, "reaction" in body.model_fields_set)
     if not entry:
         raise HTTPException(status_code=404, detail="Lançamento não encontrado")
     return (await _sign_entries([entry]))[0]
