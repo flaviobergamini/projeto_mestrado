@@ -17,6 +17,7 @@ class SchoolCreate(BaseModel):
     institution_type: Optional[str] = None
     address_city: Optional[str] = None
     notes: Optional[str] = None
+    profile: Optional[dict] = None
 
 
 class SchoolUpdate(BaseModel):
@@ -26,6 +27,7 @@ class SchoolUpdate(BaseModel):
     institution_type: Optional[str] = None
     address_city: Optional[str] = None
     notes: Optional[str] = None
+    profile: Optional[dict] = None
 
 
 @router.get("")

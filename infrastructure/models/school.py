@@ -1,5 +1,6 @@
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy import String, Text, Boolean, DateTime, ForeignKey, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from infrastructure.database_context.database import Base
@@ -24,6 +25,8 @@ class School(Base):
     institution_type: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     address_city: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Questionário de cadastro da escola (mesmas chaves da PoC: multifunctionalRooms, visualResources...)
+    profile: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
     deleted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())

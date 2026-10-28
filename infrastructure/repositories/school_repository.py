@@ -18,6 +18,7 @@ class SchoolRepository:
             "institution_type": s.institution_type,
             "address_city": s.address_city,
             "notes": s.notes,
+            "profile": s.profile or {},
             "created_at": s.created_at.isoformat() if s.created_at else None,
             "updated_at": s.updated_at.isoformat() if s.updated_at else None,
         }
@@ -46,6 +47,7 @@ class SchoolRepository:
                 institution_type=data.get("institution_type"),
                 address_city=data.get("address_city"),
                 notes=data.get("notes"),
+                profile=data.get("profile"),
             )
 
             session.add(school)
@@ -65,7 +67,7 @@ class SchoolRepository:
             if not school:
                 return None
             
-            for field in ("name", "municipality_id", "cnpj", "institution_type", "address_city", "notes"):
+            for field in ("name", "municipality_id", "cnpj", "institution_type", "address_city", "notes", "profile"):
                 if field in data:
                     setattr(school, field, data[field])
 
