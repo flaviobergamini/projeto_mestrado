@@ -62,10 +62,12 @@ class UpdateKanbanCardUseCase:
             if changed:
                 return Result.bad_request("Cards ligados a uma habilidade: título, descrição e adaptação vêm do plano e não podem ser alterados aqui.")
             data = {k: v for k, v in data.items() if k not in LOCKED_FIELDS_ON_SKILL_CARDS}
+        old_status = card.get("status")
         updated = await self.repository.update(card_id, data)
         if not updated:
             return Result.not_found(NOT_FOUND)
-        if updated.get("skill_id") and "status" in data:
+        # As estrelas só mudam quando uma ação entra ou sai de "Concluído"; arrastar entre as outras colunas não mexe nelas.
+        if updated.get("skill_id") and "done" in (old_status, updated.get("status")) and old_status != updated.get("status"):
             await self.repository.sync_skill_score(updated["student_id"], updated["skill_id"])
         return Result.ok(updated)
 
@@ -79,7 +81,7 @@ class DeleteKanbanCardUseCase:
         if not card or (user is not None and not owns(card_responsible(card), actor_from_user(user))) \
                 or not await self.repository.delete(card_id):
             return Result.not_found(NOT_FOUND)
-        if card.get("skill_id"):
+        if card.get("skill_id") and card.get("status") == "done":  # só apagar uma ação concluída muda as estrelas
             await self.repository.sync_skill_score(card["student_id"], card["skill_id"])
         return Result.ok(True)
 
@@ -91,9 +93,8 @@ class CreateCardsFromSkillUseCase:
         self.repository = repository
 
     async def execute(self, student_id: str, skill_id: str, created_by: str, only_existing: bool = False) -> Result:
+        # criar/atualizar cards a partir do plano NÃO mexe nas estrelas: elas são da professora
         created = await self.repository.create_from_skill(student_id, skill_id, created_by, only_existing)
-        if created:
-            await self.repository.sync_skill_score(student_id, skill_id)
         return Result.ok(created)
 
 
