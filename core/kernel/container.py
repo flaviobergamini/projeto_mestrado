@@ -26,6 +26,7 @@ from infrastructure.repositories.chat_repository import ChatRepository
 from infrastructure.repositories.prompt_repository import PromptRepository
 from infrastructure.repositories.generated_pei_repository import GeneratedPeiRepository
 from infrastructure.repositories.municipality_repository import MunicipalityRepository
+from infrastructure.repositories.app_settings_repository import AppSettingsRepository
 from infrastructure.repositories.audit_repository import AuditRepository
 from infrastructure.repositories.ai_usage_repository import AiUsageRepository
 from infrastructure.repositories.links_repository import LinksRepository
@@ -110,6 +111,7 @@ class Container(containers.DeclarativeContainer):
     generated_pei_repository = providers.Factory(GeneratedPeiRepository, database=database)
 
     municipality_repository = providers.Factory(MunicipalityRepository, database=database)
+    app_settings_repository = providers.Factory(AppSettingsRepository, database=database)
 
     audit_repository = providers.Factory(AuditRepository, database=database)
 
@@ -191,7 +193,7 @@ class Container(containers.DeclarativeContainer):
 
     generate_skill_plan_draft_use_case = providers.Factory(
         GenerateSkillPlanDraftUseCase, repository=skill_plan_repository, students=student_repository, ai=ai_gateway,
-        prompts=prompt_repository,
+        prompts=prompt_repository, settings=app_settings_repository,
     )
     suggest_skill_scores_use_case = providers.Factory(
         SuggestSkillScoresUseCase, repository=skill_plan_repository, students=student_repository, ai=ai_gateway,

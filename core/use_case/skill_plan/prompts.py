@@ -11,6 +11,11 @@ STAR_SCALE = (
 
 # Fontes FIXAS da geração das adaptações: pré-cadastro do aluno, perfil funcional e habilidades (relatório BNCC).
 ROUND1_SOURCES = ["student", "functional_profile", "skill_report"]
+# Limites MÁXIMOS da geração (ajustáveis pelo administrador na página de prompts). A IA usa menos quando o caso pede.
+SKILL_PLAN_SETTINGS_KEY = "skill_plan_round1"
+DEFAULT_SKILL_PLAN_LIMITS = {"max_adaptations": 3, "max_actions": 5}
+LIMIT_RANGE = (1, 10)
+
 ROUND2_SOURCES = ["student", "functional_profile", "diary_summary"]
 
 from core.constants.prompt_defaults import SKILL_PLAN_ROUND1_PROMPT, SKILL_PLAN_ROUND2_PROMPT

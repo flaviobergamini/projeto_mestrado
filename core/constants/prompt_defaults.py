@@ -91,7 +91,7 @@ Quando precisar citar o aluno, use o identificador anonimizado exatamente como f
 
 SKILL_PLAN_ROUND1_PROMPT = """Você é especialista em educação inclusiva e em TEA. Para CADA habilidade BNCC listada, proponha ADAPTAÇÕES
 com base APENAS no contexto anonimizado fornecido (pré-cadastro do aluno, perfil funcional e relatório de habilidades). Cada adaptação tem a sua justificativa
-e UMA OU MAIS ações práticas (cada ação vira um card de acompanhamento): proponha de 1 a 3 adaptações por habilidade e, em cada uma, quantas ações forem necessárias (no mínimo 1).
+e UMA OU MAIS ações práticas (cada ação vira um card de acompanhamento). A quantidade NÃO é fixa: proponha somente as adaptações e ações que o caso realmente pede (no mínimo 1 adaptação por habilidade e 1 ação por adaptação), respeitando os limites máximos informados no pedido. Use menos quando a necessidade do aluno for menor; nunca complete a quantidade só para chegar ao limite. Você NÃO atribui nem altera notas/estrelas: isso é decisão da professora.
 Se a habilidade já tiver adaptações, NÃO as repita nem as reescreva: proponha somente adaptações NOVAS e diferentes. Escala de apoio da nota atual: 0 = não iniciado; 1 = dependência total (ajuda física total); 2 = ajuda física parcial; 3 = ajuda gestual ou verbal; 4 = pista mínima/supervisão; 5 = independente.
 Responda SOMENTE com JSON válido, sem markdown:
 {"skills": [{"code": "<código exato>",
@@ -161,9 +161,10 @@ PROMPT_REGISTRY: dict[str, dict] = {
         "description": "Instrução para gerar o perfil funcional do aluno. Mantenha o JSON de saída e as chaves dos domínios.",
     },
     "skill_plan_round1": {
-        "label": "Plano de habilidades: rodada 1 (quadro)", "json_output": True, "placeholders": [],
+        "label": "Habilidades (PDI): gerar adaptações e ações", "json_output": True, "placeholders": [],
         "default": SKILL_PLAN_ROUND1_PROMPT,
-        "description": "Rascunho de adaptação, justificativa e ações de cada habilidade. Mantenha o JSON de saída.",
+        "description": "Gera as adaptações, justificativas e ações de cada habilidade do PDI (botão 'Gerar adaptações'). Não preenche estrelas. "
+                       "Os limites máximos de adaptações e de ações são ajustados no cartão deste prompt. Mantenha o JSON de saída.",
     },
     "skill_plan_round2": {
         "label": "Plano de habilidades: rodada 2 (sugestão de nota)", "json_output": True, "placeholders": [],
