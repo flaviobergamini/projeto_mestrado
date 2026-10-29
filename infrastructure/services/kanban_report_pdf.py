@@ -25,6 +25,8 @@ def _filters_text(f: dict) -> str:
         parts.append("Áreas: " + ", ".join(f["areas"]))
     if f.get("date_from") or f.get("date_to"):
         parts.append(f"Período: {_fmt_date(f.get('date_from')) or 'início'} a {_fmt_date(f.get('date_to')) or 'hoje'}")
+    parts.append("com ações" if f.get("include_actions", True) else "sem ações (só resumo)")
+    parts.append("com datas" if f.get("include_dates", True) else "sem datas")
     parts.append("com lançamentos das ações" if f.get("include_entries") else "sem lançamentos das ações")
     return " | ".join(parts)
 
@@ -32,6 +34,8 @@ def _filters_text(f: dict) -> str:
 def generate_kanban_report_pdf(report: dict, student_name: str) -> bytes:
     filters = report.get("filters", {})
     include_entries = bool(filters.get("include_entries"))
+    include_actions = filters.get("include_actions", True)
+    include_dates = filters.get("include_dates", True)
 
     buf = io.BytesIO()
     doc = SimpleDocTemplate(
@@ -60,21 +64,35 @@ def generate_kanban_report_pdf(report: dict, student_name: str) -> bytes:
     story.append(t)
 
     page_w = A4[0] - 3.6 * cm
-    widths = [2.3 * cm, page_w - 2.3 * cm - 2.4 * cm - 2.3 * cm, 2.4 * cm, 2.3 * cm]
+    date_w = 2.3 * cm if include_dates else 0
+    widths = [2.3 * cm, page_w - 2.3 * cm - 2.4 * cm - date_w, 2.4 * cm] + ([date_w] if include_dates else [])
 
     for group in report.get("groups", []):
         story.append(Paragraph(_escape(group["subject"]), styles["h1"]))
         for skill in group["skills"]:
             title = f"{skill['code']} — {skill['description']}" if skill.get("code") else "Ações sem habilidade"
             story.append(Paragraph(_escape(title), styles["h3"]))
-            rows = [[Paragraph("Coluna", small_b), Paragraph("Ação", small_b), Paragraph("Responsável", small_b), Paragraph("Atualizado", small_b)]]
+            if not include_actions:
+                # só o resumo da habilidade: quantas ações em cada coluna
+                tally = {}
+                for c in skill["cards"]:
+                    tally[c["status"]] = tally.get(c["status"], 0) + 1
+                story.append(Paragraph(" · ".join(f"{STATUS_LABELS.get(k, k)}: {tally[k]}" for k in STATUS_LABELS if k in tally), small))
+                story.append(Spacer(1, 6))
+                continue
+            head = [Paragraph("Coluna", small_b), Paragraph("Ação", small_b), Paragraph("Responsável", small_b)]
+            if include_dates:
+                head.append(Paragraph("Atualizado", small_b))
+            rows = [head]
             for c in skill["cards"]:
-                rows.append([
+                row = [
                     Paragraph(STATUS_LABELS.get(c["status"], c["status"]), small_b),
                     Paragraph(_escape(c["title"]), small),
                     Paragraph(_escape(c.get("responsible_name") or ""), small),
-                    Paragraph(_fmt_date(c.get("updated_at")), small),
-                ])
+                ]
+                if include_dates:
+                    row.append(Paragraph(_fmt_date(c.get("updated_at")), small))
+                rows.append(row)
             tbl = Table(rows, colWidths=widths, repeatRows=1)
             tbl.setStyle(TableStyle([
                 ("BACKGROUND", (0, 0), (-1, 0), LIGHT), ("VALIGN", (0, 0), (-1, -1), "TOP"),
@@ -87,8 +105,9 @@ def generate_kanban_report_pdf(report: dict, student_name: str) -> bytes:
                 for c in skill["cards"]:
                     for e in c.get("entries", []):
                         reaction = f" — reação {e['reaction']}/5" if e.get("reaction") else ""
+                        when = f"<b>{_fmt_date(e['entry_date'])}</b> · " if include_dates else ""
                         story.append(KeepTogether(Paragraph(
-                            f"<b>{_fmt_date(e['entry_date'])}</b> · {_escape(c['title'])}{reaction}: {_escape(e.get('text') or '')}", small)))
+                            f"{when}{_escape(c['title'])}{reaction}: {_escape(e.get('text') or '')}", small)))
             story.append(Spacer(1, 6))
 
     if not report.get("groups"):

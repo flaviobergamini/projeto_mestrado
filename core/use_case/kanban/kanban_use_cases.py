@@ -169,6 +169,8 @@ class RenderKanbanReportUseCase:
         grades, areas = filters.get("grades") or [], filters.get("areas") or []
         date_from, date_to = filters.get("date_from") or "", filters.get("date_to") or ""
         include_entries = bool(filters.get("include_entries"))
+        include_actions = filters.get("include_actions") is not False
+        include_dates = filters.get("include_dates") is not False
 
         actor = actor_from_user(user)
         selected = []
@@ -206,7 +208,7 @@ class RenderKanbanReportUseCase:
                   for subject, skills in sorted(grouped.items(), key=lambda kv: (kv[0] == "Outras ações", kv[0]))]
         report = {
             "filters": {"statuses": statuses, "grades": grades, "areas": areas, "date_from": date_from, "date_to": date_to,
-                        "include_entries": include_entries},
+                        "include_entries": include_entries, "include_actions": include_actions, "include_dates": include_dates},
             "counts": counts, "groups": groups, "generated_at": datetime.now().strftime("%d/%m/%Y %H:%M"),
         }
         return Result.ok(self.pdf.kanban_report(report, student.get("name") or "Aluno"))
