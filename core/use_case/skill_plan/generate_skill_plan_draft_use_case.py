@@ -36,7 +36,8 @@ class GenerateSkillPlanDraftUseCase:
         limits = await self.settings.get(SKILL_PLAN_SETTINGS_KEY, DEFAULT_SKILL_PLAN_LIMITS)
         context, name_map = await self.ai.build_context(student_id, ROUND1_SOURCES)
         listing = "\n".join(
-            f"- {t['code']} ({t['grade']}, {t['area']}): {t['description']} | nota atual: {t['score']}"
+            f"- {t['code']} ({t['grade']}, {t['area']}): {t['description']} | nota atual: {t['score']} de 5 estrelas "
+            f"(faltam {5 - t['score']} para a habilidade ficar consolidada)"
             + (f"\n  Adaptações já existentes (não repetir):\n{t['existing']}" if t["existing"] else "")
             for t in targets
         )

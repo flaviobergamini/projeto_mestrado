@@ -16,9 +16,7 @@ SKILL_PLAN_SETTINGS_KEY = "skill_plan_round1"
 DEFAULT_SKILL_PLAN_LIMITS = {"max_adaptations": 3, "max_actions": 5}
 LIMIT_RANGE = (1, 10)
 
-ROUND2_SOURCES = ["student", "functional_profile", "diary_summary"]
 
-from core.constants.prompt_defaults import SKILL_PLAN_ROUND1_PROMPT, SKILL_PLAN_ROUND2_PROMPT
+from core.constants.prompt_defaults import SKILL_PLAN_ROUND1_PROMPT
 
 ROUND1_SYSTEM = SKILL_PLAN_ROUND1_PROMPT
-ROUND2_SYSTEM = SKILL_PLAN_ROUND2_PROMPT

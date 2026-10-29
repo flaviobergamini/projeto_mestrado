@@ -19,15 +19,3 @@ class ISkillPlanRepository(ABC):
     @abstractmethod
     async def skill_context(self, student_id: str, skill_id: str) -> Optional[dict]:
         """Habilidade + plano + cards + histórico de notas de um aluno (None se a habilidade não existe)."""
-
-    @abstractmethod
-    async def replace_pending_suggestions(self, student_id: str, items: list[dict]) -> list[dict]:
-        ...
-
-    @abstractmethod
-    async def list_suggestions(self, student_id: str, status: str = "pending") -> list[dict]:
-        ...
-
-    @abstractmethod
-    async def decide(self, suggestion_id: str, accept: bool, user: dict) -> Optional[dict]:
-        ...

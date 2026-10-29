@@ -91,7 +91,7 @@ Quando precisar citar o aluno, use o identificador anonimizado exatamente como f
 
 SKILL_PLAN_ROUND1_PROMPT = """Você é especialista em educação inclusiva e em TEA. Para CADA habilidade BNCC listada, proponha ADAPTAÇÕES
 com base APENAS no contexto anonimizado fornecido (pré-cadastro do aluno, perfil funcional e relatório de habilidades). Cada adaptação tem a sua justificativa
-e UMA OU MAIS ações práticas (cada ação vira um card de acompanhamento). A quantidade NÃO é fixa: proponha somente as adaptações e ações que o caso realmente pede (no mínimo 1 adaptação por habilidade e 1 ação por adaptação), respeitando os limites máximos informados no pedido. Use menos quando a necessidade do aluno for menor; nunca complete a quantidade só para chegar ao limite. Você NÃO atribui nem altera notas/estrelas: isso é decisão da professora.
+e UMA OU MAIS ações práticas (cada ação vira um card de acompanhamento). A quantidade NÃO é fixa: proponha somente as adaptações e ações que o caso realmente pede (no mínimo 1 adaptação por habilidade e 1 ação por adaptação), respeitando os limites máximos informados no pedido. Use menos quando a necessidade do aluno for menor; nunca complete a quantidade só para chegar ao limite. Considere a nota atual (estrelas marcadas) de cada habilidade: quanto menos estrelas, mais apoio e mais ações para chegar à consolidação; com 4 estrelas bastam poucas ações de acabamento. Você NÃO atribui nem altera notas/estrelas: isso é decisão da professora.
 Se a habilidade já tiver adaptações, NÃO as repita nem as reescreva: proponha somente adaptações NOVAS e diferentes. Escala de apoio da nota atual: 0 = não iniciado; 1 = dependência total (ajuda física total); 2 = ajuda física parcial; 3 = ajuda gestual ou verbal; 4 = pista mínima/supervisão; 5 = independente.
 Responda SOMENTE com JSON válido, sem markdown:
 {"skills": [{"code": "<código exato>",
@@ -101,14 +101,6 @@ Responda SOMENTE com JSON válido, sem markdown:
   "experience_fields": ["chaves dos campos de experiência da BNCC relacionados à habilidade, escolhidas SOMENTE desta lista: selfOtherUs (O eu, o outro e o nós), bodyGestures (Corpo, gestos e movimentos), linesSounds (Traços, sons, cores e formas), listeningSpeaking (Escuta, fala, pensamento e imaginação), spacesTimes (Espaços, tempos, quantidades, relações e transformações); [] se não houver certeza"]}]}
 Não invente fatos nem diagnósticos que não estejam no contexto; se faltar evidência, diga isso na justificativa.
 Use SOMENTE os códigos fornecidos na lista. Use o identificador anonimizado do aluno exatamente como fornecido."""
-
-SKILL_PLAN_ROUND2_PROMPT = """Você é especialista em educação inclusiva e em TEA. Avalie, para cada habilidade BNCC, se o progresso registrado
-nos cards do Kanban (títulos, status, registros do dia, reação) justifica alterar a nota atual. Escala: 0 = não iniciado; 1 = dependência total (ajuda física total); 2 = ajuda física parcial; 3 = ajuda gestual ou verbal; 4 = pista mínima/supervisão; 5 = independente.
-Regras: sugira mudança de NO MÁXIMO 1 estrela por vez; só sugira quando houver evidência concreta nos cards; se não
-houver evidência suficiente, NÃO inclua a habilidade. Você apenas propõe — a professora decide.
-Responda SOMENTE com JSON válido, sem markdown:
-{"suggestions": [{"code": "<código exato>", "suggested_score": <0 a 5>, "reason": "justificativa objetiva citando os registros",
-  "evidence_card_ids": ["ids dos cards usados, exatamente como fornecidos"]}]}"""
 
 SKILL_SUMMARY_PROMPT = """Você é especialista em educação inclusiva e em TEA. Escreva um RESUMO objetivo da situação atual do aluno nesta habilidade BNCC, para constar no relatório entregue à equipe e à família.
 
@@ -166,11 +158,6 @@ PROMPT_REGISTRY: dict[str, dict] = {
         "description": "Gera as adaptações, justificativas e ações de cada habilidade do PDI (botão 'Gerar adaptações'). Não preenche estrelas. "
                        "Os limites máximos de adaptações e de ações são ajustados no cartão deste prompt. Mantenha o JSON de saída.",
     },
-    "skill_plan_round2": {
-        "label": "Plano de habilidades: rodada 2 (sugestão de nota)", "json_output": True, "placeholders": [],
-        "default": SKILL_PLAN_ROUND2_PROMPT,
-        "description": "Avalia o progresso do Kanban e sugere mudança de nota. Mantenha o JSON de saída.",
-    },
     "skill_summary": {
         "label": "Resumo da habilidade (IA)", "json_output": False, "placeholders": [],
         "default": SKILL_SUMMARY_PROMPT,
@@ -179,7 +166,7 @@ PROMPT_REGISTRY: dict[str, dict] = {
     "kanban_card_summary": {
         "label": "Resumo da ação do Kanban (IA)", "json_output": False, "placeholders": [],
         "default": KANBAN_CARD_SUMMARY_PROMPT,
-        "description": "Resume o diário de uma ação do Kanban. O resumo alimenta a avaliação posterior da habilidade.",
+        "description": "Resume o diário de uma ação do Kanban. O resumo entra no resumo da habilidade.",
     },
     "bncc_usage_rule": {
         "label": "Regra de uso do catálogo BNCC", "json_output": False, "placeholders": [],
