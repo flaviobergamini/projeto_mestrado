@@ -2,7 +2,7 @@
 import asyncio
 import uuid
 from datetime import date
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
 from pydantic import BaseModel, Field
 from typing import Optional
 from dependency_injector.wiring import inject, Provide
@@ -110,6 +110,29 @@ async def create_kanban_card(
     use_case: uc.CreateKanbanCardUseCase = Depends(Provide[Container.create_kanban_card_use_case]),
 ):
     return _unwrap(await use_case.execute(body.model_dump(), _author(current_user), current_user))
+
+
+class KanbanReportBody(BaseModel):
+    student_id: str
+    statuses: list[str] = []          # colunas: todo, doing, done, archived (vazio = todas)
+    grades: list[str] = []            # ano/etapa das habilidades (vazio = todos)
+    areas: list[str] = []
+    date_from: Optional[str] = None   # AAAA-MM-DD; vale para Concluído e Arquivado (e para os lançamentos)
+    date_to: Optional[str] = None
+    include_entries: bool = False     # incluir os lançamentos do diário de cada ação
+
+
+@router.post("/report")
+@inject
+async def kanban_report(
+    body: KanbanReportBody,
+    current_user: dict = Depends(require_roles(*VIEW_ROLES)),
+    use_case: uc.RenderKanbanReportUseCase = Depends(Provide[Container.render_kanban_report_use_case]),
+):
+    """Relatório em PDF do Kanban do aluno, com filtros de colunas, ano, área e período."""
+    pdf = _unwrap(await use_case.execute(body.student_id, body.model_dump(), current_user))
+    return Response(content=pdf, media_type="application/pdf",
+                    headers={"Content-Disposition": f'attachment; filename="kanban_{body.student_id[:8]}.pdf"'})
 
 
 @router.post("/from-skill", status_code=status.HTTP_201_CREATED)

@@ -154,6 +154,9 @@ class Container(containers.DeclarativeContainer):
     create_kanban_card_use_case = providers.Factory(kb_uc.CreateKanbanCardUseCase, repository=pei_kanban_repository)
     update_kanban_card_use_case = providers.Factory(kb_uc.UpdateKanbanCardUseCase, repository=pei_kanban_repository)
     delete_kanban_card_use_case = providers.Factory(kb_uc.DeleteKanbanCardUseCase, repository=pei_kanban_repository)
+    render_kanban_report_use_case = providers.Factory(
+        kb_uc.RenderKanbanReportUseCase, repository=pei_kanban_repository, students=student_repository, pdf=report_pdf_generator,
+    )
     create_cards_from_skill_use_case = providers.Factory(kb_uc.CreateCardsFromSkillUseCase, repository=pei_kanban_repository)
     bncc_list_grades_use_case = providers.Factory(bncc_uc.ListGradesUseCase, repository=bncc_repository)
     bncc_list_areas_use_case = providers.Factory(bncc_uc.ListAreasUseCase, repository=bncc_repository)
