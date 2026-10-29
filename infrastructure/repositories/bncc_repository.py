@@ -3,7 +3,7 @@ import re
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
-from sqlalchemy import select, func, or_
+from sqlalchemy import select, func, or_, and_
 from core.interfaces.i_bncc_repository import IBnccRepository, BnccError
 from core.services.skill_actions import (
     normalize_adaptations, dump_adaptations, merge_adaptations, actor_from_user, owns, is_coordinator,
@@ -17,7 +17,7 @@ from infrastructure.models.student import Student
 def _skill_dict(s: BnccSkill) -> dict:
     return {
         "id": s.id, "stage": s.stage, "grade": s.grade, "grade_order": s.grade_order,
-        "area": s.area, "code": s.code, "description": s.description, "position": s.position,
+        "grade_from": s.grade_from, "grade_to": s.grade_to, "area": s.area, "code": s.code, "description": s.description, "position": s.position,
     }
 
 
@@ -53,11 +53,21 @@ def _plan_dict(row: Optional[StudentSkillScore], actor: Optional[dict] = None) -
     }
 
 
-def _grade_order(grade: str, stage: str) -> int:
-    if stage == "infantil":
+INFANTIL_LABEL = "Infantil (4 anos a 5 anos e 11 meses)"
+
+
+def _grade_number(label: str) -> Optional[int]:
+    """Número do ano a partir do rótulo ('3º ano' -> 3; Infantil -> 0)."""
+    if label.strip().lower().startswith("infantil"):
         return 0
-    m = re.match(r"\s*(\d+)", grade)
-    return int(m.group(1)) if m else 99
+    m = re.match(r"\s*(\d+)", label)
+    return int(m.group(1)) if m else None
+
+
+def _grade_label(stage: str, y_from: int, y_to: int, infantil_label: str = INFANTIL_LABEL) -> str:
+    if stage == "infantil":
+        return infantil_label
+    return f"{y_from}º ano" if y_from == y_to else f"{y_from}º ao {y_to}º ano"
 
 
 class BnccRepository(IBnccRepository):
@@ -67,14 +77,18 @@ class BnccRepository(IBnccRepository):
     # ── catálogo ──────────────────────────────────────────────────────────────
 
     async def list_grades(self) -> list[dict]:
+        """Um item por ano; `count` = habilidades que cobrem aquele ano (a mesma habilidade conta em vários anos)."""
         async with self.database.session() as session:
-            rows = await session.execute(
-                select(BnccSkill.grade, BnccSkill.grade_order, BnccSkill.stage, func.count(BnccSkill.id))
-                .where(BnccSkill.deleted == False)
-                .group_by(BnccSkill.grade, BnccSkill.grade_order, BnccSkill.stage)
-                .order_by(BnccSkill.grade_order, BnccSkill.grade)
-            )
-            return [{"grade": g, "grade_order": o, "stage": st, "count": n} for g, o, st, n in rows.all()]
+            rows = (await session.execute(
+                select(BnccSkill.stage, BnccSkill.grade, BnccSkill.grade_from, BnccSkill.grade_to).where(BnccSkill.deleted == False)
+            )).all()
+        infantil = next((g for st, g, _, _ in rows if st == "infantil"), INFANTIL_LABEL)
+        years = sorted({y for _, _, f, t in rows for y in range(f, t + 1)})
+        return [
+            {"grade": infantil if y == 0 else f"{y}º ano", "grade_order": y, "stage": "infantil" if y == 0 else "fundamental",
+             "count": sum(1 for _, _, f, t in rows if f <= y <= t)}
+            for y in years
+        ]
 
     async def list_codes(self) -> list[str]:
         async with self.database.session() as session:
@@ -97,7 +111,8 @@ class BnccRepository(IBnccRepository):
     async def _list_skills(self, session, grades=None, areas=None, q=None) -> list[dict]:
         stmt = select(BnccSkill).where(BnccSkill.deleted == False)
         if grades:
-            stmt = stmt.where(BnccSkill.grade.in_(grades))
+            numbers = [n for n in (_grade_number(g) for g in grades) if n is not None]
+            stmt = stmt.where(or_(*[and_(BnccSkill.grade_from <= n, BnccSkill.grade_to >= n) for n in numbers]) if numbers else False)
         if areas:
             stmt = stmt.where(BnccSkill.area.in_(areas))
         if q and q.strip():
@@ -107,36 +122,46 @@ class BnccRepository(IBnccRepository):
         return [_skill_dict(s) for s in (await session.execute(stmt)).scalars().all()]
 
     async def _validate(self, session, data: dict, skill_id: Optional[str] = None) -> dict:
-        clean = {k: (data.get(k) or "").strip() for k in ("grade", "area", "code", "description")}
+        clean = {k: (data.get(k) or "").strip() for k in ("area", "code", "description")}
         if not all(clean.values()):
-            raise BnccError("Ano, área, código e descrição são obrigatórios.")
+            raise BnccError("Área, código e descrição são obrigatórios.")
         if len(clean["code"]) > 40:
             raise BnccError("O código pode ter no máximo 40 caracteres.")
         stage = data.get("stage") or "fundamental"
         if stage not in ("infantil", "fundamental"):
             raise BnccError("Etapa inválida.")
         clean["stage"] = stage
+        if stage == "infantil":
+            y_from = y_to = 0
+        else:
+            try:
+                y_from, y_to = int(data.get("grade_from")), int(data.get("grade_to"))
+            except (TypeError, ValueError):
+                raise BnccError("Informe o ano inicial e o ano final.")
+            if not 1 <= y_from <= y_to <= 5:
+                raise BnccError("Os anos devem estar entre 1 e 5, com o ano inicial menor ou igual ao final.")
+        clean["grade_from"], clean["grade_to"] = y_from, y_to
+        infantil = (await session.execute(
+            select(BnccSkill.grade).where(BnccSkill.stage == "infantil", BnccSkill.deleted == False).limit(1)  # noqa: E712
+        )).scalar() or INFANTIL_LABEL
+        clean["grade"] = _grade_label(stage, y_from, y_to, infantil)
+        clean["grade_order"] = y_from
         dup = await session.execute(
             select(BnccSkill.id).where(
-                BnccSkill.grade == clean["grade"], BnccSkill.code == clean["code"],
-                BnccSkill.deleted == False, BnccSkill.id != (skill_id or ""),
+                BnccSkill.code == clean["code"], BnccSkill.deleted == False, BnccSkill.id != (skill_id or ""),  # noqa: E712
             )
         )
         if dup.first():
-            raise BnccError("Já existe uma habilidade com esse código neste ano.")
+            raise BnccError("Já existe uma habilidade com esse código. Cada código é cadastrado uma única vez; use o ano inicial e o final.")
         return clean
 
     async def create_skill(self, data: dict) -> dict:
         async with self.database.session() as session:
             clean = await self._validate(session, data)
-            same_grade = (await session.execute(
-                select(BnccSkill.grade_order, func.max(BnccSkill.position))
-                .where(BnccSkill.grade == clean["grade"], BnccSkill.deleted == False)
-                .group_by(BnccSkill.grade_order)
-            )).first()
-            order = same_grade[0] if same_grade else _grade_order(clean["grade"], clean["stage"])
-            position = (same_grade[1] or 0) + 1 if same_grade else 1
-            skill = BnccSkill(id=str(uuid.uuid4()), grade_order=order, position=position, **clean)
+            last = (await session.execute(
+                select(func.max(BnccSkill.position)).where(BnccSkill.grade_from == clean["grade_from"], BnccSkill.deleted == False)  # noqa: E712
+            )).scalar()
+            skill = BnccSkill(id=str(uuid.uuid4()), position=(last or 0) + 1, **clean)
             session.add(skill)
             await session.commit()
             await session.refresh(skill)
@@ -148,20 +173,11 @@ class BnccRepository(IBnccRepository):
             if not skill or skill.deleted:
                 return None
             clean = await self._validate(session, data, skill_id)
-            known = await self._known_grades(session)
-            order = known.get(clean["grade"], _grade_order(clean["grade"], clean["stage"]))
             for k, v in clean.items():
                 setattr(skill, k, v)
-            skill.grade_order = order
             await session.commit()
             await session.refresh(skill)
             return _skill_dict(skill)
-
-    async def _known_grades(self, session) -> dict[str, int]:
-        rows = await session.execute(
-            select(BnccSkill.grade, BnccSkill.grade_order).where(BnccSkill.deleted == False).distinct()
-        )
-        return {g: o for g, o in rows.all()}
 
     async def delete_skill(self, skill_id: str) -> bool:
         async with self.database.session() as session:

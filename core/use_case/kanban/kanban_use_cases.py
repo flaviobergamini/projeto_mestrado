@@ -2,6 +2,7 @@
 from typing import Optional
 from core.constants.kanban import KANBAN_STATUSES
 from core.kernel.result import Result
+import re
 from datetime import datetime
 from core.interfaces.i_kanban_repository import IKanbanRepository
 from core.interfaces.i_report_pdf_generator import IReportPdfGenerator
@@ -142,6 +143,16 @@ class GenerateKanbanCardSummaryUseCase:
         return Result.ok(updated)
 
 
+def _years(label: Optional[str]) -> set[int]:
+    """Anos que o rótulo de uma habilidade cobre: '3º ao 5º ano' -> {3,4,5}; '5º ano' -> {5}; Infantil -> {0}."""
+    if not label:
+        return set()
+    if label.strip().lower().startswith("infantil"):
+        return {0}
+    nums = [int(n) for n in re.findall(r"\d+", label)]
+    return set(range(nums[0], nums[-1] + 1)) if nums else set()
+
+
 class RenderKanbanReportUseCase:
     """PDF do Kanban com os mesmos filtros da tela (ano, área) mais colunas e período; o professor só vê os cards dele."""
 
@@ -167,7 +178,7 @@ class RenderKanbanReportUseCase:
             column = "doing" if c["status"] == "review" else c["status"]
             if column not in statuses:
                 continue
-            if grades and c.get("skill_grade") not in grades:
+            if grades and not any(_years(g) & _years(c.get("skill_grade")) for g in grades):
                 continue
             if areas and c.get("skill_area") not in areas:
                 continue
