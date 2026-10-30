@@ -26,6 +26,7 @@ from infrastructure.repositories.chat_repository import ChatRepository
 from infrastructure.repositories.prompt_repository import PromptRepository
 from infrastructure.repositories.generated_pei_repository import GeneratedPeiRepository
 from infrastructure.repositories.municipality_repository import MunicipalityRepository
+from infrastructure.repositories.app_settings_repository import AppSettingsRepository
 from infrastructure.repositories.audit_repository import AuditRepository
 from infrastructure.repositories.ai_usage_repository import AiUsageRepository
 from infrastructure.repositories.links_repository import LinksRepository
@@ -45,10 +46,7 @@ from core.use_case.links.links_use_cases import (
     SetTeacherStudentsUseCase, GetRelationsUseCase, ListStudentResponsiblesUseCase,
 )
 from core.use_case.skill_plan.generate_skill_plan_draft_use_case import GenerateSkillPlanDraftUseCase
-from core.use_case.skill_plan.suggest_skill_scores_use_case import SuggestSkillScoresUseCase
-from core.use_case.skill_plan.list_skill_suggestions_use_case import ListSkillSuggestionsUseCase
 from core.use_case.skill_plan.generate_skill_summary_use_case import GenerateSkillSummaryUseCase
-from core.use_case.skill_plan.decide_skill_suggestion_use_case import DecideSkillSuggestionUseCase
 from infrastructure.repositories.functional_profile_repository import FunctionalProfileRepository
 from infrastructure.repositories.pei_kanban_repository import PeiKanbanRepository
 from infrastructure.repositories.saved_skill_result_repository import SavedSkillResultRepository
@@ -110,6 +108,7 @@ class Container(containers.DeclarativeContainer):
     generated_pei_repository = providers.Factory(GeneratedPeiRepository, database=database)
 
     municipality_repository = providers.Factory(MunicipalityRepository, database=database)
+    app_settings_repository = providers.Factory(AppSettingsRepository, database=database)
 
     audit_repository = providers.Factory(AuditRepository, database=database)
 
@@ -152,6 +151,9 @@ class Container(containers.DeclarativeContainer):
     create_kanban_card_use_case = providers.Factory(kb_uc.CreateKanbanCardUseCase, repository=pei_kanban_repository)
     update_kanban_card_use_case = providers.Factory(kb_uc.UpdateKanbanCardUseCase, repository=pei_kanban_repository)
     delete_kanban_card_use_case = providers.Factory(kb_uc.DeleteKanbanCardUseCase, repository=pei_kanban_repository)
+    render_kanban_report_use_case = providers.Factory(
+        kb_uc.RenderKanbanReportUseCase, repository=pei_kanban_repository, students=student_repository, pdf=report_pdf_generator,
+    )
     create_cards_from_skill_use_case = providers.Factory(kb_uc.CreateCardsFromSkillUseCase, repository=pei_kanban_repository)
     bncc_list_grades_use_case = providers.Factory(bncc_uc.ListGradesUseCase, repository=bncc_repository)
     bncc_list_areas_use_case = providers.Factory(bncc_uc.ListAreasUseCase, repository=bncc_repository)
@@ -191,11 +193,7 @@ class Container(containers.DeclarativeContainer):
 
     generate_skill_plan_draft_use_case = providers.Factory(
         GenerateSkillPlanDraftUseCase, repository=skill_plan_repository, students=student_repository, ai=ai_gateway,
-        prompts=prompt_repository,
-    )
-    suggest_skill_scores_use_case = providers.Factory(
-        SuggestSkillScoresUseCase, repository=skill_plan_repository, students=student_repository, ai=ai_gateway,
-        prompts=prompt_repository,
+        prompts=prompt_repository, settings=app_settings_repository,
     )
     generate_skill_summary_use_case = providers.Factory(
         GenerateSkillSummaryUseCase, repository=skill_plan_repository, students=student_repository, ai=ai_gateway,
@@ -205,8 +203,6 @@ class Container(containers.DeclarativeContainer):
         kb_uc.GenerateKanbanCardSummaryUseCase, repository=pei_kanban_repository, skill_repository=skill_plan_repository,
         students=student_repository, ai=ai_gateway, prompts=prompt_repository,
     )
-    list_skill_suggestions_use_case = providers.Factory(ListSkillSuggestionsUseCase, repository=skill_plan_repository)
-    decide_skill_suggestion_use_case = providers.Factory(DecideSkillSuggestionUseCase, repository=skill_plan_repository)
 
     rag_service = providers.Factory(RagService, database=database, gemini=gemini_service, usage_repo=ai_usage_repository, diary_repo=diary_repository, prompts=prompt_repository)
 

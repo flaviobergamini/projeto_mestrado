@@ -42,6 +42,11 @@ class Ai:
         return self.raw
 
 
+class Settings:
+    async def get(self, key, default):
+        return default
+
+
 class Prompts:
     async def get(self, scope):
         return scope
@@ -52,7 +57,7 @@ T = {"skill_id": "k1", "code": "EI03EO01", "grade": "Infantil", "area": "a", "de
 
 def _run(raw, targets=(T,)):
     repo, ai = Repo(list(targets)), Ai(raw)
-    res = asyncio.run(GenerateSkillPlanDraftUseCase(repo, Students(), ai, Prompts()).execute("s1", {"user_id": "u"}))
+    res = asyncio.run(GenerateSkillPlanDraftUseCase(repo, Students(), ai, Prompts(), Settings()).execute("s1", {"user_id": "u"}))
     return res, repo, ai
 
 
@@ -92,5 +97,5 @@ def test_invalid_json_is_retried_once():
             return {"skills": [{"code": "EI03EO01", "adaptations": [{"adaptation": "A", "actions": ["x"]}]}]}
 
     repo, ai = Repo([T]), FlakyAi({})
-    res = asyncio.run(GenerateSkillPlanDraftUseCase(repo, Students(), ai, Prompts()).execute("s1", {}))
+    res = asyncio.run(GenerateSkillPlanDraftUseCase(repo, Students(), ai, Prompts(), Settings()).execute("s1", {}))
     assert res.is_ok and FlakyAi.calls == 2 and repo.applied

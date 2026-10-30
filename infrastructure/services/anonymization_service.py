@@ -31,6 +31,8 @@ from infrastructure.models.pdi import Pdi
 from infrastructure.models.generated_pei import GeneratedPei
 from infrastructure.models.case_study_submission import CaseStudySubmission
 from infrastructure.models.pei_kanban_card import PeiKanbanCard
+from infrastructure.models.pei_kanban_entry import PeiKanbanEntry
+from infrastructure.models.bncc import BnccSkill
 from infrastructure.models.diary_summary import DiarySummary
 from infrastructure.utils.diary_custom import parse_custom_answers
 from infrastructure.models.bncc import SkillReport
@@ -225,6 +227,8 @@ class AnonymizationService:
         family_diary_date_to: str | None = None,
         therapy_diary_date_from: str | None = None,
         therapy_diary_date_to: str | None = None,
+        kanban_date_from: str | None = None,
+        kanban_date_to: str | None = None,
     ) -> tuple[str, dict[str, str]]:
         """Return (anonymized_context_str, deanon_map).
 
@@ -493,12 +497,37 @@ class AnonymizationService:
                     .order_by(PeiKanbanCard.updated_at.desc())
                     .limit(30)
                 )
-                for card in kanban_result.scalars().all():
+                cards = kanban_result.scalars().all()
+                skills = {}
+                skill_ids = {c.skill_id for c in cards if c.skill_id}
+                if skill_ids:
+                    rows = await session.execute(
+                        select(BnccSkill.id, BnccSkill.code, BnccSkill.area, BnccSkill.grade, BnccSkill.description)
+                        .where(BnccSkill.id.in_(skill_ids)))
+                    skills = {i: (c, a, g, d) for i, c, a, g, d in rows.all()}
+                # lançamentos do diário de cada ação (data, o que foi feito, reação do aluno), dentro do período escolhido
+                entries_by_card: dict[str, list[dict]] = {}
+                if cards:
+                    q = select(PeiKanbanEntry).where(PeiKanbanEntry.card_id.in_([c.id for c in cards]))
+                    if kanban_date_from:
+                        q = q.where(PeiKanbanEntry.entry_date >= date_type.fromisoformat(str(kanban_date_from)[:10]))
+                    if kanban_date_to:
+                        q = q.where(PeiKanbanEntry.entry_date <= date_type.fromisoformat(str(kanban_date_to)[:10]))
+                    for e in (await session.execute(q.order_by(PeiKanbanEntry.entry_date.desc()))).scalars().all():
+                        bucket = entries_by_card.setdefault(e.card_id, [])
+                        if len(bucket) < 6:
+                            bucket.append({"data": e.entry_date.isoformat(), "o_que_foi_feito": (e.text or "")[:600] or None,
+                                           "reacao_aluno_1a5": e.reaction})
+                for card in cards:
+                    code, area, grade, desc = skills.get(card.skill_id, (None, None, None, None))
                     kanban_progress_list.append({
                         "titulo": card.title,
-                        "status": card.status,  # todo | doing | done
+                        "status": card.status,  # todo | doing | done | archived
+                        "habilidade_bncc": {"codigo": code, "area": area, "ano": grade, "descricao": desc} if code else None,
+                        "adaptacao": (card.adaptation or "")[:800] or None,
                         "observacao_professor": (card.description or "")[:1500] or None,
                         "reacao_aluno_1a5": card.reaction,
+                        "lancamentos": entries_by_card.get(card.id) or None,
                     })
 
             # ── Relatórios de habilidades BNCC (JSON guardado pela tela Habilidades) ──
