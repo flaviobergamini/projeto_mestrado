@@ -51,7 +51,10 @@ class GenerateFunctionalProfileUseCase:
 
         # O perfil funcional nunca usa a si mesmo como fonte.
         chosen = [s for s in (sources or DEFAULT_SOURCES) if s != "functional_profile"] or DEFAULT_SOURCES
-        context, name_map = await self.ai.build_context(student_id, chosen)
+        context, name_map = await self.ai.build_context(
+            student_id, chosen,
+            kanban_date_from=str(period_start) if period_start else None, kanban_date_to=str(period_end) if period_end else None,
+        )
         prompt = self._prompt(student_id, student.get("school_id"), context, period_start, period_end, notes)
 
         raw: dict = {}

@@ -1,16 +1,15 @@
-"""Plano por habilidade com IA (rodadas 1 e 2). Camada HTTP apenas: a regra fica nos use cases."""
+"""Plano por habilidade com IA (geração de adaptações e resumo). Camada HTTP apenas: a regra fica nos use cases."""
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from dependency_injector.wiring import inject, Provide
 
 from api.dependencies import require_roles
+from core.use_case.skill_plan.prompts import SKILL_PLAN_SETTINGS_KEY, DEFAULT_SKILL_PLAN_LIMITS, LIMIT_RANGE
+from infrastructure.repositories.app_settings_repository import AppSettingsRepository
 from core.kernel.container import Container
 from core.kernel.result import Result
 from core.use_case.skill_plan.generate_skill_plan_draft_use_case import GenerateSkillPlanDraftUseCase
-from core.use_case.skill_plan.suggest_skill_scores_use_case import SuggestSkillScoresUseCase
 from core.use_case.skill_plan.generate_skill_summary_use_case import GenerateSkillSummaryUseCase
-from core.use_case.skill_plan.list_skill_suggestions_use_case import ListSkillSuggestionsUseCase
-from core.use_case.skill_plan.decide_skill_suggestion_use_case import DecideSkillSuggestionUseCase
 
 router = APIRouter(prefix="/skill-plan", tags=["Skill Plan"])
 
@@ -26,9 +25,6 @@ class SkillSummaryBody(BaseModel):
     student_id: str
     skill_id: str
 
-
-class DecideBody(BaseModel):
-    accept: bool
 
 
 def _unwrap(result: Result):
@@ -52,15 +48,46 @@ async def round1(
     return _unwrap(await use_case.execute(body.student_id, current_user))
 
 
-@router.post("/round2")
+PROMPT_MANAGERS = ("admin", "coordenacao")
+
+
+class LimitsBody(BaseModel):
+    max_adaptations: int
+    max_actions: int
+
+
+@router.get("/round1/settings")
 @inject
-async def round2(
-    body: StudentBody,
-    current_user: dict = Depends(require_roles(*WRITERS)),
-    use_case: SuggestSkillScoresUseCase = Depends(Provide[Container.suggest_skill_scores_use_case]),
+async def round1_settings(
+    current_user: dict = Depends(require_roles(*PROMPT_MANAGERS)),
+    repo: AppSettingsRepository = Depends(Provide[Container.app_settings_repository]),
 ):
-    """Rodada 2: sugere mudanças de nota a partir do Kanban (a professora aceita ou recusa)."""
-    return _unwrap(await use_case.execute(body.student_id, current_user))
+    """Limites máximos de adaptações por habilidade e de ações por adaptação na geração da rodada 1."""
+    return await repo.get(SKILL_PLAN_SETTINGS_KEY, DEFAULT_SKILL_PLAN_LIMITS)
+
+
+@router.put("/round1/settings")
+@inject
+async def save_round1_settings(
+    body: LimitsBody,
+    current_user: dict = Depends(require_roles(*PROMPT_MANAGERS)),
+    repo: AppSettingsRepository = Depends(Provide[Container.app_settings_repository]),
+):
+    lo, hi = LIMIT_RANGE
+    if not (lo <= body.max_adaptations <= hi and lo <= body.max_actions <= hi):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Use valores de {lo} a {hi}.")
+    return await repo.set(SKILL_PLAN_SETTINGS_KEY, {"max_adaptations": body.max_adaptations, "max_actions": body.max_actions})
+
+
+@router.get("/round1/preview")
+@inject
+async def round1_preview(
+    student_id: str,
+    current_user: dict = Depends(require_roles(*PROMPT_MANAGERS)),
+    use_case: GenerateSkillPlanDraftUseCase = Depends(Provide[Container.generate_skill_plan_draft_use_case]),
+):
+    """Prévia do que é enviado à IA para um aluno (prompt do sistema + contexto anonimizado + habilidades). Não chama a IA."""
+    return _unwrap(await use_case.preview(student_id))
 
 
 @router.post("/summary")
@@ -72,24 +99,3 @@ async def generate_summary(
 ):
     """Gera o resumo da habilidade com IA (não salva: a professora revisa e grava com o plano)."""
     return _unwrap(await use_case.execute(body.student_id, body.skill_id, current_user))
-
-
-@router.get("/suggestions")
-@inject
-async def list_suggestions(
-    student_id: str,
-    current_user: dict = Depends(require_roles(*READERS)),
-    use_case: ListSkillSuggestionsUseCase = Depends(Provide[Container.list_skill_suggestions_use_case]),
-):
-    return _unwrap(await use_case.execute(student_id))
-
-
-@router.post("/suggestions/{suggestion_id}/decide")
-@inject
-async def decide_suggestion(
-    suggestion_id: str,
-    body: DecideBody,
-    current_user: dict = Depends(require_roles(*WRITERS)),
-    use_case: DecideSkillSuggestionUseCase = Depends(Provide[Container.decide_skill_suggestion_use_case]),
-):
-    return _unwrap(await use_case.execute(suggestion_id, body.accept, current_user))

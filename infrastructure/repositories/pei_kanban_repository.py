@@ -258,11 +258,26 @@ class PeiKanbanRepository(IKanbanRepository):
         return await self._photos(card_id, lambda keys: [k for k in keys if k != object_key])
 
     # ----- nota da habilidade calculada pelo Kanban -----
-    async def sync_skill_score(self, student_id: str, skill_id: str) -> Optional[int]:
-        """nota = ações concluídas / total de ações, em 5 estrelas, arredondando para baixo.
+    @staticmethod
+    async def _baseline_score(session, student_id: str, skill_id: str, current: int) -> int:
+        """Nota de partida: a última marcada pela professora. Sem esse registro, a nota que a habilidade tinha antes da
+        primeira mudança automática do Kanban; sem nenhuma mudança, a nota atual."""
+        events = (await session.execute(
+            select(StudentSkillEvent).where(
+                StudentSkillEvent.student_id == student_id, StudentSkillEvent.skill_id == skill_id,
+                StudentSkillEvent.kind == "score",
+            ).order_by(StudentSkillEvent.created_at.desc())
+        )).scalars().all()
+        for e in events:
+            if e.username != "kanban" and e.new_score is not None:
+                return e.new_score
+        automatic = [e for e in events if e.username == "kanban" and e.old_score is not None]
+        return automatic[-1].old_score if automatic else current
 
-        Só vale depois que a professora marcou pelo menos 1 estrela (nota > 0); a partir daí a nota
-        automática nunca cai abaixo de 1 e a contagem continua. Devolve a nova nota, ou None se não mudou."""
+    async def sync_skill_score(self, student_id: str, skill_id: str) -> Optional[int]:
+        """Estrelas pelas ações concluídas: parte da nota que a professora marcou e reparte as estrelas que faltam
+        até 5 em proporção às ações concluídas (arredondando para baixo). Nunca fica abaixo da nota de partida.
+        Só vale depois que a professora marcou pelo menos 1 estrela. Devolve a nova nota, ou None se não mudou."""
         async with self.database.session() as session:
             row = await session.get(StudentSkillScore, (student_id, skill_id))
             if not row or not (row.score or 0) >= 1:
@@ -275,7 +290,9 @@ class PeiKanbanRepository(IKanbanRepository):
             )).scalars().all()
             if not statuses:
                 return None
-            new = max(1, (5 * sum(1 for s in statuses if s == "done")) // len(statuses))
+            base = max(1, min(5, await self._baseline_score(session, student_id, skill_id, row.score)))
+            done = sum(1 for s in statuses if s == "done")
+            new = base + ((5 - base) * done) // len(statuses)
             if new == row.score:
                 return None
             session.add(StudentSkillEvent(

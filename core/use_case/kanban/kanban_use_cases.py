@@ -2,7 +2,11 @@
 from typing import Optional
 from core.constants.kanban import KANBAN_STATUSES
 from core.kernel.result import Result
+import re
+from datetime import datetime
 from core.interfaces.i_kanban_repository import IKanbanRepository
+from core.interfaces.i_report_pdf_generator import IReportPdfGenerator
+from core.interfaces.i_student_reader import IStudentReader
 from core.services.skill_actions import actor_from_user, card_responsible, owns, own_responsible
 
 NOT_FOUND = "Card não encontrado"
@@ -62,10 +66,12 @@ class UpdateKanbanCardUseCase:
             if changed:
                 return Result.bad_request("Cards ligados a uma habilidade: título, descrição e adaptação vêm do plano e não podem ser alterados aqui.")
             data = {k: v for k, v in data.items() if k not in LOCKED_FIELDS_ON_SKILL_CARDS}
+        old_status = card.get("status")
         updated = await self.repository.update(card_id, data)
         if not updated:
             return Result.not_found(NOT_FOUND)
-        if updated.get("skill_id") and "status" in data:
+        # As estrelas só mudam quando uma ação entra ou sai de "Concluído"; arrastar entre as outras colunas não mexe nelas.
+        if updated.get("skill_id") and "done" in (old_status, updated.get("status")) and old_status != updated.get("status"):
             await self.repository.sync_skill_score(updated["student_id"], updated["skill_id"])
         return Result.ok(updated)
 
@@ -79,7 +85,7 @@ class DeleteKanbanCardUseCase:
         if not card or (user is not None and not owns(card_responsible(card), actor_from_user(user))) \
                 or not await self.repository.delete(card_id):
             return Result.not_found(NOT_FOUND)
-        if card.get("skill_id"):
+        if card.get("skill_id") and card.get("status") == "done":  # só apagar uma ação concluída muda as estrelas
             await self.repository.sync_skill_score(card["student_id"], card["skill_id"])
         return Result.ok(True)
 
@@ -91,9 +97,8 @@ class CreateCardsFromSkillUseCase:
         self.repository = repository
 
     async def execute(self, student_id: str, skill_id: str, created_by: str, only_existing: bool = False) -> Result:
+        # criar/atualizar cards a partir do plano NÃO mexe nas estrelas: elas são da professora
         created = await self.repository.create_from_skill(student_id, skill_id, created_by, only_existing)
-        if created:
-            await self.repository.sync_skill_score(student_id, skill_id)
         return Result.ok(created)
 
 
@@ -136,3 +141,74 @@ class GenerateKanbanCardSummaryUseCase:
             return Result.err("A IA não devolveu texto. Tente novamente.")
         updated = await self.repository.update(card_id, {"summary": self.ai.deanonymize(text, name_map).strip()})
         return Result.ok(updated)
+
+
+def _years(label: Optional[str]) -> set[int]:
+    """Anos que o rótulo de uma habilidade cobre: '3º ao 5º ano' -> {3,4,5}; '5º ano' -> {5}; Infantil -> {0}."""
+    if not label:
+        return set()
+    if label.strip().lower().startswith("infantil"):
+        return {0}
+    nums = [int(n) for n in re.findall(r"\d+", label)]
+    return set(range(nums[0], nums[-1] + 1)) if nums else set()
+
+
+class RenderKanbanReportUseCase:
+    """PDF do Kanban com os mesmos filtros da tela (ano, área) mais colunas e período; o professor só vê os cards dele."""
+
+    def __init__(self, repository: IKanbanRepository, students: IStudentReader, pdf: IReportPdfGenerator) -> None:
+        self.repository = repository
+        self.students = students
+        self.pdf = pdf
+
+    async def execute(self, student_id: str, filters: dict, user: dict) -> Result:
+        student = await self.students.get_by_id(student_id)
+        if not student:
+            return Result.not_found("Aluno não encontrado.")
+        statuses = [s for s in (filters.get("statuses") or []) if s in KANBAN_STATUSES] or ["todo", "doing", "done", "archived"]
+        grades, areas = filters.get("grades") or [], filters.get("areas") or []
+        date_from, date_to = filters.get("date_from") or "", filters.get("date_to") or ""
+        include_entries = bool(filters.get("include_entries"))
+        include_actions = filters.get("include_actions") is not False
+        include_dates = filters.get("include_dates") is not False
+
+        actor = actor_from_user(user)
+        selected = []
+        for c in await self.repository.list_by_student(student_id):
+            if not owns(card_responsible(c), actor):
+                continue
+            column = "doing" if c["status"] == "review" else c["status"]
+            if column not in statuses:
+                continue
+            if grades and not any(_years(g) & _years(c.get("skill_grade")) for g in grades):
+                continue
+            if areas and c.get("skill_area") not in areas:
+                continue
+            day = (c.get("updated_at") or "")[:10]
+            if column in ("done", "archived") and ((date_from and day < date_from) or (date_to and day > date_to)):
+                continue
+            selected.append({**c, "status": column})
+
+        counts = {s: sum(1 for c in selected if c["status"] == s) for s in statuses}
+        grouped: dict[str, dict[str, dict]] = {}
+        for c in selected:
+            if include_entries:
+                entries = await self.repository.list_entries(c["id"])
+                c["entries"] = sorted(
+                    (e for e in entries
+                     if (not date_from or e["entry_date"] >= date_from) and (not date_to or e["entry_date"] <= date_to)),
+                    key=lambda e: e["entry_date"])
+            subject = " · ".join(x for x in (c.get("skill_grade"), c.get("skill_area")) if x) or "Outras ações"
+            code = c.get("skill_code") or ""
+            skill = grouped.setdefault(subject, {}).setdefault(
+                code, {"code": c.get("skill_code"), "description": c.get("skill_description") or "", "cards": []})
+            skill["cards"].append(c)
+
+        groups = [{"subject": subject, "skills": [skills[k] for k in sorted(skills)]}
+                  for subject, skills in sorted(grouped.items(), key=lambda kv: (kv[0] == "Outras ações", kv[0]))]
+        report = {
+            "filters": {"statuses": statuses, "grades": grades, "areas": areas, "date_from": date_from, "date_to": date_to,
+                        "include_entries": include_entries, "include_actions": include_actions, "include_dates": include_dates},
+            "counts": counts, "groups": groups, "generated_at": datetime.now().strftime("%d/%m/%Y %H:%M"),
+        }
+        return Result.ok(self.pdf.kanban_report(report, student.get("name") or "Aluno"))

@@ -1,4 +1,6 @@
 from .municipality import Municipality
+from .role_permission import RolePermission
+from .app_setting import AppSetting
 from .school import School
 from .teacher import Teacher
 from .student import Student
@@ -44,4 +46,6 @@ __all__ = [
     "ObjectStorageFile",
     "DiaryEmbeddingGemini",
     "PdiEmbeddingGemini",
+    "RolePermission",
+    "AppSetting",
 ]

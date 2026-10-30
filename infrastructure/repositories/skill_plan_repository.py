@@ -8,7 +8,7 @@ from core.services.skill_actions import adaptations_as_text, normalize_adaptatio
 from infrastructure.repositories.responsibles import default_responsible, fill_responsibles
 from infrastructure.database_context.database import Database
 from infrastructure.models.bncc import (
-    BnccSkill, StudentSkillScore, StudentSkillEvent, SkillSuggestion,
+    BnccSkill, StudentSkillScore, StudentSkillEvent,
 )
 from infrastructure.models.pei_kanban_card import PeiKanbanCard
 from infrastructure.models.pei_kanban_entry import PeiKanbanEntry
@@ -73,6 +73,8 @@ class SkillPlanRepository(ISkillPlanRepository):
                     row.correlated_codes = json.dumps(d["experience_fields"], ensure_ascii=False)
                     touched = True
                 if touched:
+                    # a IA já trabalhou esta habilidade: desmarca "Trabalhar com a IA" (a professora marca de novo se quiser gerar mais)
+                    row.ai_excluded = True
                     row.plan_ai_at = datetime.utcnow()
                     session.add(StudentSkillEvent(
                         id=str(uuid.uuid4()), student_id=student_id, skill_id=skill_id, kind="ai_plan",
@@ -139,64 +141,3 @@ class SkillPlanRepository(ISkillPlanRepository):
                  "at": e.created_at.isoformat()[:10] if e.created_at else ""} for e in events
             ],
         }
-
-    async def replace_pending_suggestions(self, student_id: str, items: list[dict]) -> list[dict]:
-        """Descarta sugestões pendentes antigas do aluno e grava as novas."""
-        async with self.database.session() as session:
-            old = await session.execute(
-                select(SkillSuggestion).where(SkillSuggestion.student_id == student_id, SkillSuggestion.status == "pending")
-            )
-            for s in old.scalars().all():
-                await session.delete(s)
-            created = []
-            for it in items:
-                s = SkillSuggestion(
-                    id=str(uuid.uuid4()), student_id=student_id, skill_id=it["skill_id"],
-                    current_score=it["current_score"], suggested_score=it["suggested_score"],
-                    reason=it.get("reason"), evidence_card_ids=json.dumps(it.get("evidence_card_ids") or []),
-                )
-                session.add(s)
-                created.append(s)
-            await session.commit()
-        return await self.list_suggestions(student_id)
-
-    async def list_suggestions(self, student_id: str, status: str = "pending") -> list[dict]:
-        async with self.database.session() as session:
-            rows = await session.execute(
-                select(SkillSuggestion, BnccSkill).join(BnccSkill, BnccSkill.id == SkillSuggestion.skill_id)
-                .where(SkillSuggestion.student_id == student_id, SkillSuggestion.status == status)
-                .order_by(SkillSuggestion.created_at.desc())
-            )
-            return [{
-                "id": s.id, "skill_id": s.skill_id, "code": sk.code, "description": sk.description,
-                "current_score": s.current_score, "suggested_score": s.suggested_score, "reason": s.reason,
-                "evidence_card_ids": _codes(s.evidence_card_ids), "status": s.status,
-                "created_at": s.created_at.isoformat() if s.created_at else None,
-            } for s, sk in rows.all()]
-
-    async def decide(self, suggestion_id: str, accept: bool, user: dict) -> Optional[dict]:
-        """A professora decide: aceitar aplica a nova nota (com histórico); recusar só registra."""
-        async with self.database.session() as session:
-            s = await session.get(SkillSuggestion, suggestion_id)
-            if not s or s.status != "pending":
-                return None
-            s.status = "accepted" if accept else "rejected"
-            s.decided_by = user.get("username")
-            s.decided_at = datetime.utcnow()
-            if accept:
-                row = await session.get(StudentSkillScore, (s.student_id, s.skill_id))
-                if not row:
-                    row = StudentSkillScore(student_id=s.student_id, skill_id=s.skill_id, score=0, ai_excluded=False, in_plan=False)
-                    session.add(row)
-                old = row.score or 0
-                row.score = s.suggested_score
-                row.updated_by_user_id = user.get("user_id")
-                row.updated_by_username = user.get("username")
-                if old != row.score:
-                    session.add(StudentSkillEvent(
-                        id=str(uuid.uuid4()), student_id=s.student_id, skill_id=s.skill_id, kind="ai_suggestion",
-                        old_score=old, new_score=row.score, note=s.reason, evidence_card_ids=s.evidence_card_ids,
-                        user_id=user.get("user_id"), username=user.get("username"),
-                    ))
-            await session.commit()
-            return {"id": s.id, "status": s.status}

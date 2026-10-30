@@ -7,13 +7,16 @@ from infrastructure.utils.encryption import EncryptedText
 
 
 class BnccSkill(Base):
-    """Habilidade BNCC (código alfanumérico + descrição), por ano."""
+    """Habilidade BNCC (código alfanumérico + descrição). Um registro por código, ligado a um intervalo de anos."""
     __tablename__ = "bncc_skills"
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     stage: Mapped[str] = mapped_column(String(20), nullable=False)  # infantil | fundamental
     grade: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
-    grade_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    grade_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")  # = grade_from
+    # Anos que a habilidade cobre (0 = Educação Infantil): EF15 = 1 a 5, EF35 = 3 a 5, EF05 = só o 5º. `grade` é o rótulo.
+    grade_from: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=0, server_default="0")
+    grade_to: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=0, server_default="0")
     area: Mapped[str] = mapped_column(String(160), nullable=False)
     code: Mapped[str] = mapped_column(String(40), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)

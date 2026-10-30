@@ -33,7 +33,7 @@ class Repo:
 class Ai:
     called = False
 
-    async def build_context(self, sid, sources):
+    async def build_context(self, sid, sources, **kwargs):
         Ai.called = True
         return "", {}
 

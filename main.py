@@ -18,6 +18,8 @@ from api.prompt_routes import router as prompt_router
 from api.pei_gen_routes import router as pei_gen_router
 from api.municipality_routes import router as municipality_router
 from api.admin_routes import router as admin_router
+from api import permissions_routes
+from api.permissions_routes import router as permissions_router
 from api import ai_usage_routes
 from api.ai_usage_routes import router as ai_usage_router
 from api import links_routes
@@ -54,7 +56,7 @@ container.wire(modules=[
     municipality_routes, admin_routes, ai_usage_routes, links_routes,
     family_routes, diary_summary_routes, metrics_routes, skill_routes,
     pei_kanban_routes, saved_skill_routes, diary_question_routes, bncc_routes,
-    functional_profile_routes, skill_plan_routes,
+    functional_profile_routes, skill_plan_routes, permissions_routes,
 ])
 
 app = FastAPI(
@@ -87,6 +89,7 @@ app.include_router(prompt_router)
 app.include_router(pei_gen_router)
 app.include_router(municipality_router)
 app.include_router(admin_router)
+app.include_router(permissions_router)
 app.include_router(ai_usage_router)
 app.include_router(links_router)
 app.include_router(family_router)
