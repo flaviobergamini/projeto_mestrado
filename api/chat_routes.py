@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from api.student_access import guard_student_scope
 from fastapi.responses import Response
 from dependency_injector.wiring import inject, Provide
 from pydantic import BaseModel
@@ -46,7 +47,7 @@ def _format_history(messages: list[dict], name_map: dict[str, str]) -> str:
         lines.append(f"{who}: {content}")
     return "\n".join(lines)
 
-router = APIRouter(prefix="/chat", tags=["Chat"])
+router = APIRouter(prefix="/chat", tags=["Chat"], dependencies=[Depends(guard_student_scope)])
 
 
 class SendMessageRequest(BaseModel):

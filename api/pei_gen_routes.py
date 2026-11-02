@@ -3,6 +3,7 @@
 import asyncio
 import logging
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from api.student_access import guard_student_scope, guard_record
 from fastapi.responses import Response
 from pydantic import BaseModel
 from typing import Optional
@@ -28,7 +29,7 @@ from infrastructure.utils.llm_guards import (
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/pei-gen", tags=["PEI Generation"])
+router = APIRouter(prefix="/pei-gen", tags=["PEI Generation"], dependencies=[Depends(guard_student_scope), Depends(guard_record('pei_id', Container.generated_pei_repository))])
 
 
 class UpdatePeiTextRequest(BaseModel):

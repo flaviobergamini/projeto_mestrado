@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from api.student_access import guard_student_scope
 from pydantic import BaseModel, Field
 from typing import Optional
 from dependency_injector.wiring import inject, Provide
@@ -7,7 +8,7 @@ from api.dependencies import get_current_user, require_roles
 from core.kernel.container import Container
 from infrastructure.repositories.diary_question_repository import DiaryQuestionRepository, DiaryQuestionError
 
-router = APIRouter(prefix="/diary-questions", tags=["Diary Questions"])
+router = APIRouter(prefix="/diary-questions", tags=["Diary Questions"], dependencies=[Depends(guard_student_scope)])
 
 # Quem pode personalizar as perguntas de um aluno.
 EDITOR_ROLES = ("admin", "secretaria", "coordenacao")
