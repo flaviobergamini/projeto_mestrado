@@ -11,6 +11,7 @@ import uuid
 import httpx
 from datetime import date as _date
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
+from api.student_access import guard_student_scope
 from pydantic import BaseModel
 from typing import Optional
 from dependency_injector.wiring import inject, Provide
@@ -29,7 +30,7 @@ from infrastructure.services.pdf_service import generate_diary_pdf
 from infrastructure.services.storage_service import StorageService
 from fastapi.responses import Response
 
-router = APIRouter(prefix="/family", tags=["Família e Terapia"])
+router = APIRouter(prefix="/family", tags=["Família e Terapia"], dependencies=[Depends(guard_student_scope)])
 
 
 # ── Modelos ──────────────────────────────────────────────────────────────────

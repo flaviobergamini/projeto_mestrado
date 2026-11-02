@@ -1,4 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from api.student_access import guard_student_scope, guard_record, accessible_among
+from infrastructure.database_context.database import Database
 from pydantic import BaseModel
 from typing import Optional
 from dependency_injector.wiring import inject, Provide
@@ -7,7 +9,7 @@ from api.dependencies import get_current_user, get_current_user_read_write
 from core.kernel.container import Container
 from infrastructure.repositories.pdi_repository import PdiRepository
 
-router = APIRouter(prefix="/pdi", tags=["PDI"])
+router = APIRouter(prefix="/pdi", tags=["PDI"], dependencies=[Depends(guard_student_scope), Depends(guard_record('pdi_id', Container.pdi_repository))])
 
 
 class PdiCreate(BaseModel):
@@ -38,8 +40,11 @@ class SubjectsUpsert(BaseModel):
 async def list_pdis(
     current_user: dict = Depends(get_current_user),
     repo: PdiRepository = Depends(Provide[Container.pdi_repository]),
+    database: Database = Depends(Provide[Container.database]),
 ):
-    return await repo.list_all()
+    pdis = await repo.list_all()
+    allowed = await accessible_among(database, current_user, [p.get("student_id") for p in pdis])
+    return [p for p in pdis if p.get("student_id") in allowed]
 
 
 @router.get("/{pdi_id}")

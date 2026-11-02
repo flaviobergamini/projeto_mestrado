@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from api.student_access import guard_student_scope
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from typing import Optional
@@ -9,7 +10,7 @@ from core.kernel.container import Container
 from core.kernel.result import Result
 from core.use_case.bncc import bncc_use_cases as uc
 
-router = APIRouter(prefix="/bncc", tags=["BNCC"])
+router = APIRouter(prefix="/bncc", tags=["BNCC"], dependencies=[Depends(guard_student_scope)])
 
 # Equipe pedagógica: lê (inclui viewer) e escreve notas/relatórios.
 READERS = ("admin", "secretaria", "coordenacao", "professor", "viewer")

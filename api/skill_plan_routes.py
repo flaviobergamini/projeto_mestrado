@@ -1,5 +1,6 @@
 """Plano por habilidade com IA (geração de adaptações e resumo). Camada HTTP apenas: a regra fica nos use cases."""
 from fastapi import APIRouter, Depends, HTTPException, status
+from api.student_access import guard_student_scope
 from pydantic import BaseModel
 from dependency_injector.wiring import inject, Provide
 
@@ -11,7 +12,7 @@ from core.kernel.result import Result
 from core.use_case.skill_plan.generate_skill_plan_draft_use_case import GenerateSkillPlanDraftUseCase
 from core.use_case.skill_plan.generate_skill_summary_use_case import GenerateSkillSummaryUseCase
 
-router = APIRouter(prefix="/skill-plan", tags=["Skill Plan"])
+router = APIRouter(prefix="/skill-plan", tags=["Skill Plan"], dependencies=[Depends(guard_student_scope)])
 
 READERS = ("admin", "secretaria", "coordenacao", "professor", "viewer")
 WRITERS = ("admin", "coordenacao", "professor")

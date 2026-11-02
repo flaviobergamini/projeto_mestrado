@@ -1,5 +1,7 @@
 import asyncio
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from api.student_access import guard_student_scope, guard_record, accessible_among
+from infrastructure.database_context.database import Database
 from pydantic import BaseModel
 from typing import Optional, Any
 from dependency_injector.wiring import inject, Provide
@@ -11,7 +13,7 @@ from infrastructure.repositories.case_study_draft_repository import CaseStudyDra
 from infrastructure.repositories.student_repository import StudentRepository
 from infrastructure.services.rag_service import RagService
 
-router = APIRouter(prefix="/case-studies", tags=["Case Studies"])
+router = APIRouter(prefix="/case-studies", tags=["Case Studies"], dependencies=[Depends(guard_student_scope), Depends(guard_record('case_id', Container.case_study_repository))])
 
 
 class CaseStudyCreate(BaseModel):
@@ -29,8 +31,11 @@ class CaseStudyUpdate(BaseModel):
 async def list_case_studies(
     current_user: dict = Depends(get_current_user),
     repo: CaseStudyRepository = Depends(Provide[Container.case_study_repository]),
+    database: Database = Depends(Provide[Container.database]),
 ):
-    return await repo.list_all()
+    cases = await repo.list_all()
+    allowed = await accessible_among(database, current_user, [c.get("student_id") for c in cases])
+    return [c for c in cases if c.get("student_id") in allowed]
 
 
 @router.get("/{case_id}")
