@@ -5,7 +5,7 @@ from core.constants.demographics import INCOME_BRACKETS
 
 
 class UserRegister(BaseModel):
-    email: EmailStr
+    email: str  # usuário de login: nome simples ou e-mail
     password: str
     full_name: Optional[str] = None
     role: str = "professor"
@@ -68,4 +68,4 @@ class UpdateOwnDemographics(BaseModel):
 
 
 class UpdateOwnEmail(BaseModel):
-    email: EmailStr
+    email: str  # usuário de login: nome simples ou e-mail

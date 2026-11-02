@@ -71,15 +71,14 @@ async def update_user(
         existing = await user_repo.get_by_id(user_id)
         if not existing:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuário não encontrado.")
+        # O login é local: o usuário pode ser um nome simples ("maria") ou um e-mail, exatamente como digitado
         new_email = body.email.strip().lower()
-        if "@" not in new_email:
-            # O Cognito exige e-mail válido como identificador; nome de usuário puro vira "nome@poc.migrado.net"
-            # (o login por nome de usuário continua funcionando, ver find_by_login).
-            new_email = f"{new_email}@poc.migrado.net"
+        if not new_email or any(ch.isspace() for ch in new_email):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Informe o usuário sem espaços.")
         if new_email != existing["username"]:
             other = await user_repo.get_by_username(new_email)
             if other and other["id"] != user_id:
-                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Este e-mail já está em uso por outro usuário")
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Este usuário já está em uso por outra pessoa")
             await user_repo.update_username(user_id, new_email)
 
     links = {k: getattr(body, k) for k in ("municipality_id", "school_id", "school_ids", "teacher_id") if k in body.model_fields_set}
