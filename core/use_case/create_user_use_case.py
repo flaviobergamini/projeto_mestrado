@@ -34,6 +34,22 @@ class CreateUserUseCase:
             if role not in ALL_ROLES:
                 return Result.bad_request(f"Role inválido. Valores aceitos: {', '.join(ALL_ROLES)}")
 
+            # o login é local: usuário simples ou e-mail, guardado em minúsculas e sem espaços (igual ao login e à edição)
+            username = (username or "").strip().lower()
+            if not username or any(ch.isspace() for ch in username):
+                return Result.bad_request("Informe o usuário sem espaços.")
+            if not password:
+                return Result.bad_request("Informe a senha.")
+
+            # vínculos que definem o que o usuário enxerga (secretaria: município; coordenação: escola; professor: o cadastro de docente)
+            has_school = bool(school_id or school_ids)
+            if role in ("secretaria", "coordenacao", "professor") and not municipality_id:
+                return Result.bad_request("Selecione o município para este perfil.")
+            if role in ("coordenacao", "professor") and not has_school:
+                return Result.bad_request("Selecione a escola para este perfil.")
+            if role == "professor" and not teacher_id:
+                return Result.bad_request("Selecione o professor (cadastro de docente) para este perfil: sem ele o usuário não vê nenhum aluno.")
+
             existing = await self.user_repository.get_by_username(username)
             if existing:
                 return Result.bad_request("Nome de usuário já cadastrado")
