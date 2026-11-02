@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from api.student_access import guard_student_scope, student_scope_condition
 from pydantic import BaseModel
 from typing import Optional
 from dependency_injector.wiring import inject, Provide
@@ -12,7 +13,7 @@ from core.constants.demographics import AUTISM_SUPPORT_LEVELS
 from infrastructure.repositories.student_repository import StudentRepository
 from infrastructure.models.school import School
 
-router = APIRouter(prefix="/students", tags=["Students"])
+router = APIRouter(prefix="/students", tags=["Students"], dependencies=[Depends(guard_student_scope)])
 
 
 def _validate_support_level(v: Optional[str]) -> Optional[str]:
@@ -70,13 +71,8 @@ async def list_students(
     current_user: dict = Depends(get_current_user),
     repo: StudentRepository = Depends(Provide[Container.student_repository]),
 ):
-    restricted = current_user["role"] not in ("admin", "secretaria", "pesquisador")
-    if school_id:
-        return await repo.list_all(school_id=school_id)
-    user_schools = current_user.get("school_ids", [])
-    if restricted and user_schools:
-        return await repo.list_all(school_ids=user_schools)
-    return await repo.list_all()
+    """Só os alunos que o usuário pode ver: o professor, os seus; a coordenação, os da escola; a secretaria, os do município."""
+    return await repo.list_all(school_id=school_id, scope=student_scope_condition(current_user))
 
 
 @router.get("/{student_id}")

@@ -3,6 +3,7 @@ import asyncio
 import uuid
 from datetime import date
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
+from api.student_access import guard_student_scope
 from pydantic import BaseModel, Field
 from typing import Optional
 from dependency_injector.wiring import inject, Provide
@@ -15,7 +16,7 @@ from core.services.skill_actions import actor_from_user, card_responsible, owns
 from infrastructure.services.storage_service import StorageService
 from infrastructure.utils.image_compression import compress_image, InvalidImageError
 
-router = APIRouter(prefix="/pei-kanban", tags=["PEI Kanban"])
+router = APIRouter(prefix="/pei-kanban", tags=["PEI Kanban"], dependencies=[Depends(guard_student_scope)])
 
 VIEW_ROLES = ("admin", "coordenacao", "professor")
 

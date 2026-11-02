@@ -1,5 +1,6 @@
 """Perfil funcional do aluno. Camada HTTP apenas: a regra fica nos use cases."""
 from fastapi import APIRouter, Depends, HTTPException, status
+from api.student_access import guard_student_scope
 from pydantic import BaseModel, Field
 from typing import Any, Optional
 from dependency_injector.wiring import inject, Provide
@@ -9,7 +10,7 @@ from core.kernel.container import Container
 from core.kernel.result import Result
 from core.use_case.functional_profile import functional_profile_use_cases as uc
 
-router = APIRouter(prefix="/functional-profiles", tags=["Functional Profile"])
+router = APIRouter(prefix="/functional-profiles", tags=["Functional Profile"], dependencies=[Depends(guard_student_scope)])
 
 READERS = ("admin", "coordenacao", "professor", "viewer")
 # Só a coordenação (e o admin) gera, cria, edita e apaga perfis; o professor apenas consulta.

@@ -3,6 +3,8 @@ import asyncio
 import httpx
 from datetime import date as _date
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from api.student_access import guard_student_scope, guard_record, accessible_among
+from infrastructure.database_context.database import Database
 from fastapi.responses import Response
 from pydantic import BaseModel
 from typing import Optional
@@ -23,7 +25,7 @@ from infrastructure.services.rag_service import RagService
 from infrastructure.services.gemini_service import GeminiService
 from infrastructure.services.pdf_service import generate_diary_pdf
 
-router = APIRouter(prefix="/diary", tags=["Diary"])
+router = APIRouter(prefix="/diary", tags=["Diary"], dependencies=[Depends(guard_student_scope), Depends(guard_record('entry_id', Container.diary_repository))])
 
 
 class DiaryEntryCreate(BaseModel):
@@ -130,8 +132,11 @@ async def transcribe_diary_audio(
 async def list_students_with_diary(
     current_user: dict = Depends(get_current_user),
     repo: DiaryRepository = Depends(Provide[Container.diary_repository]),
+    database: Database = Depends(Provide[Container.database]),
 ):
-    return await repo.list_students_with_diary()
+    rows = await repo.list_students_with_diary()
+    allowed = await accessible_among(database, current_user, [r["student_id"] for r in rows])
+    return [r for r in rows if r["student_id"] in allowed]
 
 
 @router.get("/student/{student_id}/teachers")

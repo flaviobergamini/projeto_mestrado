@@ -1,6 +1,7 @@
 import asyncio
 from datetime import date as _date
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from api.student_access import guard_student_scope, student_scope_condition
 from dependency_injector.wiring import inject, Provide
 from pydantic import BaseModel
 from typing import Optional
@@ -17,7 +18,7 @@ from infrastructure.repositories.ai_usage_repository import AiUsageRepository
 from infrastructure.repositories.parent_student_link_repository import ParentStudentLinkRepository
 from infrastructure.services.gemini_service import GeminiService
 
-router = APIRouter(prefix="/diary-summary", tags=["Resumo Diário"])
+router = APIRouter(prefix="/diary-summary", tags=["Resumo Diário"], dependencies=[Depends(guard_student_scope)])
 
 
 class EntryRef(BaseModel):
@@ -85,7 +86,7 @@ async def list_students_with_entries(
     if not student_ids:
         return []
 
-    all_students = await student_repo.list_all()
+    all_students = await student_repo.list_all(scope=student_scope_condition(current_user))
     students_by_id = {s["id"]: s for s in all_students if s["id"] in student_ids}
 
     result = []

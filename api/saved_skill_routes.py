@@ -9,6 +9,7 @@ from typing import Optional
 
 from dependency_injector.wiring import inject, Provide
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from api.student_access import guard_student_scope
 from fastapi.responses import Response
 from pydantic import BaseModel, field_validator
 
@@ -19,7 +20,7 @@ from infrastructure.repositories.skill_repository import SkillRepository
 from infrastructure.repositories.student_repository import StudentRepository
 from infrastructure.services.pdf_service import generate_skill_result_pdf
 
-router = APIRouter(prefix="/saved-skills", tags=["Saved Skill Results"])
+router = APIRouter(prefix="/saved-skills", tags=["Saved Skill Results"], dependencies=[Depends(guard_student_scope)])
 
 # Mesmos roles que acessam a página de Chat/Skills
 VIEW_ROLES = ("admin", "coordenacao", "professor")
