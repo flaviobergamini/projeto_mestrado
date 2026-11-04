@@ -1,6 +1,7 @@
 """Professores responsáveis: a hierarquia de cada aluno (responsável 1, 2, 3...) e o preenchimento dos nomes."""
 from typing import Optional
 from sqlalchemy import select
+from core.services.skill_actions import responsibles_of, with_responsibles
 from infrastructure.models.teacher import Teacher
 from infrastructure.models.teacher_student_link import TeacherStudentLink
 from infrastructure.models.user_profile import UserProfile
@@ -41,18 +42,16 @@ async def default_responsible(session, student_id: str) -> Optional[dict]:
 
 async def fill_responsibles(session, groups: list[dict]) -> list[dict]:
     """Completa nome e usuário dos responsáveis que chegaram só com o teacher_id (troca feita pela coordenação)."""
-    need = {g["responsible"]["teacher_id"] for g in groups
-            if g.get("responsible") and g["responsible"].get("teacher_id") and not g["responsible"].get("name")}
+    need = {r["teacher_id"] for g in groups for r in responsibles_of(g) if r.get("teacher_id") and not r.get("name")}
     if not need:
         return groups
     teachers = {t.id: t for t in (await session.execute(select(Teacher).where(Teacher.id.in_(need)))).scalars().all()}
     users = await _users_by_teacher(session, list(need))
-    out = []
-    for g in groups:
-        r = g.get("responsible")
-        if r and r.get("teacher_id") in need:
+
+    def filled(r: dict) -> dict:
+        if r.get("teacher_id") in need:
             t = teachers.get(r["teacher_id"])
-            r = {"teacher_id": r["teacher_id"], "user_id": users.get(r["teacher_id"]), "name": t.name if t else None}
-            g = {**g, "responsible": r}
-        out.append(g)
-    return out
+            return {"teacher_id": r["teacher_id"], "user_id": users.get(r["teacher_id"]), "name": t.name if t else None}
+        return r
+
+    return [with_responsibles(g, [filled(r) for r in responsibles_of(g)]) for g in groups]

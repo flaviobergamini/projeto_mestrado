@@ -6,7 +6,7 @@ class ILinksRepository(ABC):
 
     @abstractmethod
     async def list_students_with_links(
-        self, page: int = 1, page_size: int = 20, name_filter: Optional[str] = None,
+        self, page: int = 1, page_size: int = 20, name_filter: Optional[str] = None, scope=None,
     ) -> dict:
         ...
 

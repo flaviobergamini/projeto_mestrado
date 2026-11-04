@@ -44,7 +44,8 @@ class AdaptationItem(BaseModel):
     id: str = Field("", max_length=64)
     adaptation: str = Field("", max_length=2000)
     justification: str = Field("", max_length=2000)
-    responsible: Optional[ResponsibleItem] = None  # só a coordenação consegue trocar
+    responsible: Optional[ResponsibleItem] = None  # formato antigo: o primeiro de `responsibles`
+    responsibles: Optional[list[ResponsibleItem]] = None  # só a coordenação consegue trocar
     actions: list[ActionItem] = []
 
 

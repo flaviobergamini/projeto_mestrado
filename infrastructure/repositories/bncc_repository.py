@@ -6,7 +6,7 @@ from typing import Optional
 from sqlalchemy import select, func, or_, and_
 from core.interfaces.i_bncc_repository import IBnccRepository, BnccError
 from core.services.skill_actions import (
-    normalize_adaptations, dump_adaptations, merge_adaptations, actor_from_user, owns, is_coordinator,
+    normalize_adaptations, dump_adaptations, merge_adaptations, actor_from_user, owns, is_coordinator, responsibles_of,
 )
 from infrastructure.repositories.responsibles import default_responsible, fill_responsibles
 from infrastructure.database_context.database import Database
@@ -42,7 +42,7 @@ def _plan_dict(row: Optional[StudentSkillScore], actor: Optional[dict] = None) -
         "justification": (row.justification or "") if row else "",
         # `editable`: o usuário logado é o responsável (ou da coordenação) e pode alterar esta adaptação
         "adaptations": [
-            {**g, "editable": owns(g.get("responsible"), actor) if actor else True}
+            {**g, "editable": owns(responsibles_of(g), actor) if actor else True}
             for g in (normalize_adaptations(row.actions) if row else [])
         ],
         "can_assign_responsible": is_coordinator(actor) if actor else False,

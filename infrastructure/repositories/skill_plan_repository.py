@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Optional
 from sqlalchemy import select
 from core.interfaces.i_skill_plan_repository import ISkillPlanRepository
-from core.services.skill_actions import adaptations_as_text, normalize_adaptations, dump_adaptations, actor_from_user, own_responsible
+from core.services.skill_actions import adaptations_as_text, normalize_adaptations, dump_adaptations, actor_from_user, own_responsible, with_responsibles
 from infrastructure.repositories.responsibles import default_responsible, fill_responsibles
 from infrastructure.database_context.database import Database
 from infrastructure.models.bncc import (
@@ -66,7 +66,7 @@ class SkillPlanRepository(ISkillPlanRepository):
                     # quem clicou em gerar é o responsável pelas adaptações novas (professor logado); se for a coordenação,
                     # o responsável 1 do aluno
                     owner = own_responsible(actor_from_user(user)) or await default_responsible(session, student_id)
-                    new = await fill_responsibles(session, [{**g, "responsible": owner} for g in new])
+                    new = await fill_responsibles(session, [with_responsibles(g, [owner] if owner else []) for g in new])
                     row.actions = dump_adaptations(normalize_adaptations(row.actions) + new)
                     touched = True
                 if not _codes(row.correlated_codes) and d.get("experience_fields"):

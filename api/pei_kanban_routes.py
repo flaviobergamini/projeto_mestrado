@@ -36,6 +36,7 @@ class KanbanCardUpdate(BaseModel):
     adaptation: Optional[str] = None
     daily_log: Optional[str] = None
     summary: Optional[str] = None
+    worked_days: Optional[list[str]] = None
     position: Optional[int] = None
 
 

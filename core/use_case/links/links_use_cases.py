@@ -7,8 +7,8 @@ class ListStudentsWithLinksUseCase:
     def __init__(self, repository: ILinksRepository) -> None:
         self.repository = repository
 
-    async def execute(self, page: int, page_size: int, name: str | None) -> Result:
-        return Result.ok(await self.repository.list_students_with_links(page=page, page_size=page_size, name_filter=name))
+    async def execute(self, page: int, page_size: int, name: str | None, scope=None) -> Result:
+        return Result.ok(await self.repository.list_students_with_links(page=page, page_size=page_size, name_filter=name, scope=scope))
 
 
 class ListLinkableTeachersUseCase:
