@@ -36,6 +36,7 @@ def _to_dict(c: PeiKanbanCard) -> dict:
         "adaptation": c.adaptation,
         "daily_log": c.daily_log,
         "summary": c.summary,
+        "worked_days": _codes(c.worked_days),
         "responsible_teacher_id": c.responsible_teacher_id,
         "responsible_user_id": c.responsible_user_id,
         "responsible_name": c.responsible_name,
@@ -160,6 +161,8 @@ class PeiKanbanRepository(IKanbanRepository):
             for field in ("status", "title", "description", "reaction", "position", "adaptation", "daily_log", "summary"):
                 if field in data:
                     setattr(card, field, data[field])
+            if "worked_days" in data:
+                card.worked_days = json.dumps(data["worked_days"])
             if data.get("status") == KANBAN_REVIEW_STATUS and not card.reviewed_at:
                 card.reviewed_at = datetime.utcnow()
             await session.commit()
