@@ -25,9 +25,11 @@ class PeiKanbanCard(Base):
     skill_id: Mapped[Optional[str]] = mapped_column(String(64), ForeignKey("bncc_skills.id", ondelete="SET NULL"), nullable=True, index=True)
     adaptation: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     daily_log: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # diário da ação (texto livre)
+    worked_days: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON list: dias da semana trabalhados (mon..fri)
     summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # resumo da IA sobre a execução da ação
     action_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)  # id estável do conjunto no plano da habilidade
     responsible_teacher_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)  # professor responsável pela adaptação
+    responsibles: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON list [{teacher_id, user_id, name}]; as colunas responsible_* guardam o primeiro
     responsible_user_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     responsible_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     photos: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON list de object keys no storage

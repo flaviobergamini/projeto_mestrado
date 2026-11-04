@@ -12,6 +12,8 @@ from core.services.skill_actions import actor_from_user, card_responsible, owns,
 NOT_FOUND = "Card não encontrado"
 # Em cards ligados a uma habilidade, o que veio do plano (ação, descrição e adaptação) não pode ser alterado.
 LOCKED_FIELDS_ON_SKILL_CARDS = ("title", "description", "adaptation")
+WEEKDAYS = ("mon", "tue", "wed", "thu", "fri")
+EDITABLE_DAYS_STATUSES = ("doing", "review")  # "review" aparece na coluna Fazendo
 
 
 def _invalid_status(status: Optional[str]) -> Optional[str]:
@@ -61,6 +63,13 @@ class UpdateKanbanCardUseCase:
         card = await self.repository.get(card_id)
         if not card or (user is not None and not owns(card_responsible(card), actor_from_user(user))):
             return Result.not_found(NOT_FOUND)  # card de outro professor: para este usuário ele não existe
+        if data.get("worked_days") is not None:
+            days = data["worked_days"]
+            if any(d not in WEEKDAYS for d in days):
+                return Result.bad_request(f"worked_days deve conter apenas: {WEEKDAYS}")
+            if card.get("status") not in EDITABLE_DAYS_STATUSES:
+                return Result.bad_request("Os dias trabalhados só podem ser alterados na coluna Fazendo.")
+            data = {**data, "worked_days": [d for d in WEEKDAYS if d in days]}
         if card.get("skill_id"):
             changed = [f for f in LOCKED_FIELDS_ON_SKILL_CARDS if f in data and (data[f] or "") != (card.get(f) or "")]
             if changed:

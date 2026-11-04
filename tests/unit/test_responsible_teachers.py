@@ -41,7 +41,7 @@ def test_teacher_cannot_edit_delete_or_reassign_others_adaptations():
 def test_only_coordination_changes_the_responsible():
     stored = [_g("g1", "da Ana", R_ANA)]
     out = merge_adaptations(stored, [{**stored[0], "responsible": {"teacher_id": "t-bia"}}], actor_from_user(COORD), DEFAULT)
-    assert out[0]["responsible"] == {"teacher_id": "t-bia"}      # o nome é preenchido depois, no repositório
+    assert out[0]["responsible"]["teacher_id"] == "t-bia"      # o nome é preenchido depois, no repositório
     assert merge_adaptations(stored, [], actor_from_user(COORD), DEFAULT) == []  # coordenação também apaga
 
 
@@ -91,3 +91,16 @@ def test_teacher_cannot_update_someone_elses_card():
     assert res.is_not_found and repo.updated is None
     assert asyncio.run(UpdateKanbanCardUseCase(repo).execute("a", {"daily_log": "oi"}, ANA)).is_ok
     assert asyncio.run(UpdateKanbanCardUseCase(repo).execute("b", {"daily_log": "ok"}, COORD)).is_ok
+
+
+def test_adaptation_with_several_responsibles():
+    both = [R_ANA, R_BIA]
+    g = normalize_adaptations([{"adaptation": "a", "actions": ["x"], "responsibles": both}])[0]
+    assert g["responsibles"] == both and g["responsible"] == R_ANA          # `responsible` = o primeiro
+    assert owns(both, actor_from_user(ANA)) and owns(both, actor_from_user(BIA))   # qualquer um deles é dono
+    assert owns(card_responsible({"responsibles": [R_BIA]}), actor_from_user(BIA))
+    assert not owns(card_responsible({"responsibles": [R_BIA]}), actor_from_user(ANA))
+    out = merge_adaptations([], [{**g, "id": ""}], actor_from_user(COORD), DEFAULT)
+    assert out[0]["responsibles"] == both
+    kept = merge_adaptations([{**g, "id": "g1"}], [{**g, "id": "g1", "responsibles": [R_ANA]}], actor_from_user(ANA), DEFAULT)
+    assert kept[0]["responsibles"] == both                                  # professor não troca os responsáveis

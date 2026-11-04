@@ -22,6 +22,25 @@ def _codes(raw: Optional[str]) -> list[str]:
         return []
 
 
+def _responsibles(c: PeiKanbanCard) -> list[dict]:
+    try:
+        v = json.loads(c.responsibles) if c.responsibles else None
+    except Exception:
+        v = None
+    if isinstance(v, list) and v:
+        return v
+    legacy = {"teacher_id": c.responsible_teacher_id, "user_id": c.responsible_user_id, "name": c.responsible_name}
+    return [legacy] if any(legacy.values()) else []
+
+
+def _resp_columns(responsibles: list[dict]) -> dict:
+    """Colunas do card: o primeiro responsável nas colunas antigas, o nome de todos juntos e a lista completa."""
+    first = responsibles[0] if responsibles else {}
+    return {"responsible_teacher_id": first.get("teacher_id"), "responsible_user_id": first.get("user_id"),
+            "responsible_name": ", ".join(r["name"] for r in responsibles if r.get("name")) or None,
+            "responsibles": json.dumps(responsibles, ensure_ascii=False) if responsibles else None}
+
+
 def _to_dict(c: PeiKanbanCard) -> dict:
     return {
         "id": c.id,
@@ -36,9 +55,11 @@ def _to_dict(c: PeiKanbanCard) -> dict:
         "adaptation": c.adaptation,
         "daily_log": c.daily_log,
         "summary": c.summary,
+        "worked_days": _codes(c.worked_days),
         "responsible_teacher_id": c.responsible_teacher_id,
         "responsible_user_id": c.responsible_user_id,
         "responsible_name": c.responsible_name,
+        "responsibles": _responsibles(c),
         "photos": _codes(c.photos),
         "experience_fields": _codes(c.correlated_codes),
         "score_at_creation": c.score_at_creation,
@@ -160,6 +181,8 @@ class PeiKanbanRepository(IKanbanRepository):
             for field in ("status", "title", "description", "reaction", "position", "adaptation", "daily_log", "summary"):
                 if field in data:
                     setattr(card, field, data[field])
+            if "worked_days" in data:
+                card.worked_days = json.dumps(data["worked_days"])
             if data.get("status") == KANBAN_REVIEW_STATUS and not card.reviewed_at:
                 card.reviewed_at = datetime.utcnow()
             await session.commit()
@@ -212,9 +235,7 @@ class PeiKanbanRepository(IKanbanRepository):
                 description = item["justification"] or (line if len(line) > 255 else None)
                 adaptation = item["adaptation"] or None
                 card = by_action.get(item["id"]) or legacy.pop(title.lower(), None)
-                r = item.get("responsible") or {}
-                resp = {"responsible_teacher_id": r.get("teacher_id"), "responsible_user_id": r.get("user_id"),
-                        "responsible_name": r.get("name")}
+                resp = _resp_columns(item.get("responsibles") or [])
                 if card:
                     values = {"action_id": item["id"], "title": title, "description": description, "adaptation": adaptation,
                               **resp}

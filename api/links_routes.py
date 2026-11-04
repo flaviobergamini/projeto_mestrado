@@ -5,6 +5,7 @@ from typing import Optional
 from dependency_injector.wiring import inject, Provide
 
 from api.dependencies import get_current_user, require_write
+from api.student_access import student_scope_condition
 from core.kernel.container import Container
 from core.kernel.result import Result
 from core.use_case.links.links_use_cases import (
@@ -42,8 +43,8 @@ async def list_students_with_links(
     current_user: dict = Depends(get_current_user),
     use_case: ListStudentsWithLinksUseCase = Depends(Provide[Container.list_students_with_links_use_case]),
 ):
-    """Lista alunos com seus professores vinculados (paginado)."""
-    return _unwrap(await use_case.execute(page, page_size, name))
+    """Lista alunos com seus professores vinculados (paginado). Só os alunos que o usuário pode ver."""
+    return _unwrap(await use_case.execute(page, page_size, name, scope=student_scope_condition(current_user)))
 
 
 @router.get("/teachers")
