@@ -21,6 +21,7 @@ class LinksRepository(ILinksRepository):
         page: int = 1,
         page_size: int = 20,
         name_filter: str | None = None,
+        scope=None,
     ) -> dict:
         async with self._db.session() as session:
             # Load all students with school + teacher_links → teacher
@@ -30,7 +31,7 @@ class LinksRepository(ILinksRepository):
                     selectinload(Student.school),
                     selectinload(Student.teacher_links).selectinload(TeacherStudentLink.teacher),
                 )
-                .where(Student.deleted == False)
+                .where(Student.deleted == False, *([scope] if scope is not None else []))  # escopo do usuário (api/student_access.py)
                 .order_by(Student.name)
             )
             all_students = result.scalars().all()

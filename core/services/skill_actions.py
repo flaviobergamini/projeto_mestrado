@@ -2,8 +2,8 @@
 
     [{"id", "adaptation", "justification", "responsible", "actions": [{"id", "action"}]}]
 
-`responsible` = {teacher_id, user_id, name}: o professor responsável pela adaptação (e, portanto, pelas ações/cards).
-Quem cria a adaptação é o responsável; só a coordenação (e o admin) troca o responsável. Cada professor edita
+`responsibles` = lista de {teacher_id, user_id, name}: os professores responsáveis pela adaptação (e, portanto, pelas
+ações/cards); `responsible` é o primeiro da lista (formato antigo, ainda lido). Quem cria a adaptação é o responsável; só a coordenação (e o admin) troca o responsável. Cada professor edita
 apenas as suas adaptações e vê as dos outros.
 
 Cada ação vira um card no Kanban (o card fica ligado ao `id` da ação, não ao título; por isso editar o texto
@@ -43,6 +43,27 @@ def _clean_responsible(value: Any) -> Optional[dict]:
     return out if any(out.values()) else None
 
 
+def _clean_responsibles(item: dict) -> list[dict]:
+    """Lista de responsáveis sem repetidos; aceita só o campo antigo `responsible`."""
+    raw = item["responsibles"] if item.get("responsibles") is not None else [item.get("responsible")]
+    out, seen = [], set()
+    for value in raw or []:
+        r = _clean_responsible(value)
+        key = r and (r.get("teacher_id") or r.get("user_id") or r.get("name"))
+        if r and key not in seen:
+            seen.add(key)
+            out.append(r)
+    return out
+
+
+def responsibles_of(obj: Optional[dict]) -> list[dict]:
+    return _clean_responsibles(obj) if obj else []
+
+
+def with_responsibles(group: dict, responsibles: list[dict]) -> dict:
+    return {**group, "responsibles": responsibles, "responsible": responsibles[0] if responsibles else None}
+
+
 def _clean_group(item: Any) -> Optional[dict]:
     if hasattr(item, "model_dump"):
         item = item.model_dump()
@@ -60,8 +81,8 @@ def _clean_group(item: Any) -> Optional[dict]:
     adaptation, justification = _text(item.get("adaptation"), 2000), _text(item.get("justification"), 2000)
     if not actions and not adaptation and not justification:
         return None
-    return {"id": group_id, "adaptation": adaptation, "justification": justification,
-            "responsible": _clean_responsible(item.get("responsible")), "actions": actions}
+    return with_responsibles({"id": group_id, "adaptation": adaptation, "justification": justification, "actions": actions},
+                             _clean_responsibles(item))
 
 
 def normalize_adaptations(value: Any) -> list[dict]:
@@ -105,7 +126,7 @@ def flatten_actions(groups: list[dict]) -> list[dict]:
     """Uma linha por ação, já com a adaptação e a justificativa dela (o que vira card no Kanban)."""
     return [
         {"id": a["id"], "action": a["action"], "adaptation": g["adaptation"], "justification": g["justification"],
-         "adaptation_id": g["id"], "responsible": g.get("responsible")}
+         "adaptation_id": g["id"], "responsible": g.get("responsible"), "responsibles": responsibles_of(g)}
         for g in groups for a in g["actions"]
     ]
 
@@ -132,12 +153,17 @@ def is_coordinator(actor: dict) -> bool:
     return actor.get("role") in COORDINATOR_ROLES
 
 
-def owns(responsible: Optional[dict], actor: dict) -> bool:
-    """Pode editar/ver como dono? Coordenação sempre; professor só o que é dele. Sem responsável (dado antigo): todos."""
-    if not responsible or is_coordinator(actor):
+def owns(responsible: Any, actor: dict) -> bool:
+    """Pode editar/ver como dono? Coordenação sempre; professor só o que é dele (basta ser UM dos responsáveis).
+    Sem responsável (dado antigo): todos. Aceita um responsável ou uma lista."""
+    responsibles = [r for r in (responsible if isinstance(responsible, list) else [responsible]) if r]
+    if not responsibles or is_coordinator(actor):
         return True
-    teacher_id, user_id = responsible.get("teacher_id"), responsible.get("user_id")
-    return bool((teacher_id and teacher_id == actor.get("teacher_id")) or (user_id and user_id == actor.get("user_id")))
+    return any(
+        bool((r.get("teacher_id") and r["teacher_id"] == actor.get("teacher_id"))
+             or (r.get("user_id") and r["user_id"] == actor.get("user_id")))
+        for r in responsibles
+    )
 
 
 def own_responsible(actor: dict) -> Optional[dict]:
@@ -147,10 +173,13 @@ def own_responsible(actor: dict) -> Optional[dict]:
     return {"teacher_id": actor.get("teacher_id"), "user_id": actor.get("user_id"), "name": actor.get("name")}
 
 
-def card_responsible(card: dict) -> Optional[dict]:
+def card_responsible(card: dict) -> list[dict]:
+    """Responsáveis do card: a lista nova ou, em card antigo, o responsável único das colunas antigas."""
+    if card.get("responsibles"):
+        return card["responsibles"]
     r = {"teacher_id": card.get("responsible_teacher_id"), "user_id": card.get("responsible_user_id"),
          "name": card.get("responsible_name")}
-    return r if any(r.values()) else None
+    return [r] if any(r.values()) else []
 
 
 def merge_adaptations(stored: list[dict], incoming: list[dict], actor: dict, default: Optional[dict]) -> list[dict]:
@@ -166,16 +195,18 @@ def merge_adaptations(stored: list[dict], incoming: list[dict], actor: dict, def
     for g in incoming:
         old = stored_by_id.get(g["id"]) if g["id"] else None
         if old is None:
-            responsible = (g.get("responsible") if coord else None) or own_responsible(actor) or default
-            result.append({**g, "responsible": responsible})
+            mine = own_responsible(actor)
+            responsibles = (responsibles_of(g) if coord else []) or ([mine] if mine else []) or ([default] if default else [])
+            result.append(with_responsibles(g, responsibles))
             continue
         seen.add(old["id"])
         if coord:
-            result.append({**g, "responsible": g.get("responsible") or old.get("responsible") or default})
-        elif owns(old.get("responsible"), actor):
-            result.append({**g, "responsible": old.get("responsible")})
+            responsibles = responsibles_of(g) or responsibles_of(old) or ([default] if default else [])
+            result.append(with_responsibles(g, responsibles))
+        elif owns(responsibles_of(old), actor):
+            result.append(with_responsibles(g, responsibles_of(old)))
         else:
             result.append(old)  # não é dele: nada muda
     if not coord:  # o professor não consegue apagar adaptações dos outros
-        result.extend(g for g in stored if g["id"] not in seen and not owns(g.get("responsible"), actor))
+        result.extend(g for g in stored if g["id"] not in seen and not owns(responsibles_of(g), actor))
     return result
