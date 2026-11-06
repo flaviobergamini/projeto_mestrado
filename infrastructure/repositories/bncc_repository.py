@@ -12,11 +12,12 @@ from infrastructure.repositories.responsibles import default_responsible, fill_r
 from infrastructure.database_context.database import Database
 from infrastructure.models.bncc import BnccSkill, StudentSkillScore, SkillReport, StudentSkillEvent
 from infrastructure.models.student import Student
+from core.services.bncc_codes import etapa_of, FUNDAMENTAL_1_YEARS
 
 
 def _skill_dict(s: BnccSkill) -> dict:
     return {
-        "id": s.id, "stage": s.stage, "grade": s.grade, "grade_order": s.grade_order,
+        "id": s.id, "stage": s.stage, "etapa": etapa_of(s.stage, s.grade_from), "grade": s.grade, "grade_order": s.grade_order,
         "grade_from": s.grade_from, "grade_to": s.grade_to, "area": s.area, "code": s.code, "description": s.description, "position": s.position,
     }
 
@@ -86,6 +87,7 @@ class BnccRepository(IBnccRepository):
         years = sorted({y for _, _, f, t in rows for y in range(f, t + 1)})
         return [
             {"grade": infantil if y == 0 else f"{y}º ano", "grade_order": y, "stage": "infantil" if y == 0 else "fundamental",
+             "etapa": etapa_of("infantil" if y == 0 else "fundamental", y),
              "count": sum(1 for _, _, f, t in rows if f <= y <= t)}
             for y in years
         ]
@@ -138,8 +140,10 @@ class BnccRepository(IBnccRepository):
                 y_from, y_to = int(data.get("grade_from")), int(data.get("grade_to"))
             except (TypeError, ValueError):
                 raise BnccError("Informe o ano inicial e o ano final.")
-            if not 1 <= y_from <= y_to <= 5:
-                raise BnccError("Os anos devem estar entre 1 e 5, com o ano inicial menor ou igual ao final.")
+            if not 1 <= y_from <= y_to <= 9:
+                raise BnccError("Os anos devem estar entre 1 e 9, com o ano inicial menor ou igual ao final.")
+            if y_from in FUNDAMENTAL_1_YEARS and y_to not in FUNDAMENTAL_1_YEARS:
+                raise BnccError("Uma habilidade não pode cruzar o Fundamental I (1º ao 5º) e o II (6º ao 9º): cadastre o código na etapa a que pertence.")
         clean["grade_from"], clean["grade_to"] = y_from, y_to
         infantil = (await session.execute(
             select(BnccSkill.grade).where(BnccSkill.stage == "infantil", BnccSkill.deleted == False).limit(1)  # noqa: E712
@@ -346,6 +350,15 @@ class BnccRepository(IBnccRepository):
             skill = {"code": it["code"], "description": it["description"], "score": it["score"]}
             if include_obs and it["observation"]:
                 skill["observation"] = it["observation"]
+            # as adaptações do plano da habilidade (com justificativa, ações e professores responsáveis) vão no relatório
+            adaptations = [
+                {"adaptation": g["adaptation"], "justification": g["justification"],
+                 "actions": [a["action"] for a in g["actions"]],
+                 "responsibles": [r["name"] for r in (g.get("responsibles") or []) if r.get("name")]}
+                for g in it.get("adaptations") or [] if g["adaptation"] or g["justification"] or g["actions"]
+            ]
+            if adaptations:
+                skill["adaptations"] = adaptations
             areas_list[-1]["skills"].append(skill)
         content = {
             "version": 1,

@@ -41,6 +41,7 @@ def generate_skill_report_pdf(report: dict, student_name: str) -> bytes:
     small = ParagraphStyle("SmallCell", fontName="Helvetica", fontSize=8.5, leading=11, textColor=TEXT)
     small_b = ParagraphStyle("SmallCellB", parent=small, fontName="Helvetica-Bold")
     muted = ParagraphStyle("MutedCell", parent=small, textColor=MUTED)
+    detail = ParagraphStyle("DetailCell", parent=small, fontSize=8, leading=10.5, leftIndent=8)
 
     story: list = []
     story.extend(_build_header(
@@ -74,6 +75,7 @@ def generate_skill_report_pdf(report: dict, student_name: str) -> bytes:
             if include_obs:
                 head.append(Paragraph("Observação", small_b))
             rows = [head]
+            span_rows: list[int] = []
             for sk in area["skills"]:
                 row = [Paragraph(_escape(sk["code"]), small), Paragraph(_escape(sk["description"]), small),
                        Paragraph(f"{sk['score']}/5", small_b)]
@@ -81,13 +83,24 @@ def generate_skill_report_pdf(report: dict, student_name: str) -> bytes:
                     # relatórios gerados quando o resumo existia guardam "summary"; os demais, a observação
                     row.append(Paragraph(_escape(sk.get("observation") or sk.get("summary", "")), small))
                 rows.append(row)
+                adaptations = sk.get("adaptations") or []
+                if adaptations:  # linha inteira logo abaixo da habilidade, com as adaptações do plano
+                    block = [Paragraph("Adaptações", small_b)]
+                    for n, g in enumerate(adaptations, 1):
+                        who = f" — Responsável: {_escape(', '.join(g['responsibles']))}" if g.get("responsibles") else ""
+                        block.append(Paragraph(f"<b>Adaptação {n}:</b> {_escape(g.get('adaptation') or '—')}{who}", detail))
+                        if g.get("justification"):
+                            block.append(Paragraph(f"<b>Justificativa:</b> {_escape(g['justification'])}", detail))
+                        for action in g.get("actions") or []:
+                            block.append(Paragraph(f"• {_escape(action)}", detail))
+                    rows.append([block] + [""] * (len(head) - 1))
+                    span_rows.append(len(rows) - 1)
             tbl = Table(rows, colWidths=widths, repeatRows=1)
             tbl.setStyle(TableStyle([
                 ("BACKGROUND", (0, 0), (-1, 0), LIGHT), ("VALIGN", (0, 0), (-1, -1), "TOP"),
                 ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#bdbdbd")),
                 ("TOPPADDING", (0, 0), (-1, -1), 3), ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#fafafa")]),
-            ]))
+            ] + [cmd for r in span_rows for cmd in (("SPAN", (0, r), (-1, r)), ("BACKGROUND", (0, r), (-1, r), colors.HexColor("#f5f7fb")))]))
             story.append(tbl)
             story.append(Spacer(1, 4))
 

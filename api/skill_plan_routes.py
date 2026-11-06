@@ -84,7 +84,7 @@ async def save_round1_settings(
 @inject
 async def round1_preview(
     student_id: str,
-    current_user: dict = Depends(require_roles(*PROMPT_MANAGERS)),
+    current_user: dict = Depends(require_roles(*WRITERS)),  # quem gera as adaptações também vê o que a IA recebe
     use_case: GenerateSkillPlanDraftUseCase = Depends(Provide[Container.generate_skill_plan_draft_use_case]),
 ):
     """Prévia do que é enviado à IA para um aluno (prompt do sistema + contexto anonimizado + habilidades). Não chama a IA."""

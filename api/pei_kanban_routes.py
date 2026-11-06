@@ -121,7 +121,9 @@ class KanbanReportBody(BaseModel):
     areas: list[str] = []
     date_from: Optional[str] = None   # AAAA-MM-DD; vale para Concluído e Arquivado (e para os lançamentos)
     date_to: Optional[str] = None
-    include_entries: bool = False     # incluir os lançamentos do diário de cada ação
+    teacher: Optional[str] = None     # professor responsável escolhido (teacher_id, ou o nome quando não há id)
+    teacher_name: Optional[str] = None
+    include_entries: bool = True      # incluir os lançamentos do diário de cada ação
     include_actions: bool = True      # False = só o resumo (contagem por coluna) de cada habilidade, sem listar as ações
     include_dates: bool = True        # False = sem as datas (atualização das ações e dos lançamentos)
 
