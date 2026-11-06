@@ -177,7 +177,8 @@ class RenderKanbanReportUseCase:
         statuses = [s for s in (filters.get("statuses") or []) if s in KANBAN_STATUSES] or ["todo", "doing", "done", "archived"]
         grades, areas = filters.get("grades") or [], filters.get("areas") or []
         date_from, date_to = filters.get("date_from") or "", filters.get("date_to") or ""
-        include_entries = bool(filters.get("include_entries"))
+        include_entries = filters.get("include_entries") is not False
+        teacher, teacher_name = filters.get("teacher") or "", filters.get("teacher_name") or ""
         include_actions = filters.get("include_actions") is not False
         include_dates = filters.get("include_dates") is not False
 
@@ -185,6 +186,8 @@ class RenderKanbanReportUseCase:
         selected = []
         for c in await self.repository.list_by_student(student_id):
             if not owns(card_responsible(c), actor):
+                continue
+            if teacher and not any(teacher in (r.get("teacher_id"), r.get("name")) for r in card_responsible(c)):
                 continue
             column = "doing" if c["status"] == "review" else c["status"]
             if column not in statuses:
@@ -213,11 +216,15 @@ class RenderKanbanReportUseCase:
                 code, {"code": c.get("skill_code"), "description": c.get("skill_description") or "", "cards": []})
             skill["cards"].append(c)
 
+        # a mesma lista por coluna (A fazer, Fazendo, Concluído, Arquivado), ordenada por ano, área e habilidade: é o que o PDF imprime
+        order = lambda c: (c.get("skill_grade") or "~", c.get("skill_area") or "~", c.get("skill_code") or "~", c["title"])  # noqa: E731
+        columns = {s: sorted((c for c in selected if c["status"] == s), key=order) for s in statuses}
         groups = [{"subject": subject, "skills": [skills[k] for k in sorted(skills)]}
                   for subject, skills in sorted(grouped.items(), key=lambda kv: (kv[0] == "Outras ações", kv[0]))]
         report = {
             "filters": {"statuses": statuses, "grades": grades, "areas": areas, "date_from": date_from, "date_to": date_to,
-                        "include_entries": include_entries, "include_actions": include_actions, "include_dates": include_dates},
-            "counts": counts, "groups": groups, "generated_at": datetime.now().strftime("%d/%m/%Y %H:%M"),
+                        "include_entries": include_entries, "include_actions": include_actions, "include_dates": include_dates,
+                        "teacher": teacher, "teacher_name": teacher_name},
+            "counts": counts, "groups": groups, "columns": columns, "generated_at": datetime.now().strftime("%d/%m/%Y %H:%M"),
         }
         return Result.ok(self.pdf.kanban_report(report, student.get("name") or "Aluno"))

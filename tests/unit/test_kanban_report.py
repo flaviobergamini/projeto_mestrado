@@ -77,3 +77,17 @@ def test_real_pdf_renders():
     from infrastructure.services.kanban_report_pdf import generate_kanban_report_pdf
     _, pdf = run(CARDS, {"include_entries": True})
     assert generate_kanban_report_pdf(pdf.report, "Aluno Teste")[:4] == b"%PDF"
+
+
+def test_report_is_split_by_column_with_teacher_and_entries(tmp_path):
+    from infrastructure.services.kanban_report_pdf import generate_kanban_report_pdf
+    _, pdf = run(CARDS, {"teacher": "t1", "teacher_name": "Ana"})
+    assert list(pdf.report["columns"]) == ["todo", "doing", "done", "archived"]
+    assert [c["id"] for c in pdf.report["columns"]["done"]] == ["2", "3"]
+    assert pdf.report["filters"]["teacher_name"] == "Ana" and pdf.report["filters"]["include_entries"] is True
+    assert all(c["entries"] for c in pdf.report["columns"]["done"])  # diários entram por padrão
+    _, other = run(CARDS, {"teacher": "t9"})
+    assert other.report["counts"] == {"todo": 0, "doing": 0, "done": 0, "archived": 0}
+    assert generate_kanban_report_pdf(pdf.report, "Aluno")[:4] == b"%PDF"
+    only_summary = {**pdf.report, "filters": {**pdf.report["filters"], "include_actions": False}}
+    assert generate_kanban_report_pdf(only_summary, "Aluno")[:4] == b"%PDF"
