@@ -21,8 +21,8 @@ CATALOG_EDITORS = ("admin", "secretaria", "coordenacao")
 
 class SkillBody(BaseModel):
     stage: str = "fundamental"
-    grade_from: int = Field(0, ge=0, le=5)  # ano inicial (Infantil ignora): EF15 = 1 a 5
-    grade_to: int = Field(0, ge=0, le=5)    # ano final
+    grade_from: int = Field(0, ge=0, le=9)  # ano inicial (Infantil ignora): EF15 = 1 a 5, EF69 = 6 a 9
+    grade_to: int = Field(0, ge=0, le=9)    # ano final
     area: str = Field(max_length=160)
     code: str = Field(max_length=40)
     description: str
