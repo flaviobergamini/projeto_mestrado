@@ -65,6 +65,8 @@ app = FastAPI(
     description="API para o Mestrado",
 )
 
+app.state.container = container  # usado por api.student_access.guard_record
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
