@@ -97,17 +97,19 @@ async def guard_student_scope(
 
 def guard_record(param: str, repository_provider):
     """Dependência de rota para rotas com id de um REGISTRO (entrada de diário, estudo de caso, PDI, PEI salvo):
-    busca o registro e confere se o aluno dele é do usuário. Registro inexistente passa (o handler devolve 404)."""
-    @inject
-    async def _guard(
-        request: Request,
-        current_user: dict = Depends(get_current_user),
-        database: Database = Depends(Provide[Container.database]),
-        repo=Depends(Provide[repository_provider]),
-    ) -> None:
+    busca o registro e confere se o aluno dele é do usuário. Registro inexistente passa (o handler devolve 404).
+
+    O repositório é pedido ao container da aplicação (`app.state.container`) na hora da requisição: a dependência é
+    criada dentro desta função, e o `container.wire` só injeta `Provide[...]` em funções de nível de módulo (por isso nada de `@inject` aqui)."""
+    provider_name = next(name for name, p in Container.providers.items() if p is repository_provider)
+
+    async def _guard(request: Request, current_user: dict = Depends(get_current_user)) -> None:
         record_id = request.path_params.get(param)
         if not record_id:
             return
+        container = request.app.state.container
+        database = container.database()
+        repo = getattr(container, provider_name)()
         record = await repo.get_by_id(record_id)
         if record:
             await ensure_student_access(database, current_user, record.get("student_id"))
