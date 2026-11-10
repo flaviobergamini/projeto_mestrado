@@ -146,7 +146,9 @@ async def get_linked_teachers(
     current_user: dict = Depends(get_current_user),
     repo: DiaryRepository = Depends(Provide[Container.diary_repository]),
 ):
-    """Returns teacher names linked to the student (for the diary form)."""
+    """Nomes dos professores vinculados ao aluno (formulário do diário). O professor vê só o próprio nome."""
+    if current_user.get("role") == "professor" and current_user.get("teacher_id"):
+        return await repo.get_linked_teachers(student_id, only_teacher_id=current_user["teacher_id"])
     return await repo.get_linked_teachers(student_id)
 
 

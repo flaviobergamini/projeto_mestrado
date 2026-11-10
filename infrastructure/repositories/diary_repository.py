@@ -226,8 +226,8 @@ class DiaryRepository:
 
             return True
 
-    async def get_linked_teachers(self, student_id: str) -> list[str]:
-        """Returns list of teacher names linked to the given student."""
+    async def get_linked_teachers(self, student_id: str, only_teacher_id: Optional[str] = None) -> list[str]:
+        """Nomes dos professores vinculados ao aluno; `only_teacher_id` restringe a esse professor (o próprio usuário)."""
         async with self.database.session() as session:
             stmt = (
                 select(Teacher.name)
@@ -235,6 +235,8 @@ class DiaryRepository:
                 .where(TeacherStudentLink.student_id == student_id)
                 .order_by(Teacher.name)
             )
+            if only_teacher_id:
+                stmt = stmt.where(Teacher.id == only_teacher_id)
 
             result = await session.execute(stmt)
 
