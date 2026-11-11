@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from typing import Optional
 from dependency_injector.wiring import inject, Provide
 
-from api.dependencies import get_current_user, get_current_user_read_write
+from api.dependencies import get_current_user, get_current_user_read_write, require_roles
 from core.kernel.container import Container
 from infrastructure.repositories.diary_repository import DiaryRepository
 from infrastructure.repositories.student_repository import StudentRepository
@@ -244,7 +244,7 @@ async def update_entry(
 @inject
 async def delete_all_for_student(
     student_id: str,
-    current_user: dict = Depends(get_current_user_read_write),
+    current_user: dict = Depends(require_roles("admin")),  # apagar o diário inteiro: só o administrador
     repo: DiaryRepository = Depends(Provide[Container.diary_repository]),
 ):
     await repo.delete_all_for_student(student_id)
