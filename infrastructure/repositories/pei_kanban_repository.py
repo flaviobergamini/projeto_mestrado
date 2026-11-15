@@ -214,6 +214,8 @@ class PeiKanbanRepository(IKanbanRepository):
             groups = normalize_adaptations(row.actions) if row else []
             if not skill or not row or (row.score or 0) >= 5:  # 5 estrelas: habilidade concluída, nada mais muda
                 return []
+            if row.indirect_only:  # "não trabalhar diretamente": sem cards próprios, só aparece como relação
+                return []
             if any(not g["id"] or any(not a["id"] for a in g["actions"]) for g in groups):  # plano antigo: fixa os ids
                 groups = with_ids(groups)
                 row.actions = dump_adaptations(groups)

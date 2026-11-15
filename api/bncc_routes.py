@@ -59,6 +59,7 @@ class ScoreBody(BaseModel):
     experience_fields: Optional[list[str]] = None
     ai_excluded: Optional[bool] = None
     in_plan: Optional[bool] = None
+    indirect_only: Optional[bool] = None
     change_note: Optional[str] = Field(None, max_length=2000)
     evidence_card_ids: Optional[list[str]] = None
 
@@ -189,6 +190,18 @@ async def clear_skill_events(
 ):
     """Limpa a linha do tempo (todos ou só os registros escolhidos) e zera/recalcula a nota. Só admin e coordenação."""
     return _unwrap(await use_case.execute(student_id, skill_id, body.event_ids, body.all))
+
+
+@router.post("/students/{student_id}/skills/{skill_id}/reset-plan")
+@inject
+async def reset_skill_plan(
+    student_id: str,
+    skill_id: str,
+    current_user: dict = Depends(require_roles(*WRITERS)),
+    use_case: uc.ResetSkillPlanUseCase = Depends(Provide[Container.bncc_reset_skill_plan_use_case]),
+):
+    """Reseta o plano da habilidade (só com 0 estrelas): apaga textos, ações, campos de experiência e linha do tempo."""
+    return _unwrap(await use_case.execute(student_id, skill_id))
 
 
 @router.get("/students/{student_id}/skills/{skill_id}/events")

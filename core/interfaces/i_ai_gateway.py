@@ -9,7 +9,8 @@ class IAiGateway(ABC):
 
     @abstractmethod
     async def build_context(self, student_id: str, sources: list[str], kanban_date_from: str | None = None,
-                            kanban_date_to: str | None = None) -> tuple[str, dict[str, str]]:
+                            kanban_date_to: str | None = None,
+                            diary_summary_since: str | None = None) -> tuple[str, dict[str, str]]:
         """Contexto anonimizado do aluno e o mapa id-anônimo → nome real."""
 
     @abstractmethod

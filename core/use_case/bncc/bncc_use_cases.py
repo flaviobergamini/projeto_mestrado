@@ -78,6 +78,17 @@ class ClearSkillEventsUseCase(_BnccUseCase):
         return Result.ok(await self.repository.clear_events(student_id, skill_id, None if clear_all else event_ids))
 
 
+class ResetSkillPlanUseCase(_BnccUseCase):
+    """Zera o plano da habilidade: nota 0, adaptações/justificativa/ações, campos de experiência, resumo, observação
+    e linha do tempo. Só vale com a nota em 0 (estrelas desmarcadas)."""
+
+    async def execute(self, student_id: str, skill_id: str) -> Result:
+        try:
+            return Result.ok(await self.repository.reset_plan(student_id, skill_id))
+        except BnccError as e:
+            return Result.bad_request(str(e))
+
+
 class CreateSkillReportUseCase(_BnccUseCase):
     async def execute(self, student_id: str, filters: dict, user: dict) -> Result:
         try:

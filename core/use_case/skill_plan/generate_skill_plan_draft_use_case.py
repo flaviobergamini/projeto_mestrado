@@ -6,8 +6,9 @@ from core.interfaces.i_ai_gateway import IAiGateway
 from core.interfaces.i_prompt_provider import IPromptProvider
 from core.interfaces.i_skill_plan_repository import ISkillPlanRepository
 from core.interfaces.i_student_reader import IStudentReader
+from datetime import date, timedelta
 from core.use_case.skill_plan.prompts import (
-    ROUND1_SOURCES, SKILL_PLAN_SETTINGS_KEY, DEFAULT_SKILL_PLAN_LIMITS,
+    SKILL_PLAN_SETTINGS_KEY, DEFAULT_SKILL_PLAN_SETTINGS, resolve_round1_settings,
 )
 
 logger = logging.getLogger(__name__)
@@ -33,8 +34,12 @@ class GenerateSkillPlanDraftUseCase:
         if not targets:
             return Result.bad_request("Nenhuma habilidade elegível: precisa ter 'Trabalhar com a IA' marcado e de 1 a 4 estrelas.")
 
-        limits = await self.settings.get(SKILL_PLAN_SETTINGS_KEY, DEFAULT_SKILL_PLAN_LIMITS)
-        context, name_map = await self.ai.build_context(student_id, ROUND1_SOURCES)
+        limits = resolve_round1_settings(await self.settings.get(SKILL_PLAN_SETTINGS_KEY, DEFAULT_SKILL_PLAN_SETTINGS))
+        sources = limits["sources"]
+        extra = {}
+        if "diary_summary" in sources:  # resumos de diário só dos últimos 1, 2 ou 3 meses (configurável)
+            extra["diary_summary_since"] = (date.today() - timedelta(days=30 * limits["diary_summary_months"])).isoformat()
+        context, name_map = await self.ai.build_context(student_id, sources, **extra)
         listing = "\n".join(
             f"- {t['code']} ({t['grade']}, {t['area']}): {t['description']} | nota atual: {t['score']} de 5 estrelas "
             f"(faltam {5 - t['score']} para a habilidade ficar consolidada)"
@@ -49,7 +54,8 @@ class GenerateSkillPlanDraftUseCase:
         )
         prompt = self.ai.reanonymize(prompt, name_map)
         system = await self.prompts.get("skill_plan_round1")
-        return Result.ok({"targets": targets, "limits": limits, "name_map": name_map, "system": system, "prompt": prompt})
+        return Result.ok({"targets": targets, "limits": limits, "name_map": name_map, "system": system, "prompt": prompt,
+                          "sources": sources})
 
     async def preview(self, student_id: str) -> Result:
         """O que seria enviado à IA para este aluno (já anonimizado), sem chamar a IA e sem custo."""
@@ -58,7 +64,7 @@ class GenerateSkillPlanDraftUseCase:
             return built
         v = built.value
         return Result.ok({"system": v["system"], "prompt": v["prompt"], "limits": v["limits"],
-                          "sources": ROUND1_SOURCES, "skills": len(v["targets"])})
+                          "sources": v["sources"], "skills": len(v["targets"])})
 
     async def execute(self, student_id: str, user: dict) -> Result:
         built = await self.build_request(student_id)

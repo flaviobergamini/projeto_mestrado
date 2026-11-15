@@ -48,6 +48,9 @@ class IBnccRepository(ABC):
     @abstractmethod
     async def clear_events(self, student_id: str, skill_id: str, event_ids: Optional[list[str]]) -> dict: ...
 
+    @abstractmethod
+    async def reset_plan(self, student_id: str, skill_id: str) -> dict: ...
+
     # relatórios
     @abstractmethod
     async def create_report(self, student_id: str, filters: dict, user: dict) -> dict: ...
