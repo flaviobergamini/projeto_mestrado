@@ -59,6 +59,7 @@ class ScoreBody(BaseModel):
     experience_fields: Optional[list[str]] = None
     ai_excluded: Optional[bool] = None
     in_plan: Optional[bool] = None
+    indirect_only: Optional[bool] = None
     change_note: Optional[str] = Field(None, max_length=2000)
     evidence_card_ids: Optional[list[str]] = None
 

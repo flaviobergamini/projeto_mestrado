@@ -39,6 +39,7 @@ PATH_KEYS: list[tuple[str, tuple[str, ...]]] = [
     ("/bncc", ("skillsRegistry",)),
     ("/saved-skills", ("skillsRegistry",)),
     ("/skill-plan", ("skillsRegistry",)),
+    ("/skill-relations", ("skillRelations",)),
     ("/skills", ("skillsRegistry",)),
     ("/pdi", ("skillsRegistry",)),
     ("/functional-profiles", ("functionalProfile",)),

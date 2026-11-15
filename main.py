@@ -42,8 +42,9 @@ from api import diary_question_routes
 from api.diary_question_routes import router as diary_question_router
 from api import bncc_routes
 from api.bncc_routes import router as bncc_router
-from api import skill_plan_routes
+from api import skill_plan_routes, skill_relation_routes
 from api.skill_plan_routes import router as skill_plan_router
+from api.skill_relation_routes import router as skill_relation_router
 from api import functional_profile_routes
 from api.functional_profile_routes import router as functional_profile_router
 from api.middleware.audit_middleware import AuditMiddleware
@@ -58,7 +59,7 @@ container.wire(modules=[
     municipality_routes, admin_routes, ai_usage_routes, links_routes,
     family_routes, diary_summary_routes, metrics_routes, skill_routes,
     pei_kanban_routes, saved_skill_routes, diary_question_routes, bncc_routes,
-    functional_profile_routes, skill_plan_routes, permissions_routes, document_routes,
+    functional_profile_routes, skill_plan_routes, permissions_routes, document_routes, skill_relation_routes,
 ])
 
 app = FastAPI(
@@ -106,6 +107,7 @@ app.include_router(saved_skill_router)
 app.include_router(diary_question_router)
 app.include_router(bncc_router)
 app.include_router(skill_plan_router)
+app.include_router(skill_relation_router)
 app.include_router(functional_profile_router)
 
 

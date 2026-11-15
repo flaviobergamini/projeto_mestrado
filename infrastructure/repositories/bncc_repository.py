@@ -49,6 +49,7 @@ def _plan_dict(row: Optional[StudentSkillScore], actor: Optional[dict] = None) -
         "can_assign_responsible": is_coordinator(actor) if actor else False,
         "experience_fields": _load_codes(row.correlated_codes) if row else [],
         "ai_excluded": bool(row.ai_excluded) if row else False,
+        "indirect_only": bool(row.indirect_only) if row else False,
         "in_plan": bool(row.in_plan) if row else False,
         "plan_ai_at": row.plan_ai_at.isoformat() if row and row.plan_ai_at else None,
     }
@@ -261,6 +262,8 @@ class BnccRepository(IBnccRepository):
                 row.correlated_codes = json.dumps(codes, ensure_ascii=False) if codes else None
             if "ai_excluded" in fields and fields["ai_excluded"] is not None:
                 row.ai_excluded = bool(fields["ai_excluded"])
+            if "indirect_only" in fields and fields["indirect_only"] is not None:
+                row.indirect_only = bool(fields["indirect_only"])
             if "in_plan" in fields and fields["in_plan"] is not None:
                 was = bool(row.in_plan)
                 row.in_plan = bool(fields["in_plan"])
