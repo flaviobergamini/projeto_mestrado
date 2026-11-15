@@ -22,6 +22,7 @@ PATH_KEYS: list[tuple[str, tuple[str, ...]]] = [
     ("/prompts", ("aiPrompts",)),
     ("/admin", ("users",)),
     ("/students", ("students",)),
+    ("/documents", ("attachments",)),
     ("/schools", ("schools", "schoolProfile")),  # a tela do questionário da escola grava em /schools/{id}
     ("/municipalities", ("schools",)),
     ("/teachers", ("teachers",)),

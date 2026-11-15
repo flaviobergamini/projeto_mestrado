@@ -32,3 +32,12 @@ def test_longest_prefix_and_shared_routes():
 def test_unmapped_and_exempt_routes_are_free():
     for path in ("/chat/message", "/pei-kanban/report", "/auth/login", "/unknown/thing", "/family/transcribe-audio"):
         assert blocks_write({}, path, "POST") is False
+
+
+def test_documents_follow_the_attachments_screen():
+    assert keys_for_path("/documents/upload") == ("attachments",)
+    levels = {"attachments": "read"}
+    assert blocks_write(levels, "/documents/upload", "POST") is True
+    assert blocks_write(levels, "/documents/abc", "DELETE") is True
+    assert blocks_write(levels, "/documents/students", "GET") is False
+    assert blocks_write({"attachments": "write"}, "/documents/abc/caption", "PATCH") is False

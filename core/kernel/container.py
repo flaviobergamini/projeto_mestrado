@@ -15,6 +15,8 @@ from infrastructure.database_context.database import Database
 from infrastructure.repositories.user_repository import UserRepository
 from infrastructure.repositories.student_repository import StudentRepository
 from infrastructure.repositories.diary_repository import DiaryRepository
+from infrastructure.repositories.student_document_repository import StudentDocumentRepository
+from infrastructure.services.document_ingestion import DocumentIngestionService
 from infrastructure.repositories.pdi_repository import PdiRepository as PdiRepo
 from infrastructure.repositories.school_repository import SchoolRepository
 from infrastructure.repositories.teacher_repository import TeacherRepository
@@ -86,6 +88,7 @@ class Container(containers.DeclarativeContainer):
     student_repository = providers.Factory(StudentRepository, database=database)
 
     diary_repository = providers.Factory(DiaryRepository, database=database)
+    student_document_repository = providers.Factory(StudentDocumentRepository, database=database)
 
     pdi_repository = providers.Factory(PdiRepo, database=database)
 
@@ -204,6 +207,7 @@ class Container(containers.DeclarativeContainer):
         students=student_repository, ai=ai_gateway, prompts=prompt_repository,
     )
 
+    document_ingestion_service = providers.Factory(DocumentIngestionService, database=database, gemini=gemini_service, usage_repo=ai_usage_repository)
     rag_service = providers.Factory(RagService, database=database, gemini=gemini_service, usage_repo=ai_usage_repository, diary_repo=diary_repository, prompts=prompt_repository)
 
     create_user_use_case = providers.Factory(

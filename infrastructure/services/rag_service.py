@@ -442,7 +442,10 @@ class RagService:
     # ── search ────────────────────────────────────────────────────────────────
 
     # Diários não são mais entrada da IA — a busca semântica cobre só o estudo de caso.
-    VALID_SOURCES = {"case_study"}
+    # "student_documents" = trechos anonimizados dos anexos (PDFs): só entram quando a fonte é marcada de propósito,
+    # nunca no padrão "nenhuma fonte escolhida = todas".
+    VALID_SOURCES = {"case_study", "student_documents"}
+    DEFAULT_SOURCES = {"case_study"}
     # fonte do chat → valor de diary_entries.source
     _DIARY_KIND = {"diary": "school", "family_diary": "family", "therapy_diary": "therapy"}
 
@@ -522,6 +525,12 @@ class RagService:
             )
             functional_profile_count = int(functional_profile_result.scalar() or 0)
 
+            documents_result = await session.execute(
+                text("SELECT COUNT(*) FROM student_documents WHERE student_id = :sid AND deleted = false AND status = 'ready'"),
+                {"sid": student_id},
+            )
+            documents_count = int(documents_result.scalar() or 0)
+
             bncc_catalog_result = await session.execute(text("SELECT COUNT(*) FROM bncc_skills WHERE deleted = false"))
             bncc_catalog_count = int(bncc_catalog_result.scalar() or 0)
 
@@ -537,6 +546,7 @@ class RagService:
             "skill_report": {"available": skill_report_count > 0, "count": skill_report_count},
             "functional_profile": {"available": functional_profile_count > 0, "count": functional_profile_count},
             "bncc_catalog": {"available": bncc_catalog_count > 0, "count": bncc_catalog_count},
+            "student_documents": {"available": documents_count > 0, "count": documents_count},
         }
 
     @staticmethod
@@ -565,7 +575,7 @@ class RagService:
         estruturado (anonymization_service) respeitando a data corretamente. Não se aplica
         a estudo de caso, que não tem data.
         """
-        active = set(sources) & self.VALID_SOURCES if sources else self.VALID_SOURCES
+        active = set(sources) & self.VALID_SOURCES if sources else self.DEFAULT_SOURCES
         if not active:
             return []
 
@@ -622,6 +632,15 @@ class RagService:
                 " FROM case_study_embedding_gemini WHERE student_id = :sid"
                 " AND (embedding <=> CAST(:vec AS vector)) < :max_dist"
             )
+        if "student_documents" in active:
+            vec_parts.append(
+                "SELECT c.id, c.content, c.meta_data::text AS meta_json,"
+                " (c.embedding <=> CAST(:vec AS vector)) AS distance,"
+                " 'documento' AS source"
+                " FROM student_document_chunks c JOIN student_documents sd ON sd.id = c.document_id AND sd.deleted = false"
+                " WHERE c.student_id = :sid"
+                " AND (c.embedding <=> CAST(:vec AS vector)) < :max_dist"
+            )
 
         # ── Keyword search (FTS) ──────────────────────────────────────────────
         kw_parts = []
@@ -643,6 +662,15 @@ class RagService:
                 " 'estudo_caso' AS source"
                 " FROM case_study_embedding_gemini WHERE student_id = :sid"
                 " AND to_tsvector('portuguese', content) @@ plainto_tsquery('portuguese', :fts)"
+            )
+        if "student_documents" in active:
+            kw_parts.append(
+                "SELECT c.id, c.content, c.meta_data::text AS meta_json,"
+                " 0.0 AS distance,"
+                " 'documento' AS source"
+                " FROM student_document_chunks c JOIN student_documents sd ON sd.id = c.document_id AND sd.deleted = false"
+                " WHERE c.student_id = :sid"
+                " AND to_tsvector('portuguese', c.content) @@ plainto_tsquery('portuguese', :fts)"
             )
 
         async with self._db.session() as session:
@@ -736,7 +764,11 @@ class RagService:
 
         lines = [f"Registros relevantes (aluno {student_id}, recuperados por similaridade semântica):"]
         for i, chunk in enumerate(chunks, 1):
-            source_label = "Diário" if chunk["source"] == "diario" else "Estudo de Caso"
+            if chunk["source"] == "documento":
+                caption = (chunk.get("meta") or {}).get("caption") or ""
+                source_label = f"Documento anexo — {caption}" if caption else "Documento anexo"
+            else:
+                source_label = "Diário" if chunk["source"] == "diario" else "Estudo de Caso"
             lines.append(f"\n[{i}] {source_label}")
             lines.append(chunk["content"])
         return "\n".join(lines)

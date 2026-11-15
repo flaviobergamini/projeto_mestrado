@@ -9,6 +9,8 @@ from api import (
 from api.auth_routes import router as auth_router
 from api.student_routes import router as student_router
 from api.diary_routes import router as diary_router
+from api import document_routes
+from api.document_routes import router as document_router
 from api.pdi_routes import router as pdi_router
 from api.school_routes import router as school_router
 from api.teacher_routes import router as teacher_router
@@ -56,7 +58,7 @@ container.wire(modules=[
     municipality_routes, admin_routes, ai_usage_routes, links_routes,
     family_routes, diary_summary_routes, metrics_routes, skill_routes,
     pei_kanban_routes, saved_skill_routes, diary_question_routes, bncc_routes,
-    functional_profile_routes, skill_plan_routes, permissions_routes,
+    functional_profile_routes, skill_plan_routes, permissions_routes, document_routes,
 ])
 
 app = FastAPI(
@@ -82,6 +84,7 @@ app.container = container
 app.include_router(auth_router)
 app.include_router(student_router)
 app.include_router(diary_router)
+app.include_router(document_router)
 app.include_router(pdi_router)
 app.include_router(school_router)
 app.include_router(teacher_router)

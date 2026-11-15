@@ -11,6 +11,7 @@ from .diary_question import DiaryQuestion
 from .bncc import BnccSkill, StudentSkillScore, SkillReport
 from .functional_profile import FunctionalProfile
 from .diary_entry import DiaryEntry
+from .student_document import StudentDocument, StudentDocumentChunk
 from .pdi import Pdi
 from .pdi_trimester_subject import PdiTrimesterSubject
 from .user_profile import UserProfile
