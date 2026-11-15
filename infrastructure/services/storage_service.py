@@ -88,6 +88,10 @@ class StorageService:
         except Exception:
             return False
 
+    def download(self, object_key: str) -> bytes:
+        """Baixa o conteúdo do arquivo do storage."""
+        return self._get_client().storage.from_(SUPABASE_BUCKET).download(object_key)
+
     def public_url(self, object_key: str) -> str:
         return f"{SUPABASE_URL}/storage/v1/object/public/{SUPABASE_BUCKET}/{object_key}"
 

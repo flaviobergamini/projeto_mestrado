@@ -99,3 +99,26 @@ def test_invalid_json_is_retried_once():
     repo, ai = Repo([T]), FlakyAi({})
     res = asyncio.run(GenerateSkillPlanDraftUseCase(repo, Students(), ai, Prompts(), Settings()).execute("s1", {}))
     assert res.is_ok and FlakyAi.calls == 2 and repo.applied
+
+
+def test_configured_sources_and_diary_summary_window_are_used():
+    from core.use_case.skill_plan.prompts import resolve_round1_settings, ROUND1_SOURCE_OPTIONS
+
+    # configuração antiga (só limites) cai nas fontes padrão; fonte inválida é descartada
+    assert resolve_round1_settings({"max_adaptations": 2, "max_actions": 2})["sources"] == ROUND1_SOURCES
+    cfg = resolve_round1_settings({"sources": ["student", "lixo", "diary_summary"], "diary_summary_months": 9})
+    assert cfg["sources"] == ["student", "diary_summary"] and cfg["diary_summary_months"] == 1
+    assert set(ROUND1_SOURCE_OPTIONS) >= {"school", "case_study", "diary_summary", "student_documents"}
+
+    class Cfg:
+        async def get(self, key, default):
+            return {**default, "sources": ["student", "student_documents", "diary_summary"], "diary_summary_months": 3}
+
+    class AiSince(Ai):
+        async def build_context(self, sid, sources, diary_summary_since=None):
+            self.since = diary_summary_since
+            return await super().build_context(sid, sources)
+
+    ai = AiSince({"skills": []})
+    res = asyncio.run(GenerateSkillPlanDraftUseCase(Repo([T]), Students(), ai, Prompts(), Cfg()).execute("s1", {"user_id": "u"}))
+    assert res.is_ok and ai.sources == ["student", "student_documents", "diary_summary"] and ai.since

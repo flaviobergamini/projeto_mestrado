@@ -22,6 +22,7 @@ PATH_KEYS: list[tuple[str, tuple[str, ...]]] = [
     ("/prompts", ("aiPrompts",)),
     ("/admin", ("users",)),
     ("/students", ("students",)),
+    ("/documents", ("attachments",)),
     ("/schools", ("schools", "schoolProfile")),  # a tela do questionário da escola grava em /schools/{id}
     ("/municipalities", ("schools",)),
     ("/teachers", ("teachers",)),
@@ -38,6 +39,7 @@ PATH_KEYS: list[tuple[str, tuple[str, ...]]] = [
     ("/bncc", ("skillsRegistry",)),
     ("/saved-skills", ("skillsRegistry",)),
     ("/skill-plan", ("skillsRegistry",)),
+    ("/skill-relations", ("skillRelations",)),
     ("/skills", ("skillsRegistry",)),
     ("/pdi", ("skillsRegistry",)),
     ("/functional-profiles", ("functionalProfile",)),

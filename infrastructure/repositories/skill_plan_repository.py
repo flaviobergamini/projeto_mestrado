@@ -38,6 +38,7 @@ class SkillPlanRepository(ISkillPlanRepository):
                 .where(
                     StudentSkillScore.student_id == student_id,
                     StudentSkillScore.ai_excluded == False, BnccSkill.deleted == False,  # noqa: E712
+                    StudentSkillScore.indirect_only == False,  # noqa: E712  (indiretas só entram como relação)
                     StudentSkillScore.score >= 1, StudentSkillScore.score <= 4,
                 )
                 .order_by(BnccSkill.grade_order, BnccSkill.code)

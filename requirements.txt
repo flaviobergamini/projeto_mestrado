@@ -52,5 +52,8 @@ httpx==0.28.1
 reportlab==4.2.5
 markdown==3.10
 
+# Extração de texto de PDFs anexados (tradicional, sem IA)
+pypdf==7.0.1
+
 # MCP Server
 mcp[cli]>=1.0.0

@@ -15,6 +15,8 @@ from infrastructure.database_context.database import Database
 from infrastructure.repositories.user_repository import UserRepository
 from infrastructure.repositories.student_repository import StudentRepository
 from infrastructure.repositories.diary_repository import DiaryRepository
+from infrastructure.repositories.student_document_repository import StudentDocumentRepository
+from infrastructure.services.document_ingestion import DocumentIngestionService
 from infrastructure.repositories.pdi_repository import PdiRepository as PdiRepo
 from infrastructure.repositories.school_repository import SchoolRepository
 from infrastructure.repositories.teacher_repository import TeacherRepository
@@ -36,6 +38,8 @@ from infrastructure.repositories.skill_repository import SkillRepository
 from infrastructure.repositories.diary_question_repository import DiaryQuestionRepository
 from infrastructure.repositories.bncc_repository import BnccRepository
 from infrastructure.repositories.skill_plan_repository import SkillPlanRepository
+from infrastructure.repositories.skill_relation_repository import SkillRelationRepository
+from core.use_case.skill_relations.skill_relation_use_cases import SkillRelationUseCases, GenerateSkillRelationsUseCase
 from infrastructure.services.ai_gateway import AiGateway
 from core.use_case.kanban import kanban_use_cases as kb_uc
 from core.use_case.functional_profile import functional_profile_use_cases as fp_uc
@@ -86,6 +90,7 @@ class Container(containers.DeclarativeContainer):
     student_repository = providers.Factory(StudentRepository, database=database)
 
     diary_repository = providers.Factory(DiaryRepository, database=database)
+    student_document_repository = providers.Factory(StudentDocumentRepository, database=database)
 
     pdi_repository = providers.Factory(PdiRepo, database=database)
 
@@ -130,6 +135,7 @@ class Container(containers.DeclarativeContainer):
     bncc_repository = providers.Factory(BnccRepository, database=database)
 
     skill_plan_repository = providers.Factory(SkillPlanRepository, database=database)
+    skill_relation_repository = providers.Factory(SkillRelationRepository, database=database)
 
     functional_profile_repository = providers.Factory(FunctionalProfileRepository, database=database)
 
@@ -165,6 +171,7 @@ class Container(containers.DeclarativeContainer):
     bncc_set_skill_score_use_case = providers.Factory(bncc_uc.SetSkillScoreUseCase, repository=bncc_repository)
     bncc_list_skill_events_use_case = providers.Factory(bncc_uc.ListSkillEventsUseCase, repository=bncc_repository)
     bncc_clear_skill_events_use_case = providers.Factory(bncc_uc.ClearSkillEventsUseCase, repository=bncc_repository)
+    bncc_reset_skill_plan_use_case = providers.Factory(bncc_uc.ResetSkillPlanUseCase, repository=bncc_repository)
     bncc_create_report_use_case = providers.Factory(bncc_uc.CreateSkillReportUseCase, repository=bncc_repository)
     bncc_list_reports_use_case = providers.Factory(bncc_uc.ListSkillReportsUseCase, repository=bncc_repository)
     bncc_get_report_use_case = providers.Factory(bncc_uc.GetSkillReportUseCase, repository=bncc_repository)
@@ -195,6 +202,11 @@ class Container(containers.DeclarativeContainer):
         GenerateSkillPlanDraftUseCase, repository=skill_plan_repository, students=student_repository, ai=ai_gateway,
         prompts=prompt_repository, settings=app_settings_repository,
     )
+    skill_relation_use_cases = providers.Factory(SkillRelationUseCases, repository=skill_relation_repository)
+    generate_skill_relations_use_case = providers.Factory(
+        GenerateSkillRelationsUseCase, repository=skill_relation_repository, students=student_repository, ai=ai_gateway,
+        prompts=prompt_repository, settings=app_settings_repository,
+    )
     generate_skill_summary_use_case = providers.Factory(
         GenerateSkillSummaryUseCase, repository=skill_plan_repository, students=student_repository, ai=ai_gateway,
         prompts=prompt_repository,
@@ -204,6 +216,7 @@ class Container(containers.DeclarativeContainer):
         students=student_repository, ai=ai_gateway, prompts=prompt_repository,
     )
 
+    document_ingestion_service = providers.Factory(DocumentIngestionService, database=database, gemini=gemini_service, usage_repo=ai_usage_repository)
     rag_service = providers.Factory(RagService, database=database, gemini=gemini_service, usage_repo=ai_usage_repository, diary_repo=diary_repository, prompts=prompt_repository)
 
     create_user_use_case = providers.Factory(

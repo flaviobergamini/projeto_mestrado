@@ -49,6 +49,7 @@ def _plan_dict(row: Optional[StudentSkillScore], actor: Optional[dict] = None) -
         "can_assign_responsible": is_coordinator(actor) if actor else False,
         "experience_fields": _load_codes(row.correlated_codes) if row else [],
         "ai_excluded": bool(row.ai_excluded) if row else False,
+        "indirect_only": bool(row.indirect_only) if row else False,
         "in_plan": bool(row.in_plan) if row else False,
         "plan_ai_at": row.plan_ai_at.isoformat() if row and row.plan_ai_at else None,
     }
@@ -261,6 +262,8 @@ class BnccRepository(IBnccRepository):
                 row.correlated_codes = json.dumps(codes, ensure_ascii=False) if codes else None
             if "ai_excluded" in fields and fields["ai_excluded"] is not None:
                 row.ai_excluded = bool(fields["ai_excluded"])
+            if "indirect_only" in fields and fields["indirect_only"] is not None:
+                row.indirect_only = bool(fields["indirect_only"])
             if "in_plan" in fields and fields["in_plan"] is not None:
                 was = bool(row.in_plan)
                 row.in_plan = bool(fields["in_plan"])
@@ -312,6 +315,27 @@ class BnccRepository(IBnccRepository):
                 row.score = score
             await session.commit()
             return {"deleted": len(doomed), "score": score}
+
+    async def reset_plan(self, student_id: str, skill_id: str) -> dict:
+        """Apaga o plano da habilidade (textos, ações, campos de experiência, resumo, observação, marca de plano e
+        linha do tempo). Exige nota 0: o reset acompanha o desmarcar das estrelas. Cards do Kanban não são tocados."""
+        async with self.database.session() as session:
+            row = await session.get(StudentSkillScore, (student_id, skill_id))
+            if row is None:
+                return {"deleted": 0, "score": 0}
+            if (row.score or 0) != 0:
+                raise BnccError("Desmarque todas as estrelas antes de resetar o plano da habilidade.")
+            doomed = (await session.execute(select(StudentSkillEvent).where(
+                StudentSkillEvent.student_id == student_id, StudentSkillEvent.skill_id == skill_id,
+            ))).scalars().all()
+            for e in doomed:
+                await session.delete(e)
+            row.observation = row.summary = row.adaptation = row.justification = row.actions = None
+            row.correlated_codes = None
+            row.in_plan = False
+            row.plan_ai_at = None
+            await session.commit()
+            return {"deleted": len(doomed), "score": 0}
 
     async def list_events(self, student_id: str, skill_id: str) -> list[dict]:
         async with self.database.session() as session:

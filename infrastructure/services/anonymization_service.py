@@ -37,8 +37,12 @@ from infrastructure.models.diary_summary import DiarySummary
 from infrastructure.utils.diary_custom import parse_custom_answers
 from infrastructure.models.bncc import SkillReport
 from infrastructure.models.functional_profile import FunctionalProfile
+from infrastructure.models.student_document import StudentDocument, StudentDocumentChunk
 from core.services.functional_profile_content import format_functional_profile
 from infrastructure.utils.case_study_answers import normalize_answers
+
+# Limite de texto dos anexos enviado à IA numa geração (caracteres, já anonimizados)
+DOCUMENT_CONTEXT_MAX_CHARS = 12000
 
 logger = logging.getLogger(__name__)
 
@@ -229,6 +233,7 @@ class AnonymizationService:
         therapy_diary_date_to: str | None = None,
         kanban_date_from: str | None = None,
         kanban_date_to: str | None = None,
+        diary_summary_since: str | None = None,
     ) -> tuple[str, dict[str, str]]:
         """Return (anonymized_context_str, deanon_map).
 
@@ -255,6 +260,8 @@ class AnonymizationService:
         include_diary_summary = include_all or "diary_summary" in sources
         include_skill_report = include_all or "skill_report" in sources
         include_functional_profile = include_all or "functional_profile" in sources
+        # Anexos (PDFs já anonimizados) só entram quando pedidos de forma explícita: nunca no "todas as fontes".
+        include_documents = bool(sources) and "student_documents" in sources
 
         async with self._db.session() as session:
             # ── Student ──────────────────────────────────────────────────────
@@ -545,6 +552,26 @@ class AnonymizationService:
                     except Exception:
                         continue
 
+            # ── Anexos (PDFs): trechos já anonimizados na ingestão (mesmos ids do restante do contexto) ──
+            document_blocks: list[tuple[str, str]] = []
+            if include_documents:
+                doc_rows = (await session.execute(
+                    select(StudentDocument.caption, StudentDocument.original_filename, StudentDocumentChunk.content)
+                    .join(StudentDocumentChunk, StudentDocumentChunk.document_id == StudentDocument.id)
+                    .where(StudentDocument.student_id == student_id, StudentDocument.deleted == False,
+                           StudentDocument.status == "ready")
+                    .order_by(StudentDocument.created_at, StudentDocumentChunk.chunk_index)
+                )).all()
+                budget = DOCUMENT_CONTEXT_MAX_CHARS
+                by_doc: dict[str, list[str]] = {}
+                for caption, filename, content in doc_rows:
+                    if budget <= 0:
+                        break
+                    piece = (content or "")[:budget]
+                    budget -= len(piece)
+                    by_doc.setdefault((caption or filename or "documento"), []).append(piece)
+                document_blocks = [(title, "\n".join(parts)) for title, parts in by_doc.items()]
+
             # ── Perfil funcional mais recente ────────────────────────────────
             functional_profile_item: dict | None = None
             if include_functional_profile:
@@ -573,11 +600,15 @@ class AnonymizationService:
             # igual é feito para a memória curta do Chat.
             diary_summary_list: list[dict] = []
             if include_diary_summary:
+                summary_filters = [DiarySummary.student_id == student_id, DiarySummary.deleted == False]
+                if diary_summary_since:  # janela de tempo: fim do período do resumo (ou data de criação) a partir de `since`
+                    summary_filters.append(func.coalesce(
+                        DiarySummary.period_end, func.to_char(DiarySummary.created_at, "YYYY-MM-DD")) >= diary_summary_since)
                 summary_result = await session.execute(
                     select(DiarySummary)
-                    .where(DiarySummary.student_id == student_id, DiarySummary.deleted == False)
+                    .where(*summary_filters)
                     .order_by(DiarySummary.created_at.desc())
-                    .limit(5)
+                    .limit(20 if diary_summary_since else 5)
                 )
                 for sm in summary_result.scalars().all():
                     diary_summary_list.append({
@@ -656,6 +687,10 @@ class AnonymizationService:
 
         for text in skill_report_texts:
             sections.append(text)
+
+        for title, body in document_blocks:
+            sections.append(f"=== DOCUMENTO ANEXO (texto anonimizado): {title} ===")
+            sections.append(body)
 
         context_str = "\n\n".join(sections)
         return context_str, deanon_map

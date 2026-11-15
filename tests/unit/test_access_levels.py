@@ -32,3 +32,20 @@ def test_longest_prefix_and_shared_routes():
 def test_unmapped_and_exempt_routes_are_free():
     for path in ("/chat/message", "/pei-kanban/report", "/auth/login", "/unknown/thing", "/family/transcribe-audio"):
         assert blocks_write({}, path, "POST") is False
+
+
+def test_documents_follow_the_attachments_screen():
+    assert keys_for_path("/documents/upload") == ("attachments",)
+    levels = {"attachments": "read"}
+    assert blocks_write(levels, "/documents/upload", "POST") is True
+    assert blocks_write(levels, "/documents/abc", "DELETE") is True
+    assert blocks_write(levels, "/documents/students", "GET") is False
+    assert blocks_write({"attachments": "write"}, "/documents/abc/caption", "PATCH") is False
+
+
+def test_skill_relations_screen_has_its_own_permission_key():
+    assert keys_for_path("/skill-relations/students/s1/skills/k1/generate") == ("skillRelations",)
+    assert blocks_write({"skillRelations": "read"}, "/skill-relations/students/s1/skills/k1", "POST") is True
+    assert blocks_write({"skillRelations": "write"}, "/skill-relations/students/s1/skills/k1", "POST") is False
+    assert blocks_write({"skillRelations": "read"}, "/skill-relations/students/s1", "GET") is False
+    assert blocks_write({"skillsRegistry": "write"}, "/skill-relations/students/s1/r1", "DELETE") is True  # só vale a chave própria

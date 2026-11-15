@@ -5,7 +5,11 @@ from pydantic import BaseModel
 from dependency_injector.wiring import inject, Provide
 
 from api.dependencies import require_roles
-from core.use_case.skill_plan.prompts import SKILL_PLAN_SETTINGS_KEY, DEFAULT_SKILL_PLAN_LIMITS, LIMIT_RANGE
+from typing import Optional
+from core.use_case.skill_plan.prompts import (
+    SKILL_PLAN_SETTINGS_KEY, DEFAULT_SKILL_PLAN_SETTINGS, LIMIT_RANGE, ROUND1_SOURCE_OPTIONS, DIARY_SUMMARY_MONTHS,
+    resolve_round1_settings,
+)
 from infrastructure.repositories.app_settings_repository import AppSettingsRepository
 from core.kernel.container import Container
 from core.kernel.result import Result
@@ -55,6 +59,8 @@ PROMPT_MANAGERS = ("admin", "coordenacao")
 class LimitsBody(BaseModel):
     max_adaptations: int
     max_actions: int
+    sources: Optional[list[str]] = None
+    diary_summary_months: Optional[int] = None
 
 
 @router.get("/round1/settings")
@@ -64,7 +70,8 @@ async def round1_settings(
     repo: AppSettingsRepository = Depends(Provide[Container.app_settings_repository]),
 ):
     """Limites máximos de adaptações por habilidade e de ações por adaptação na geração da rodada 1."""
-    return await repo.get(SKILL_PLAN_SETTINGS_KEY, DEFAULT_SKILL_PLAN_LIMITS)
+    return {**resolve_round1_settings(await repo.get(SKILL_PLAN_SETTINGS_KEY, DEFAULT_SKILL_PLAN_SETTINGS)),
+            "source_options": ROUND1_SOURCE_OPTIONS, "diary_summary_months_options": list(DIARY_SUMMARY_MONTHS)}
 
 
 @router.put("/round1/settings")
@@ -77,7 +84,17 @@ async def save_round1_settings(
     lo, hi = LIMIT_RANGE
     if not (lo <= body.max_adaptations <= hi and lo <= body.max_actions <= hi):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Use valores de {lo} a {hi}.")
-    return await repo.set(SKILL_PLAN_SETTINGS_KEY, {"max_adaptations": body.max_adaptations, "max_actions": body.max_actions})
+    current = resolve_round1_settings(await repo.get(SKILL_PLAN_SETTINGS_KEY, DEFAULT_SKILL_PLAN_SETTINGS))
+    sources = current["sources"] if body.sources is None else body.sources
+    if body.sources is not None and (not sources or any(s not in ROUND1_SOURCE_OPTIONS for s in sources)):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Escolha ao menos uma fonte válida.")
+    months = current["diary_summary_months"] if body.diary_summary_months is None else body.diary_summary_months
+    if months not in DIARY_SUMMARY_MONTHS:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Período dos resumos: 1, 2 ou 3 meses.")
+    return await repo.set(SKILL_PLAN_SETTINGS_KEY, {
+        "max_adaptations": body.max_adaptations, "max_actions": body.max_actions,
+        "sources": [s for s in ROUND1_SOURCE_OPTIONS if s in sources], "diary_summary_months": months,
+    })
 
 
 @router.get("/round1/preview")
