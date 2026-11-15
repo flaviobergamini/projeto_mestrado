@@ -313,6 +313,27 @@ class BnccRepository(IBnccRepository):
             await session.commit()
             return {"deleted": len(doomed), "score": score}
 
+    async def reset_plan(self, student_id: str, skill_id: str) -> dict:
+        """Apaga o plano da habilidade (textos, ações, campos de experiência, resumo, observação, marca de plano e
+        linha do tempo). Exige nota 0: o reset acompanha o desmarcar das estrelas. Cards do Kanban não são tocados."""
+        async with self.database.session() as session:
+            row = await session.get(StudentSkillScore, (student_id, skill_id))
+            if row is None:
+                return {"deleted": 0, "score": 0}
+            if (row.score or 0) != 0:
+                raise BnccError("Desmarque todas as estrelas antes de resetar o plano da habilidade.")
+            doomed = (await session.execute(select(StudentSkillEvent).where(
+                StudentSkillEvent.student_id == student_id, StudentSkillEvent.skill_id == skill_id,
+            ))).scalars().all()
+            for e in doomed:
+                await session.delete(e)
+            row.observation = row.summary = row.adaptation = row.justification = row.actions = None
+            row.correlated_codes = None
+            row.in_plan = False
+            row.plan_ai_at = None
+            await session.commit()
+            return {"deleted": len(doomed), "score": 0}
+
     async def list_events(self, student_id: str, skill_id: str) -> list[dict]:
         async with self.database.session() as session:
             rows = await session.execute(

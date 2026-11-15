@@ -21,9 +21,11 @@ class AiGateway(IAiGateway):
         self._anonymization = anonymization
 
     async def build_context(self, student_id: str, sources: list[str], kanban_date_from: str | None = None,
-                            kanban_date_to: str | None = None) -> tuple[str, dict[str, str]]:
+                            kanban_date_to: str | None = None,
+                            diary_summary_since: str | None = None) -> tuple[str, dict[str, str]]:
         return await self._anonymization.build_context(
-            student_id, sources=sources, kanban_date_from=kanban_date_from, kanban_date_to=kanban_date_to)
+            student_id, sources=sources, kanban_date_from=kanban_date_from, kanban_date_to=kanban_date_to,
+            diary_summary_since=diary_summary_since)
 
     async def generate_json(
         self, operation: str, system_instruction: str, prompt: str, user_id: str | None,

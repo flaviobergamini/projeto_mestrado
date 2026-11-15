@@ -191,6 +191,18 @@ async def clear_skill_events(
     return _unwrap(await use_case.execute(student_id, skill_id, body.event_ids, body.all))
 
 
+@router.post("/students/{student_id}/skills/{skill_id}/reset-plan")
+@inject
+async def reset_skill_plan(
+    student_id: str,
+    skill_id: str,
+    current_user: dict = Depends(require_roles(*WRITERS)),
+    use_case: uc.ResetSkillPlanUseCase = Depends(Provide[Container.bncc_reset_skill_plan_use_case]),
+):
+    """Reseta o plano da habilidade (só com 0 estrelas): apaga textos, ações, campos de experiência e linha do tempo."""
+    return _unwrap(await use_case.execute(student_id, skill_id))
+
+
 @router.get("/students/{student_id}/skills/{skill_id}/events")
 @inject
 async def skill_events(
