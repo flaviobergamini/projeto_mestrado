@@ -1,9 +1,20 @@
-"""Relações entre habilidades: a IA só cria relações válidas (código existente, campo conhecido, com ação)."""
+"""Grafo de relações em JSON: uma operação atualiza o documento; a visão vem dele; a IA recebe o JSON anonimizado."""
 import asyncio
+import json
 
 from core.kernel.container import Container  # noqa: F401  (evita import circular)
 from core.interfaces.i_skill_relation_repository import SkillRelationError
-from core.use_case.skill_relations.skill_relation_use_cases import GenerateSkillRelationsUseCase
+from core.use_case.skill_relations.skill_relation_use_cases import (
+    GenerateSkillRelationsUseCase, SkillRelationUseCases, build_ai_graph, build_view,
+)
+
+SKILLS = {
+    "k1": {"id": "k1", "code": "EI03EO02", "grade": "Infantil", "area": "O eu", "description": "mãe", "score": 4, "observation": "Ana usa cartões"},
+    "a": {"id": "a", "code": "EI03EO03", "grade": "Infantil", "area": "O eu", "description": "A", "score": 3, "observation": ""},
+    "b": {"id": "b", "code": "EF05AR01", "grade": "5º ano", "area": "Arte", "description": "B", "score": 1, "observation": "o"},
+    "z": {"id": "z", "code": "EF02MA18", "grade": "2º ano", "area": "Mat", "description": "Z", "score": 0, "observation": ""},
+    "f": {"id": "f", "code": "EF01LP01", "grade": "1º ano", "area": "LP", "description": "F", "score": 5, "observation": ""},
+}
 
 
 class Students:
@@ -12,44 +23,48 @@ class Students:
 
 
 class Repo:
-    def __init__(self):
-        self.created, self.existing = [], []
+    def __init__(self, finalistic=True):
+        self.doc, self.revision, self.finalistic = {"schema": 1, "related": []}, 0, finalistic
+
+    async def get_document(self, sid, kid):
+        return json.loads(json.dumps(self.doc)), self.revision
+
+    async def mutate(self, sid, kid, change, user):
+        doc = json.loads(json.dumps(self.doc))
+        change(doc)  # aborta sem gravar se levantar
+        self.doc, self.revision = doc, self.revision + 1
+        return doc, self.revision
+
+    async def find_skill_of_relation(self, sid, rid):
+        return "k1" if any(r["id"] == rid for r in self.doc["related"]) else None
 
     async def skill_info(self, sid, kid):
-        return {"id": kid, "code": "EF05LP01", "grade": "5º ano", "area": "Língua Portuguesa", "description": "d",
-                "score": 2, "finalistic": True}
+        return {**SKILLS[kid], "finalistic": self.finalistic} if kid in SKILLS else None
 
-    async def list_relations(self, sid, kid):
-        return self.existing
+    async def skill_briefs(self, sid, ids):
+        return {i: SKILLS[i] for i in ids if i in SKILLS}
 
-    async def candidate_codes(self, sid, kid):
-        return {"EF05AR01": "d"}
-
-    async def resolve_codes(self, codes):
-        return {c: {"id": f"id-{c}", "code": c} for c in codes if c == "EF05AR01"}  # só este código existe no catálogo
-
-    async def create(self, sid, kid, data, user, source):
-        if data.get("related_skill_id") == "id-EF05AR01" and any(c["related_skill_id"] == "id-EF05AR01" for c in self.created):
-            raise SkillRelationError("Essa relação já existe.")
-        self.created.append({**data, "source": source})
-        return {"id": f"r{len(self.created)}", **data}
+    async def candidates(self, sid, kid):
+        return [s for k, s in SKILLS.items() if k != kid and 1 <= s["score"] <= 4]
 
 
 class Ai:
-    def __init__(self, raw):
-        self.raw, self.prompt, self.catalog = raw, None, None
+    def __init__(self, raw=None):
+        self.raw, self.prompt = raw, None
 
     async def build_context(self, sid, sources, **kwargs):
-        return "ctx", {}
+        return "ctx", {"Ana Silva": "ALUNO_1"}
 
     def reanonymize(self, t, m):
+        for real, alias in m.items():
+            t = t.replace(real.split()[0], alias)
         return t
 
     def deanonymize(self, t, m):
         return t
 
     async def generate_json(self, op, system, prompt, uid, with_bncc_catalog=False):
-        self.prompt, self.catalog = prompt, with_bncc_catalog
+        self.prompt = prompt
         return self.raw
 
 
@@ -63,30 +78,69 @@ class Prompts:
         return scope
 
 
-def _run(raw):
-    repo, ai = Repo(), Ai(raw)
-    res = asyncio.run(GenerateSkillRelationsUseCase(repo, Students(), ai, Prompts(), Settings()).execute("s1", "k1", {"user_id": "u"}))
-    return res, repo, ai
+USER = {"user_id": "u", "username": "prof"}
 
 
-def test_only_valid_relations_are_created_and_catalog_is_sent():
-    raw = {"relations": [
-        {"kind": "skill", "code": "EF05AR01", "adaptation": "A", "justification": "J", "actions": ["a1", "a2"]},
-        {"kind": "skill", "code": "XX00XX00", "adaptation": "A", "actions": ["a"]},        # código inventado: descartado
-        {"kind": "field", "field": "selfOtherUs", "adaptation": "B", "justification": "J", "actions": ["b"]},
-        {"kind": "field", "field": "campoInexistente", "adaptation": "B", "actions": ["b"]},  # campo inválido: descartado
-        {"kind": "field", "field": "bodyGestures", "adaptation": "C", "actions": []},       # sem ação: descartado
-        {"kind": "skill", "code": "EF05AR01", "adaptation": "A2", "actions": ["x"]},        # repetida: descartada
-    ]}
-    res, repo, ai = _run(raw)
-    assert res.is_ok and res.value["created"] == 2 and res.value["skipped"] == 4
-    assert [c["kind"] for c in repo.created] == ["skill", "field"] and all(c["source"] == "ai" for c in repo.created)
-    assert ai.catalog is True                                   # catálogo BNCC anexado para a IA citar códigos reais
-    assert "FINALÍSTICA" in ai.prompt            # a finalística é avisada à IA
+def _uc(repo):
+    return SkillRelationUseCases(repo)
 
 
-def test_actions_respect_the_configured_maximum():
-    raw = {"relations": [{"kind": "field", "field": "spacesTimes", "adaptation": "A", "justification": "J",
-                          "actions": [f"a{i}" for i in range(9)]}]}
-    res, repo, _ = _run(raw)
-    assert res.is_ok and len(repo.created[0]["actions"]) == 5   # padrão: máx. 5 ações por relação
+def test_create_updates_json_and_view_is_built_from_it():
+    repo = Repo()
+    res = asyncio.run(_uc(repo).create("s1", "k1", {"related_skill_id": "a", "direction": "in", "reason": "apoio"}, USER))
+    assert res.is_ok and repo.revision == 1
+    assert repo.doc["related"][0]["skill_id"] == "a" and repo.doc["related"][0]["direction"] == "in"
+    view = asyncio.run(build_view(repo, "s1", "k1"))
+    assert view["revision"] == 1 and view["relations"][0]["related_skill"]["score"] == 3  # estrelas vêm da nota, não do JSON
+    SKILLS["a"]["score"] = 4                                                               # o professor mudou a nota...
+    assert asyncio.run(build_view(repo, "s1", "k1"))["relations"][0]["related_skill"]["score"] == 4  # ...o mapa reflete na hora
+    SKILLS["a"]["score"] = 3
+
+
+def test_rules_finalistic_only_and_one_to_four_stars():
+    uc = _uc(Repo(finalistic=False))
+    assert asyncio.run(uc.create("s1", "k1", {"related_skill_id": "a"}, USER)).is_bad_request
+    uc = _uc(Repo())
+    for bad in ("z", "f", "k1"):  # 0 estrela, 5 estrelas, ela mesma
+        assert asyncio.run(uc.create("s1", "k1", {"related_skill_id": bad}, USER)).is_bad_request
+    assert asyncio.run(uc.create("s1", "k1", {"related_skill_id": "a"}, USER)).is_ok
+    assert asyncio.run(uc.create("s1", "k1", {"related_skill_id": "a"}, USER)).is_bad_request  # repetida
+
+
+def test_update_layout_and_delete_change_the_same_document():
+    repo = Repo()
+    uc = _uc(repo)
+    rid = asyncio.run(uc.create("s1", "k1", {"related_skill_id": "a"}, USER)).value["id"]
+    asyncio.run(uc.update("s1", rid, {"direction": "in", "justification": "novo motivo"}, USER))
+    asyncio.run(uc.set_layout("s1", "k1", {rid: {"x": 10.0, "y": 20.0}}, USER))
+    r = repo.doc["related"][0]
+    assert (r["direction"], r["reason"], r["x"], r["y"]) == ("in", "novo motivo", 10.0, 20.0) and repo.revision == 3
+    asyncio.run(uc.delete("s1", rid, USER))
+    assert repo.doc["related"] == [] and repo.revision == 4
+
+
+def test_zero_and_five_star_nodes_are_hidden_but_kept_in_the_json():
+    repo = Repo()
+    repo.doc["related"] = [{"id": "r1", "skill_id": "z", "direction": "out", "origin": "ai", "reason": "", "x": None, "y": None},
+                           {"id": "r2", "skill_id": "a", "direction": "out", "origin": "ai", "reason": "", "x": None, "y": None}]
+    view = asyncio.run(build_view(repo, "s1", "k1"))
+    assert [r["id"] for r in view["relations"]] == ["r2"] and len(view["document"]["related"]) == 2
+
+
+def test_ai_receives_anonymized_graph_json_and_only_valid_picks_are_saved():
+    repo = Repo()
+    ai = Ai({"relations": [{"code": "EF05AR01", "reason": "apoia"}, {"code": "EF05AR01", "reason": "repetida"},
+                           {"code": "EF02MA18", "reason": "0 estrela"}, {"code": "XX00", "reason": "inventada"}]})
+    res = asyncio.run(GenerateSkillRelationsUseCase(repo, Students(), ai, Prompts(), Settings()).execute("s1", "k1", USER))
+    assert res.is_ok and res.value["created"] == 1
+    assert [r["skill_id"] for r in repo.doc["related"]] == ["b"] and repo.doc["related"][0]["origin"] == "ai"
+    assert "Ana" not in ai.prompt and "ALUNO_1 usa cartões" in ai.prompt        # nome real some, até dentro das observações
+    assert '"candidates"' in ai.prompt and "EF02MA18" not in ai.prompt         # só candidatas com 1 a 4 estrelas
+    graph = asyncio.run(build_ai_graph(repo, "s1", "k1"))
+    assert graph["related"][0]["arrow"] == "finalistic_to_related" and "id" not in graph["related"][0]  # sem ids internos
+
+
+def test_generation_requires_a_finalistic_skill():
+    res = asyncio.run(GenerateSkillRelationsUseCase(Repo(finalistic=False), Students(), Ai({}), Prompts(), Settings())
+                      .execute("s1", "k1", USER))
+    assert res.is_bad_request

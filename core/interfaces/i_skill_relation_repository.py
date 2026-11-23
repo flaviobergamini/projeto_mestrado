@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Optional
+from typing import Callable, Optional
 
 
 class SkillRelationError(Exception):
@@ -7,29 +7,35 @@ class SkillRelationError(Exception):
 
 
 class ISkillRelationRepository(ABC):
-    @abstractmethod
-    async def overview(self, student_id: str) -> list[dict]:
-        """Habilidades do aluno que têm relações ou estão marcadas como indiretas (para a lista do mapa)."""
+    """Persistência do grafo de relações: UM documento JSON por aluno + habilidade finalística.
+
+    Documento: {"schema": 1, "related": [{"id", "skill_id", "direction": "out"|"in", "origin": "ai"|"manual", "reason", "x", "y"}]}
+    Só estrutura; estrelas e observações são lidas das notas do aluno na hora de montar a visão."""
 
     @abstractmethod
-    async def list_relations(self, student_id: str, skill_id: str) -> list[dict]: ...
+    async def overview(self, student_id: str) -> list[dict]:
+        """Habilidades do aluno com 1 a 4 estrelas, com a marca de finalística, o nº de relações visíveis e a data da nota."""
+
+    @abstractmethod
+    async def get_document(self, student_id: str, skill_id: str) -> tuple[dict, int]:
+        """(documento, revisão). Sem documento ainda: ({"schema": 1, "related": []}, 0)."""
+
+    @abstractmethod
+    async def mutate(self, student_id: str, skill_id: str, change: Callable[[dict], None], user: dict) -> tuple[dict, int]:
+        """Aplica `change(documento)` de forma atômica (trava a linha), sobe a revisão e devolve (documento, revisão).
+        `change` pode levantar SkillRelationError para abortar sem gravar."""
+
+    @abstractmethod
+    async def find_skill_of_relation(self, student_id: str, relation_id: str) -> Optional[str]:
+        """skill_id (finalística) do documento que contém a relação."""
 
     @abstractmethod
     async def skill_info(self, student_id: str, skill_id: str) -> Optional[dict]: ...
 
     @abstractmethod
-    async def candidate_codes(self, student_id: str, exclude_skill_id: str) -> dict[str, str]:
-        """{código: descrição} das habilidades do aluno com 1 a 4 estrelas (as únicas que a IA pode relacionar)."""
+    async def skill_briefs(self, student_id: str, skill_ids: list[str]) -> dict[str, dict]:
+        """{skill_id: {id, code, grade, area, description, score, observation}} com a nota ATUAL do aluno."""
 
     @abstractmethod
-    async def resolve_codes(self, codes: list[str]) -> dict[str, dict]:
-        """{código: {id, code, grade, area, description}} das habilidades existentes."""
-
-    @abstractmethod
-    async def create(self, student_id: str, skill_id: str, data: dict, user: dict, source: str) -> dict: ...
-
-    @abstractmethod
-    async def update(self, student_id: str, relation_id: str, data: dict) -> dict: ...
-
-    @abstractmethod
-    async def delete(self, student_id: str, relation_id: str) -> bool: ...
+    async def candidates(self, student_id: str, exclude_skill_id: str) -> list[dict]:
+        """Habilidades do aluno com 1 a 4 estrelas (as únicas que podem entrar no grafo), com a observação de cada uma."""

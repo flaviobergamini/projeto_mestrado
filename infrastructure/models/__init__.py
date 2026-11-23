@@ -12,7 +12,7 @@ from .bncc import BnccSkill, StudentSkillScore, SkillReport
 from .functional_profile import FunctionalProfile
 from .diary_entry import DiaryEntry
 from .student_document import StudentDocument, StudentDocumentChunk
-from .skill_relation import StudentSkillRelation
+from .skill_relation import StudentSkillRelation, StudentSkillGraph
 from .pdi import Pdi
 from .pdi_trimester_subject import PdiTrimesterSubject
 from .user_profile import UserProfile

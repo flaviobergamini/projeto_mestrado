@@ -114,19 +114,15 @@ Use SOMENTE as informações fornecidas (ação, adaptação, justificativa, col
 Escreva de 3 a 5 frases em português do Brasil, linguagem profissional e não estigmatizante: o que foi feito, como o aluno respondeu, dificuldades e avanços observados e o próximo passo. Este resumo será usado depois para avaliar a habilidade.
 Responda apenas com o texto do resumo, em parágrafo corrido, sem títulos, sem listas e sem markdown. Se citar o aluno, use o identificador anonimizado exatamente como fornecido e não presuma o gênero (evite pronomes como ele/ela; prefira o nome ou \"o(a) aluno(a)\")."""
 
-SKILL_RELATIONS_PROMPT = """Você é especialista em educação inclusiva e em TEA. Relacione a HABILIDADE indicada com OUTRAS habilidades da BNCC
-(use somente códigos que existam no catálogo fornecido) e/ou com CAMPOS DE EXPERIÊNCIA da Educação Infantil (use a chave exata da lista), com base APENAS
-no contexto anonimizado do aluno. A ideia é trabalhar a habilidade de forma indireta e conectada: por exemplo, uma criança do 5º ano que ainda precisa
-de empatia pode trabalhá-la dentro de atividades de Arte, Educação Física ou Língua Portuguesa, em vez de repetir atividades do infantil.
-Para CADA relação proponha: a adaptação (como adaptar a atividade/ambiente, 2 a 4 frases), a justificativa (por que essa conexão ajuda este aluno, 2 a 4 frases)
-e uma ou mais ações práticas curtas e observáveis. Proponha poucas relações, só as que o caso realmente pede; não repita as relações já existentes.
-Se a habilidade estiver marcada como NÃO TRABALHAR DIRETAMENTE, todas as ações devem ser indiretas, dentro de outra habilidade ou campo.
-Você NÃO altera notas/estrelas.
+SKILL_RELATIONS_PROMPT = """Você é especialista em educação inclusiva e em TEA. Recebe um GRAFO em JSON, já anonimizado: a habilidade/campo de experiência FINALÍSTICO
+("finalistic": a relação principal, a que a professora quer trabalhar de fato com o aluno), as habilidades já relacionadas a ela ("related") e as CANDIDATAS
+("candidates": as demais habilidades que o aluno tem em andamento, de 1 a 4 estrelas). Cada nó traz código, descrição, estrelas e as observações da professora.
+Escolha, SOMENTE entre as candidatas (use o código exato), as que podem apoiar o trabalho da finalística, isto é, que podem ser trabalhadas junto com ela numa
+mesma atividade. Exemplo: para uma finalística de esportes (queimada), a comunicação pode entrar como apoio, usando cartões durante o jogo.
+Use as observações e o contexto anonimizado do aluno como base. Proponha poucas relações, só as que o caso realmente pede; não repita as já existentes em "related".
+Você NÃO altera estrelas e NÃO escreve adaptações aqui: só diz quais se relacionam e por quê. A seta sai da finalística.
 Responda SOMENTE com JSON válido, sem markdown:
-{"relations": [{"kind": "skill", "code": "<código exato da outra habilidade>", "field": null,
-  "adaptation": "...", "justification": "...", "actions": ["...", "..."]},
- {"kind": "field", "code": null, "field": "<chave do campo de experiência>",
-  "adaptation": "...", "justification": "...", "actions": ["..."]}]}
+{"relations": [{"code": "<código exato de uma candidata>", "reason": "uma frase: por que ela apoia a finalística para este aluno"}]}
 Cite o aluno apenas pelo identificador anonimizado, exatamente como fornecido."""
 
 BNCC_USAGE_RULE_PROMPT = """CATÁLOGO BNCC: o catálogo de habilidades BNCC é material de referência. Ao propor objetivos, metas ou atividades de aprendizagem acadêmica, relacione-os, quando pertinente, a habilidades do catálogo citando o código exato (ex.: EF01LP02). Nunca invente códigos nem descrições: use somente o que consta no catálogo."""
@@ -176,8 +172,8 @@ PROMPT_REGISTRY: dict[str, dict] = {
     "skill_relations": {
         "label": "Relações entre habilidades (IA)", "json_output": True, "placeholders": [],
         "default": SKILL_RELATIONS_PROMPT,
-        "description": "Relaciona uma habilidade com outras habilidades e campos de experiência (submenu Relações do PDI), com adaptação, "
-                       "justificativa e ações. As fontes de contexto são as mesmas da geração de adaptações. Mantenha o JSON de saída.",
+        "description": "Recebe o grafo de relações em JSON (anonimizado) e escolhe, entre as habilidades com 1 a 4 estrelas, as que apoiam a finalística. "
+                       "As fontes de contexto são as mesmas da geração de adaptações. Mantenha o JSON de saída.",
     },
     "skill_summary": {
         "label": "Resumo da habilidade (IA)", "json_output": False, "placeholders": [],
