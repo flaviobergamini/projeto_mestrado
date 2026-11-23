@@ -18,6 +18,10 @@ class ISkillRelationRepository(ABC):
     async def skill_info(self, student_id: str, skill_id: str) -> Optional[dict]: ...
 
     @abstractmethod
+    async def candidate_codes(self, student_id: str, exclude_skill_id: str) -> dict[str, str]:
+        """{código: descrição} das habilidades do aluno com 1 a 4 estrelas (as únicas que a IA pode relacionar)."""
+
+    @abstractmethod
     async def resolve_codes(self, codes: list[str]) -> dict[str, dict]:
         """{código: {id, code, grade, area, description}} das habilidades existentes."""
 

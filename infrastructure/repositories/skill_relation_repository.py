@@ -45,11 +45,11 @@ class SkillRelationRepository(ISkillRelationRepository):
             rows = (await session.execute(
                 select(StudentSkillScore, BnccSkill).join(BnccSkill, BnccSkill.id == StudentSkillScore.skill_id)
                 .where(StudentSkillScore.student_id == student_id, BnccSkill.deleted == False,  # noqa: E712
-                       (StudentSkillScore.score > 0) | (StudentSkillScore.indirect_only == True)  # noqa: E712
-                       | StudentSkillScore.skill_id.in_(list(counts) or [""]))
+                       StudentSkillScore.score >= 1, StudentSkillScore.score <= 4)  # 0 e 5 estrelas não aparecem
                 .order_by(BnccSkill.grade_order, BnccSkill.code)
             )).all()
-            return [{**_skill_brief(sk, sc.score or 0), "indirect_only": bool(sc.indirect_only),
+            return [{**_skill_brief(sk, sc.score or 0), "finalistic": bool(sc.finalistic),
+                     "updated_at": sc.updated_at.isoformat() if sc.updated_at else None,
                      "relations": counts.get(sk.id, 0)} for sc, sk in rows]
 
     async def list_relations(self, student_id: str, skill_id: str) -> list[dict]:
@@ -83,7 +83,18 @@ class SkillRelationRepository(ISkillRelationRepository):
             if not skill or skill.deleted:
                 return None
             sc = await session.get(StudentSkillScore, (student_id, skill_id))
-            return {**_skill_brief(skill, sc.score if sc else 0), "indirect_only": bool(sc.indirect_only) if sc else False}
+            return {**_skill_brief(skill, sc.score if sc else 0), "finalistic": bool(sc.finalistic) if sc else False}
+
+    async def candidate_codes(self, student_id: str, exclude_skill_id: str) -> dict[str, str]:
+        """{código: descrição} das habilidades do aluno com 1 a 4 estrelas: as únicas que a IA pode relacionar."""
+        async with self.database.session() as session:
+            rows = (await session.execute(
+                select(BnccSkill).join(StudentSkillScore, StudentSkillScore.skill_id == BnccSkill.id)
+                .where(StudentSkillScore.student_id == student_id, BnccSkill.deleted == False,  # noqa: E712
+                       StudentSkillScore.score >= 1, StudentSkillScore.score <= 4, BnccSkill.id != exclude_skill_id)
+                .order_by(BnccSkill.grade_order, BnccSkill.code)
+            )).scalars().all()
+            return {s.code: s.description for s in rows}
 
     async def resolve_codes(self, codes: list[str]) -> dict[str, dict]:
         if not codes:

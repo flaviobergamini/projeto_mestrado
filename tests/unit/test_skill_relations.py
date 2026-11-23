@@ -17,10 +17,13 @@ class Repo:
 
     async def skill_info(self, sid, kid):
         return {"id": kid, "code": "EF05LP01", "grade": "5º ano", "area": "Língua Portuguesa", "description": "d",
-                "score": 2, "indirect_only": True}
+                "score": 2, "finalistic": True}
 
     async def list_relations(self, sid, kid):
         return self.existing
+
+    async def candidate_codes(self, sid, kid):
+        return {"EF05AR01": "d"}
 
     async def resolve_codes(self, codes):
         return {c: {"id": f"id-{c}", "code": c} for c in codes if c == "EF05AR01"}  # só este código existe no catálogo
@@ -79,7 +82,7 @@ def test_only_valid_relations_are_created_and_catalog_is_sent():
     assert res.is_ok and res.value["created"] == 2 and res.value["skipped"] == 4
     assert [c["kind"] for c in repo.created] == ["skill", "field"] and all(c["source"] == "ai" for c in repo.created)
     assert ai.catalog is True                                   # catálogo BNCC anexado para a IA citar códigos reais
-    assert "NÃO TRABALHAR DIRETAMENTE" in ai.prompt            # habilidade indireta é avisada à IA
+    assert "FINALÍSTICA" in ai.prompt            # a finalística é avisada à IA
 
 
 def test_actions_respect_the_configured_maximum():

@@ -71,14 +71,17 @@ class GenerateSkillRelationsUseCase:
         already = "\n".join(
             f"- {(r['related_skill'] or {}).get('code') or EXPERIENCE_FIELD_NAMES_PT.get(r['field_key'] or '', r['field_key'])}"
             for r in existing) or "(nenhuma)"
+        allowed = await self.repository.candidate_codes(student_id, skill_id)
+        allowed_txt = "\n".join(f"- {c}: {d}" for c, d in allowed.items()) or "(nenhuma)"
         fields = "\n".join(f"- {key}: {name}" for key, name in EXPERIENCE_FIELD_NAMES_PT.items())
-        direct = ("ATENÇÃO: esta habilidade está marcada como NÃO TRABALHAR DIRETAMENTE: ela nunca vira adaptação própria, "
-                  "só se trabalha por meio das relações abaixo.\n" if skill["indirect_only"] else "")
+        direct = ("ATENÇÃO: esta habilidade está marcada como FINALÍSTICA: é a relação principal do conjunto, "
+                  "e as demais habilidades se relacionam a ela como apoio.\n" if skill["finalistic"] else "")
         prompt = (
             f"ID do aluno (anonimizado): {student_id}\n\n=== CONTEXTO ===\n{context}\n\n"
             f"=== HABILIDADE A RELACIONAR ===\n{skill['code']} ({skill['grade']}, {skill['area']}): {skill['description']} | "
             f"nota atual: {skill['score']} de 5 estrelas\n{direct}\n"
             f"=== RELAÇÕES JÁ EXISTENTES (não repetir) ===\n{already}\n\n"
+            f"=== HABILIDADES PERMITIDAS (só estas, com 1 a 4 estrelas, podem ser relacionadas) ===\n{allowed_txt}\n\n"
             f"=== CAMPOS DE EXPERIÊNCIA (chave: nome) ===\n{fields}\n\n"
             f"=== LIMITES ===\nNo máximo {MAX_RELATIONS} relações novas e {cfg['max_actions']} ação(ões) por relação. "
             f"Use menos quando o caso pedir.\n\nGere o JSON."
@@ -86,7 +89,8 @@ class GenerateSkillRelationsUseCase:
         prompt = self.ai.reanonymize(prompt, name_map)
         system = await self.prompts.get("skill_relations")
         return Result.ok({"system": system, "prompt": prompt, "name_map": name_map, "skill": skill,
-                          "max_actions": cfg["max_actions"], "sources": cfg["sources"]})
+                          "max_actions": cfg["max_actions"], "sources": cfg["sources"],
+                          "allowed": set(allowed)})
 
     async def preview(self, student_id: str, skill_id: str) -> Result:
         built = await self.build_request(student_id, skill_id)
@@ -113,7 +117,7 @@ class GenerateSkillRelationsUseCase:
 
         items = [i for i in (raw.get("relations") or []) if isinstance(i, dict)][:MAX_RELATIONS]
         codes = [str(i.get("code")).strip() for i in items if i.get("kind") == "skill" and i.get("code")]
-        known = await self.repository.resolve_codes(codes)  # anti-alucinação: só códigos que existem no catálogo
+        known = await self.repository.resolve_codes([c for c in codes if c in v["allowed"]])  # só códigos permitidos (1 a 4 estrelas)
         created, skipped = [], 0
         for item in items:
             actions = [self.ai.deanonymize(str(a), v["name_map"]) for a in (item.get("actions") or []) if str(a).strip()]
