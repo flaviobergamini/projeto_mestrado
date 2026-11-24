@@ -119,12 +119,14 @@ def test_update_layout_and_delete_change_the_same_document():
     assert repo.doc["related"] == [] and repo.revision == 4
 
 
-def test_zero_and_five_star_nodes_are_hidden_but_kept_in_the_json():
+def test_persisted_nodes_always_show_including_fields_and_zero_stars():
     repo = Repo()
-    repo.doc["related"] = [{"id": "r1", "skill_id": "z", "direction": "out", "origin": "ai", "reason": "", "x": None, "y": None},
-                           {"id": "r2", "skill_id": "a", "direction": "out", "origin": "ai", "reason": "", "x": None, "y": None}]
+    repo.doc["related"] = [{"id": "r1", "kind": "skill", "skill_id": "z", "direction": "out", "origin": "ai", "reason": "", "x": None, "y": None},
+                           {"id": "r2", "kind": "field", "field_key": "bodyGestures", "direction": "out", "origin": "manual",
+                            "reason": "r", "adaptation": "ad", "actions": ["a"], "x": None, "y": None}]
     view = asyncio.run(build_view(repo, "s1", "k1"))
-    assert [r["id"] for r in view["relations"]] == ["r2"] and len(view["document"]["related"]) == 2
+    assert [(r["id"], r["kind"]) for r in view["relations"]] == [("r1", "skill"), ("r2", "field")]
+    assert view["relations"][0]["related_skill"]["score"] == 0 and view["relations"][1]["field_key"] == "bodyGestures"
 
 
 def test_ai_receives_anonymized_graph_json_and_only_valid_picks_are_saved():

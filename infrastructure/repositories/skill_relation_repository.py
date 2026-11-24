@@ -40,9 +40,8 @@ class SkillRelationRepository(ISkillRelationRepository):
                        StudentSkillScore.score >= 1, StudentSkillScore.score <= 4)  # 0 e 5 estrelas não aparecem
                 .order_by(BnccSkill.grade_order, BnccSkill.code)
             )).all()
-            visible = {sk.id for _, sk in rows}
             graphs = (await session.execute(select(StudentSkillGraph).where(StudentSkillGraph.student_id == student_id))).scalars().all()
-            counts = {g.skill_id: sum(1 for r in _load(g.document)["related"] if r.get("skill_id") in visible) for g in graphs}
+            counts = {g.skill_id: len(_load(g.document)["related"]) for g in graphs}
             return [{**{k: v for k, v in _brief(sk, sc.score or 0).items() if k != "observation"},
                      "finalistic": bool(sc.finalistic), "relations": counts.get(sk.id, 0),
                      "updated_at": sc.updated_at.isoformat() if sc.updated_at else None} for sc, sk in rows]

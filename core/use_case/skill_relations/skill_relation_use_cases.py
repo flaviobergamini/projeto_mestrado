@@ -33,12 +33,20 @@ async def build_view(repo: ISkillRelationRepository, student_id: str, skill_id: 
     if not info:
         return None
     doc, revision = await repo.get_document(student_id, skill_id)
-    briefs = await repo.skill_briefs(student_id, [r["skill_id"] for r in doc["related"]])
-    relations = [{
-        "id": r["id"], "skill_id": skill_id, "kind": "skill", "field_key": None, "related_skill": _public(briefs[r["skill_id"]]),
-        "direction": r.get("direction") or "out", "justification": r.get("reason") or "", "adaptation": "", "actions": [],
-        "source": r.get("origin") or "manual", "created_by": None, "x": r.get("x"), "y": r.get("y"),
-    } for r in doc["related"] if r["skill_id"] in briefs and _in_range(briefs[r["skill_id"]]["score"])]  # 0/5 estrelas somem do mapa
+    briefs = await repo.skill_briefs(student_id, [r["skill_id"] for r in doc["related"] if r.get("skill_id")])
+    relations = []
+    for r in doc["related"]:  # tudo o que está no JSON aparece (a regra de 1 a 4 estrelas vale para CRIAR, não para esconder)
+        is_field = r.get("kind") == "field"
+        if not is_field and r.get("skill_id") not in briefs:
+            continue
+        relations.append({
+            "id": r["id"], "skill_id": skill_id, "kind": "field" if is_field else "skill",
+            "field_key": r.get("field_key") if is_field else None,
+            "related_skill": None if is_field else _public(briefs[r["skill_id"]]),
+            "direction": r.get("direction") or "out", "justification": r.get("reason") or "",
+            "adaptation": r.get("adaptation") or "", "actions": r.get("actions") or [],
+            "source": r.get("origin") or "manual", "created_by": None, "x": r.get("x"), "y": r.get("y"),
+        })
     return {"skill": {k: v for k, v in info.items() if k != "observation"}, "relations": relations,
             "revision": revision, "document": doc}
 
@@ -49,7 +57,7 @@ async def build_ai_graph(repo: ISkillRelationRepository, student_id: str, skill_
     if not info:
         return None
     doc, _ = await repo.get_document(student_id, skill_id)
-    briefs = await repo.skill_briefs(student_id, [r["skill_id"] for r in doc["related"]])
+    briefs = await repo.skill_briefs(student_id, [r["skill_id"] for r in doc["related"] if r.get("skill_id")])
 
     def node(b: dict) -> dict:
         return {"code": b["code"], "grade": b["grade"], "area": b["area"], "description": b["description"],
@@ -61,11 +69,11 @@ async def build_ai_graph(repo: ISkillRelationRepository, student_id: str, skill_
             {**node(briefs[r["skill_id"]]),
              "arrow": "finalistic_to_related" if (r.get("direction") or "out") == "out" else "related_to_finalistic",
              "origin": r.get("origin") or "manual", "reason": r.get("reason") or ""}
-            for r in doc["related"] if r["skill_id"] in briefs and _in_range(briefs[r["skill_id"]]["score"])
+            for r in doc["related"] if r.get("skill_id") in briefs
         ],
     }
     if with_candidates:
-        linked = {r["skill_id"] for r in doc["related"]}
+        linked = {r.get("skill_id") for r in doc["related"]}
         out["candidates"] = [node(c) for c in await repo.candidates(student_id, skill_id) if c["id"] not in linked]
     return out
 
@@ -105,11 +113,11 @@ class SkillRelationUseCases:
             return Result.bad_request("Habilidade relacionada não encontrada.")
         if not _in_range(related["score"]):
             return Result.bad_request("Só habilidades com 1 a 4 estrelas podem ser relacionadas.")
-        new = {"id": str(uuid.uuid4()), "skill_id": related_id, "direction": "in" if data.get("direction") == "in" else "out",
+        new = {"id": str(uuid.uuid4()), "kind": "skill", "skill_id": related_id, "direction": "in" if data.get("direction") == "in" else "out",
                "origin": "manual", "reason": (data.get("reason") or "").strip(), "x": None, "y": None}
 
         def change(doc: dict) -> None:
-            if any(r["skill_id"] == related_id for r in doc["related"]):
+            if any(r.get("skill_id") == related_id for r in doc["related"]):
                 raise SkillRelationError("Essa relação já existe.")
             doc["related"].append(new)
 
@@ -230,12 +238,12 @@ class GenerateSkillRelationsUseCase:
         created: list[str] = []
 
         def change(doc: dict) -> None:
-            have = {r["skill_id"] for r in doc["related"]}
+            have = {r.get("skill_id") for r in doc["related"]}
             for target, reason in picks:
                 if target["id"] in have:
                     continue
                 rid = str(uuid.uuid4())
-                doc["related"].append({"id": rid, "skill_id": target["id"], "direction": "out", "origin": "ai",
+                doc["related"].append({"id": rid, "kind": "skill", "skill_id": target["id"], "direction": "out", "origin": "ai",
                                        "reason": reason, "x": None, "y": None})
                 created.append(rid)
 
