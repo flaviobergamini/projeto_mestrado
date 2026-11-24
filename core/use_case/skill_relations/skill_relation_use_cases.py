@@ -1,9 +1,11 @@
-"""Relações entre habilidades: listar, criar/editar/apagar à mão e gerar com IA. Regra aqui; HTTP nas rotas."""
+"""Relações entre habilidades. O grafo é UM documento JSON por aluno + habilidade finalística (fonte única): a tela é
+desenhada a partir dele e a IA recebe uma versão anonimizada dele. Regra aqui; HTTP nas rotas."""
+import json
 import logging
+import uuid
 from datetime import date, timedelta
 from typing import Optional
 
-from core.constants.bncc_fields import EXPERIENCE_FIELDS, EXPERIENCE_FIELD_NAMES_PT
 from core.interfaces.i_ai_gateway import IAiGateway
 from core.interfaces.i_prompt_provider import IPromptProvider
 from core.interfaces.i_skill_relation_repository import ISkillRelationRepository, SkillRelationError
@@ -14,10 +16,80 @@ from core.use_case.skill_plan.prompts import SKILL_PLAN_SETTINGS_KEY, DEFAULT_SK
 logger = logging.getLogger(__name__)
 
 MAX_RELATIONS = 6  # teto de relações novas por geração (a IA usa menos quando o caso pede)
+FIELD_NAMES = {
+    "selfOtherUs": "O eu, o outro e o nós", "bodyGestures": "Corpo, gestos e movimentos",
+    "linesSounds": "Traços, sons, cores e formas", "listeningSpeaking": "Escuta, fala, pensamento e imaginação",
+    "spacesTimes": "Espaços, tempos, quantidades, relações e transformações",
+}
+MIN_STARS, MAX_STARS = 1, 4  # só habilidades em andamento entram no grafo (0 = não avaliada, 5 = concluída)
+
+
+def _in_range(score: int) -> bool:
+    return MIN_STARS <= (score or 0) <= MAX_STARS
+
+
+def _public(brief: dict) -> dict:
+    return {k: brief[k] for k in ("id", "code", "grade", "area", "description", "score")}
+
+
+async def build_view(repo: ISkillRelationRepository, student_id: str, skill_id: str) -> Optional[dict]:
+    """O que a tela desenha: o documento JSON + dados vivos (código, descrição e ESTRELAS ATUAIS de cada nó)."""
+    info = await repo.skill_info(student_id, skill_id)
+    if not info:
+        return None
+    doc, revision = await repo.get_document(student_id, skill_id)
+    briefs = await repo.skill_briefs(student_id, [r["skill_id"] for r in doc["related"] if r.get("skill_id")])
+    relations = []
+    for r in doc["related"]:  # tudo o que está no JSON aparece (a regra de 1 a 4 estrelas vale para CRIAR, não para esconder)
+        is_field = r.get("kind") == "field"
+        if not is_field and r.get("skill_id") not in briefs:
+            continue
+        relations.append({
+            "id": r["id"], "skill_id": skill_id, "kind": "field" if is_field else "skill",
+            "field_key": r.get("field_key") if is_field else None,
+            "related_skill": None if is_field else _public(briefs[r["skill_id"]]),
+            "direction": r.get("direction") or "out", "justification": r.get("reason") or "",
+            "adaptation": r.get("adaptation") or "", "actions": r.get("actions") or [],
+            "source": r.get("origin") or "manual", "created_by": None, "x": r.get("x"), "y": r.get("y"),
+        })
+    return {"skill": {k: v for k, v in info.items() if k != "observation"}, "relations": relations,
+            "revision": revision, "document": doc,
+            "adaptations": await repo.plan_adaptations(student_id, skill_id)}  # plano da finalística (alimenta o Kanban)
+
+
+async def build_ai_graph(repo: ISkillRelationRepository, student_id: str, skill_id: str, with_candidates: bool = False) -> Optional[dict]:
+    """O grafo em JSON para a IA: SEM ids e sem nome de aluno; só códigos, descrições, estrelas, observações, direção e motivo."""
+    info = await repo.skill_info(student_id, skill_id)
+    if not info:
+        return None
+    doc, _ = await repo.get_document(student_id, skill_id)
+    briefs = await repo.skill_briefs(student_id, [r["skill_id"] for r in doc["related"] if r.get("skill_id")])
+
+    def node(b: dict) -> dict:
+        return {"code": b["code"], "grade": b["grade"], "area": b["area"], "description": b["description"],
+                "stars": b["score"], "observation": b.get("observation") or ""}
+
+    out = {
+        "finalistic": node(info),
+        "related": [
+            {**node(briefs[r["skill_id"]]),
+             "arrow": "finalistic_to_related" if (r.get("direction") or "out") == "out" else "related_to_finalistic",
+             "origin": r.get("origin") or "manual", "reason": r.get("reason") or ""}
+            for r in doc["related"] if r.get("skill_id") in briefs
+        ],
+    }
+    if with_candidates:
+        linked = {r.get("skill_id") for r in doc["related"]}
+        out["candidates"] = [node(c) for c in await repo.candidates(student_id, skill_id) if c["id"] not in linked]
+    return out
+
+
+def _find(doc: dict, relation_id: str) -> Optional[dict]:
+    return next((r for r in doc["related"] if r.get("id") == relation_id), None)
 
 
 class SkillRelationUseCases:
-    """Operações simples sobre as relações de uma habilidade."""
+    """Leitura e edição do grafo (cada operação atualiza o JSON de forma atômica e sobe a revisão)."""
 
     def __init__(self, repository: ISkillRelationRepository) -> None:
         self.repository = repository
@@ -26,31 +98,91 @@ class SkillRelationUseCases:
         return Result.ok(await self.repository.overview(student_id))
 
     async def list_relations(self, student_id: str, skill_id: str) -> Result:
-        info = await self.repository.skill_info(student_id, skill_id)
-        if not info:
-            return Result.not_found("Habilidade não encontrada.")
-        return Result.ok({"skill": info, "relations": await self.repository.list_relations(student_id, skill_id)})
+        view = await build_view(self.repository, student_id, skill_id)
+        return Result.ok(view) if view else Result.not_found("Habilidade não encontrada.")
+
+    async def graph_json(self, student_id: str, skill_id: str) -> Result:
+        graph = await build_ai_graph(self.repository, student_id, skill_id)
+        return Result.ok(graph) if graph else Result.not_found("Habilidade não encontrada.")
 
     async def create(self, student_id: str, skill_id: str, data: dict, user: dict) -> Result:
+        mother = await self.repository.skill_info(student_id, skill_id)
+        if not mother:
+            return Result.not_found("Habilidade não encontrada.")
+        if not mother["finalistic"]:
+            return Result.bad_request("Marque a habilidade como finalística antes de relacioná-la com outras.")
+        related_id = data.get("related_skill_id")
+        if not related_id or related_id == skill_id:
+            return Result.bad_request("Escolha outra habilidade para relacionar.")
+        related = (await self.repository.skill_briefs(student_id, [related_id])).get(related_id)
+        if not related:
+            return Result.bad_request("Habilidade relacionada não encontrada.")
+        if not _in_range(related["score"]):
+            return Result.bad_request("Só habilidades com 1 a 4 estrelas podem ser relacionadas.")
+        new = {"id": str(uuid.uuid4()), "kind": "skill", "skill_id": related_id, "direction": "in" if data.get("direction") == "in" else "out",
+               "origin": "manual", "reason": (data.get("reason") or "").strip(), "x": data.get("x"), "y": data.get("y")}
+
+        def change(doc: dict) -> None:
+            if any(r.get("skill_id") == related_id for r in doc["related"]):
+                raise SkillRelationError("Essa relação já existe.")
+            doc["related"].append(new)
+
         try:
-            return Result.ok(await self.repository.create(student_id, skill_id, data, user, "manual"))
+            await self.repository.mutate(student_id, skill_id, change, user)
         except SkillRelationError as e:
             return Result.bad_request(str(e))
+        return Result.ok({"id": new["id"]})
 
-    async def update(self, student_id: str, relation_id: str, data: dict) -> Result:
+    async def update(self, student_id: str, relation_id: str, data: dict, user: dict) -> Result:
+        skill_id = await self.repository.find_skill_of_relation(student_id, relation_id)
+        if not skill_id:
+            return Result.not_found("Relação não encontrada.")
+
+        def change(doc: dict) -> None:
+            r = _find(doc, relation_id)
+            if not r:
+                raise SkillRelationError("Relação não encontrada.")
+            if data.get("direction") in ("in", "out"):
+                r["direction"] = data["direction"]
+            reason = data.get("reason", data.get("justification"))
+            if reason is not None:
+                r["reason"] = str(reason).strip()
+                r["origin"] = "manual"  # editada por uma pessoa
+            if "x" in data and "y" in data:
+                r["x"], r["y"] = data["x"], data["y"]
+
         try:
-            return Result.ok(await self.repository.update(student_id, relation_id, data))
+            await self.repository.mutate(student_id, skill_id, change, user)
         except SkillRelationError as e:
             return Result.not_found(str(e))
+        return Result.ok({"id": relation_id})
 
-    async def delete(self, student_id: str, relation_id: str) -> Result:
-        return Result.ok(True) if await self.repository.delete(student_id, relation_id) else Result.not_found("Relação não encontrada.")
+    async def set_layout(self, student_id: str, skill_id: str, positions: dict, user: dict) -> Result:
+        """Posições dos nós no mapa ({id: {x, y}}; valor nulo limpa a posição de volta ao layout padrão)."""
+        def change(doc: dict) -> None:
+            for r in doc["related"]:
+                if r["id"] in positions:
+                    p = positions[r["id"]]
+                    r["x"], r["y"] = (p["x"], p["y"]) if p else (None, None)
+
+        await self.repository.mutate(student_id, skill_id, change, user)
+        return Result.ok({"saved": len(positions)})
+
+    async def delete(self, student_id: str, relation_id: str, user: dict) -> Result:
+        skill_id = await self.repository.find_skill_of_relation(student_id, relation_id)
+        if not skill_id:
+            return Result.not_found("Relação não encontrada.")
+
+        def change(doc: dict) -> None:
+            doc["related"] = [r for r in doc["related"] if r.get("id") != relation_id]
+
+        await self.repository.mutate(student_id, skill_id, change, user)
+        return Result.ok(True)
 
 
 class GenerateSkillRelationsUseCase:
-    """A IA relaciona UMA habilidade do aluno com outras habilidades da BNCC e com campos de experiência (Educação Infantil),
-    propondo para cada relação a adaptação, a justificativa e as ações práticas. Só acrescenta: relações que já existem
-    não são repetidas nem sobrescritas. Usa as mesmas fontes de contexto configuradas para a geração das adaptações."""
+    """A IA escolhe, entre as habilidades do aluno com 1 a 4 estrelas, as que apoiam a finalística. Recebe o grafo em JSON
+    anonimizado (+ o contexto anonimizado do aluno) e devolve um JSON; as relações válidas entram no documento do grafo."""
 
     def __init__(self, repository: ISkillRelationRepository, students: IStudentReader, ai: IAiGateway,
                  prompts: IPromptProvider, settings) -> None:
@@ -59,34 +191,27 @@ class GenerateSkillRelationsUseCase:
     async def build_request(self, student_id: str, skill_id: str) -> Result:
         if not await self.students.get_by_id(student_id):
             return Result.not_found("Aluno não encontrado.")
-        skill = await self.repository.skill_info(student_id, skill_id)
-        if not skill:
+        graph = await build_ai_graph(self.repository, student_id, skill_id, with_candidates=True)
+        if not graph:
             return Result.not_found("Habilidade não encontrada.")
+        if not (await self.repository.skill_info(student_id, skill_id))["finalistic"]:
+            return Result.bad_request("Marque a habilidade como finalística antes de gerar as relações.")
+        if not graph["candidates"]:
+            return Result.bad_request("Não há outras habilidades com 1 a 4 estrelas para relacionar.")
         cfg = resolve_round1_settings(await self.settings.get(SKILL_PLAN_SETTINGS_KEY, DEFAULT_SKILL_PLAN_SETTINGS))
         extra = {}
         if "diary_summary" in cfg["sources"]:
             extra["diary_summary_since"] = (date.today() - timedelta(days=30 * cfg["diary_summary_months"])).isoformat()
         context, name_map = await self.ai.build_context(student_id, cfg["sources"], **extra)
-        existing = await self.repository.list_relations(student_id, skill_id)
-        already = "\n".join(
-            f"- {(r['related_skill'] or {}).get('code') or EXPERIENCE_FIELD_NAMES_PT.get(r['field_key'] or '', r['field_key'])}"
-            for r in existing) or "(nenhuma)"
-        fields = "\n".join(f"- {key}: {name}" for key, name in EXPERIENCE_FIELD_NAMES_PT.items())
-        direct = ("ATENÇÃO: esta habilidade está marcada como NÃO TRABALHAR DIRETAMENTE: ela nunca vira adaptação própria, "
-                  "só se trabalha por meio das relações abaixo.\n" if skill["indirect_only"] else "")
         prompt = (
             f"ID do aluno (anonimizado): {student_id}\n\n=== CONTEXTO ===\n{context}\n\n"
-            f"=== HABILIDADE A RELACIONAR ===\n{skill['code']} ({skill['grade']}, {skill['area']}): {skill['description']} | "
-            f"nota atual: {skill['score']} de 5 estrelas\n{direct}\n"
-            f"=== RELAÇÕES JÁ EXISTENTES (não repetir) ===\n{already}\n\n"
-            f"=== CAMPOS DE EXPERIÊNCIA (chave: nome) ===\n{fields}\n\n"
-            f"=== LIMITES ===\nNo máximo {MAX_RELATIONS} relações novas e {cfg['max_actions']} ação(ões) por relação. "
-            f"Use menos quando o caso pedir.\n\nGere o JSON."
+            f"=== GRAFO (JSON) ===\n{json.dumps(graph, ensure_ascii=False, indent=1)}\n\n"
+            f"=== LIMITES ===\nNo máximo {MAX_RELATIONS} relações novas. Use menos quando o caso pedir.\n\nGere o JSON."
         )
-        prompt = self.ai.reanonymize(prompt, name_map)
+        prompt = self.ai.reanonymize(prompt, name_map)  # nomes reais (inclusive dentro das observações) viram o identificador
         system = await self.prompts.get("skill_relations")
-        return Result.ok({"system": system, "prompt": prompt, "name_map": name_map, "skill": skill,
-                          "max_actions": cfg["max_actions"], "sources": cfg["sources"]})
+        return Result.ok({"system": system, "prompt": prompt, "name_map": name_map, "allowed": {c["code"] for c in graph["candidates"]},
+                          "sources": cfg["sources"]})
 
     async def preview(self, student_id: str, skill_id: str) -> Result:
         built = await self.build_request(student_id, skill_id)
@@ -103,41 +228,91 @@ class GenerateSkillRelationsUseCase:
         raw = None
         for attempt in (1, 2):
             try:
-                raw = await self.ai.generate_json("skill_relations", v["system"], v["prompt"], user.get("user_id"),
-                                                  with_bncc_catalog=True)
+                raw = await self.ai.generate_json("skill_relations", v["system"], v["prompt"], user.get("user_id"))
                 break
             except ValueError as e:
                 logger.warning("Relações: JSON inválido (aluno %s, tentativa %s): %s", student_id, attempt, e)
                 if attempt == 2:
                     return Result.err(f"A IA não devolveu JSON válido ({e}). Tente novamente.")
 
-        items = [i for i in (raw.get("relations") or []) if isinstance(i, dict)][:MAX_RELATIONS]
-        codes = [str(i.get("code")).strip() for i in items if i.get("kind") == "skill" and i.get("code")]
-        known = await self.repository.resolve_codes(codes)  # anti-alucinação: só códigos que existem no catálogo
-        created, skipped = [], 0
-        for item in items:
-            actions = [self.ai.deanonymize(str(a), v["name_map"]) for a in (item.get("actions") or []) if str(a).strip()]
-            data = {
-                "adaptation": self.ai.deanonymize(str(item.get("adaptation") or ""), v["name_map"]),
-                "justification": self.ai.deanonymize(str(item.get("justification") or ""), v["name_map"]),
-                "actions": actions[:v["max_actions"]],
-            }
-            if not data["adaptation"].strip() or not data["actions"]:
-                skipped += 1
-                continue
-            if item.get("kind") == "skill":
-                target = known.get(str(item.get("code") or "").strip())
-                if not target:
-                    skipped += 1
+        by_code = {c["code"]: c for c in await self.repository.candidates(student_id, skill_id) if c["code"] in v["allowed"]}
+        picks: list[tuple[dict, str]] = []
+        for item in [i for i in (raw.get("relations") or []) if isinstance(i, dict)][:MAX_RELATIONS]:
+            target = by_code.get(str(item.get("code") or "").strip())  # anti-alucinação: só candidatas com 1 a 4 estrelas
+            if target and all(target["id"] != p[0]["id"] for p in picks):
+                picks.append((target, self.ai.deanonymize(str(item.get("reason") or ""), v["name_map"]).strip()))
+        created: list[str] = []
+
+        def change(doc: dict) -> None:
+            have = {r.get("skill_id") for r in doc["related"]}
+            for target, reason in picks:
+                if target["id"] in have:
                     continue
-                data.update(kind="skill", related_skill_id=target["id"])
-            elif item.get("kind") == "field" and item.get("field") in EXPERIENCE_FIELDS:
-                data.update(kind="field", field_key=item["field"])
-            else:
-                skipped += 1
-                continue
+                rid = str(uuid.uuid4())
+                doc["related"].append({"id": rid, "kind": "skill", "skill_id": target["id"], "direction": "out", "origin": "ai",
+                                       "reason": reason, "x": None, "y": None})
+                created.append(rid)
+
+        await self.repository.mutate(student_id, skill_id, change, user)
+        return Result.ok({"created": len(created), "skipped": len(raw.get("relations") or []) - len(created)})
+
+
+class GenerateRelationAdaptationsUseCase:
+    """2º botão da IA: UMA adaptação (justificativa + ações práticas) só para a finalística, usando as relações como apoio.
+    Grava no plano da finalística (o mesmo que alimenta o Kanban); regerar atualiza a mesma adaptação."""
+
+    def __init__(self, repository: ISkillRelationRepository, students: IStudentReader, ai: IAiGateway,
+                 prompts: IPromptProvider, settings) -> None:
+        self.repository, self.students, self.ai, self.prompts, self.settings = repository, students, ai, prompts, settings
+
+    async def execute(self, student_id: str, skill_id: str, user: dict) -> Result:
+        if not await self.students.get_by_id(student_id):
+            return Result.not_found("Aluno não encontrado.")
+        info = await self.repository.skill_info(student_id, skill_id)
+        if not info:
+            return Result.not_found("Habilidade não encontrada.")
+        if not info["finalistic"]:
+            return Result.bad_request("Marque a habilidade como finalística antes de gerar as adaptações.")
+        doc, _ = await self.repository.get_document(student_id, skill_id)
+        if not doc["related"]:
+            return Result.bad_request("Ligue ao menos uma habilidade à finalística antes de gerar as adaptações.")
+        graph = await build_ai_graph(self.repository, student_id, skill_id)
+        graph["fields"] = [{"key": r["field_key"], "name": FIELD_NAMES.get(r["field_key"], r["field_key"]), "reason": r.get("reason") or ""}
+                           for r in doc["related"] if r.get("kind") == "field" and r.get("field_key")]
+        cfg = resolve_round1_settings(await self.settings.get(SKILL_PLAN_SETTINGS_KEY, DEFAULT_SKILL_PLAN_SETTINGS))
+        extra = {}
+        if "diary_summary" in cfg["sources"]:
+            extra["diary_summary_since"] = (date.today() - timedelta(days=30 * cfg["diary_summary_months"])).isoformat()
+        context, name_map = await self.ai.build_context(student_id, cfg["sources"], **extra)
+        prompt = self.ai.reanonymize(
+            f"ID do aluno (anonimizado): {student_id}\n\n=== CONTEXTO ===\n{context}\n\n"
+            f"=== GRAFO (JSON) ===\n{json.dumps(graph, ensure_ascii=False, indent=1)}\n\nGere o JSON.", name_map)
+        system = await self.prompts.get("skill_adaptations")
+        raw = None
+        for attempt in (1, 2):
             try:
-                created.append(await self.repository.create(student_id, skill_id, data, user, "ai"))
-            except SkillRelationError:
-                skipped += 1  # relação repetida ou inválida
-        return Result.ok({"created": len(created), "skipped": skipped, "relations": created})
+                raw = await self.ai.generate_json("skill_adaptations", system, prompt, user.get("user_id"))
+                break
+            except ValueError as e:
+                logger.warning("Adaptações: JSON inválido (aluno %s, tentativa %s): %s", student_id, attempt, e)
+                if attempt == 2:
+                    return Result.err(f"A IA não devolveu JSON válido ({e}). Tente novamente.")
+
+        adaptation = self.ai.deanonymize(str(raw.get("adaptation") or ""), name_map).strip()
+        if not adaptation:
+            return Result.err("A IA não devolveu a adaptação. Tente novamente.")
+        justification = self.ai.deanonymize(str(raw.get("justification") or ""), name_map).strip()
+        actions = [self.ai.deanonymize(str(a), name_map).strip() for a in (raw.get("actions") or []) if str(a).strip()][:6]
+        if not actions:
+            return Result.err("A IA não devolveu ações práticas. Tente novamente.")
+        try:
+            group_id = await self.repository.save_finalistic_adaptation(
+                student_id, skill_id, doc.get("adaptation_id"), adaptation, justification, actions)
+        except SkillRelationError as e:
+            return Result.bad_request(str(e))
+
+        def change(d: dict) -> None:
+            d["adaptation_id"] = group_id  # regerar atualiza esta mesma adaptação (e os cards do Kanban dela)
+
+        await self.repository.mutate(student_id, skill_id, change, user)
+        return Result.ok({"adapted": 1, "actions": len(actions)})

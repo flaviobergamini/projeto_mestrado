@@ -39,7 +39,7 @@ from infrastructure.repositories.diary_question_repository import DiaryQuestionR
 from infrastructure.repositories.bncc_repository import BnccRepository
 from infrastructure.repositories.skill_plan_repository import SkillPlanRepository
 from infrastructure.repositories.skill_relation_repository import SkillRelationRepository
-from core.use_case.skill_relations.skill_relation_use_cases import SkillRelationUseCases, GenerateSkillRelationsUseCase
+from core.use_case.skill_relations.skill_relation_use_cases import SkillRelationUseCases, GenerateSkillRelationsUseCase, GenerateRelationAdaptationsUseCase
 from infrastructure.services.ai_gateway import AiGateway
 from core.use_case.kanban import kanban_use_cases as kb_uc
 from core.use_case.functional_profile import functional_profile_use_cases as fp_uc
@@ -205,6 +205,10 @@ class Container(containers.DeclarativeContainer):
     skill_relation_use_cases = providers.Factory(SkillRelationUseCases, repository=skill_relation_repository)
     generate_skill_relations_use_case = providers.Factory(
         GenerateSkillRelationsUseCase, repository=skill_relation_repository, students=student_repository, ai=ai_gateway,
+        prompts=prompt_repository, settings=app_settings_repository,
+    )
+    generate_relation_adaptations_use_case = providers.Factory(
+        GenerateRelationAdaptationsUseCase, repository=skill_relation_repository, students=student_repository, ai=ai_gateway,
         prompts=prompt_repository, settings=app_settings_repository,
     )
     generate_skill_summary_use_case = providers.Factory(

@@ -8,7 +8,9 @@ from api.dependencies import require_roles
 from api.student_access import guard_student_scope
 from core.kernel.container import Container
 from core.kernel.result import Result
-from core.use_case.skill_relations.skill_relation_use_cases import SkillRelationUseCases, GenerateSkillRelationsUseCase
+from core.use_case.skill_relations.skill_relation_use_cases import (
+    SkillRelationUseCases, GenerateSkillRelationsUseCase, GenerateRelationAdaptationsUseCase,
+)
 
 router = APIRouter(prefix="/skill-relations", tags=["Skill Relations"], dependencies=[Depends(guard_student_scope)])
 
@@ -17,18 +19,30 @@ WRITERS = ("admin", "coordenacao", "professor")
 
 
 class RelationBody(BaseModel):
-    kind: str = Field(pattern="^(skill|field)$")
-    related_skill_id: Optional[str] = None
-    field_key: Optional[str] = None
-    adaptation: str = Field("", max_length=4000)
-    justification: str = Field("", max_length=4000)
-    actions: list[str] = Field(default_factory=list, max_length=20)
+    related_skill_id: str
+    direction: str = Field("out", pattern="^(in|out)$")  # out: finalística -> habilidade; in: o inverso
+    reason: str = Field("", max_length=2000)
+    x: Optional[float] = None  # onde o card foi solto no mapa
+    y: Optional[float] = None
 
 
 class RelationPatch(BaseModel):
     adaptation: Optional[str] = Field(None, max_length=4000)
-    justification: Optional[str] = Field(None, max_length=4000)
-    actions: Optional[list[str]] = Field(None, max_length=20)
+    actions: Optional[list[str]] = Field(None, max_length=10)
+    direction: Optional[str] = Field(None, pattern="^(in|out)$")
+    reason: Optional[str] = Field(None, max_length=2000)
+    justification: Optional[str] = Field(None, max_length=2000)  # nome antigo de `reason`
+    x: Optional[float] = Field(None, ge=0, le=2000)
+    y: Optional[float] = Field(None, ge=0, le=2000)
+
+
+class Position(BaseModel):
+    x: float = Field(ge=0, le=2000)
+    y: float = Field(ge=0, le=2000)
+
+
+class LayoutBody(BaseModel):
+    positions: dict[str, Optional[Position]] = Field(max_length=200)  # valor nulo: volta ao layout padrão
 
 
 def _unwrap(result: Result):
@@ -48,7 +62,7 @@ async def overview(
     current_user: dict = Depends(require_roles(*READERS)),
     use_case: SkillRelationUseCases = Depends(Provide[Container.skill_relation_use_cases]),
 ):
-    """Habilidades do aluno que têm relações ou estão marcadas como indiretas."""
+    """Habilidades do aluno com 1 a 4 estrelas (as que podem entrar no grafo), com a marca de finalística e o nº de relações."""
     return _unwrap(await use_case.overview(student_id))
 
 
@@ -75,6 +89,32 @@ async def create_relation(
     return _unwrap(await use_case.create(student_id, skill_id, body.model_dump(), current_user))
 
 
+@router.get("/students/{student_id}/skills/{skill_id}/graph")
+@inject
+async def graph_json(
+    student_id: str,
+    skill_id: str,
+    current_user: dict = Depends(require_roles(*READERS)),
+    use_case: SkillRelationUseCases = Depends(Provide[Container.skill_relation_use_cases]),
+):
+    """O grafo em JSON como a IA o recebe (anonimizável: sem ids de relação, só códigos, estrelas, observações e setas)."""
+    return _unwrap(await use_case.graph_json(student_id, skill_id))
+
+
+@router.put("/students/{student_id}/skills/{skill_id}/layout")
+@inject
+async def save_layout(
+    student_id: str,
+    skill_id: str,
+    body: LayoutBody,
+    current_user: dict = Depends(require_roles(*WRITERS)),
+    use_case: SkillRelationUseCases = Depends(Provide[Container.skill_relation_use_cases]),
+):
+    """Grava as posições dos nós no mapa (parte do JSON do grafo)."""
+    return _unwrap(await use_case.set_layout(
+        student_id, skill_id, {k: (v.model_dump() if v else None) for k, v in body.positions.items()}, current_user))
+
+
 @router.post("/students/{student_id}/skills/{skill_id}/generate")
 @inject
 async def generate_relations(
@@ -87,6 +127,18 @@ async def generate_relations(
     return _unwrap(await use_case.execute(student_id, skill_id, current_user))
 
 
+@router.post("/students/{student_id}/skills/{skill_id}/adaptations")
+@inject
+async def generate_adaptations(
+    student_id: str,
+    skill_id: str,
+    current_user: dict = Depends(require_roles(*WRITERS)),
+    use_case: GenerateRelationAdaptationsUseCase = Depends(Provide[Container.generate_relation_adaptations_use_case]),
+):
+    """IA escreve a adaptação e as ações de cada nó do grafo (grava no JSON; não sobrescreve edições manuais)."""
+    return _unwrap(await use_case.execute(student_id, skill_id, current_user))
+
+
 @router.put("/students/{student_id}/{relation_id}")
 @inject
 async def update_relation(
@@ -96,7 +148,7 @@ async def update_relation(
     current_user: dict = Depends(require_roles(*WRITERS)),
     use_case: SkillRelationUseCases = Depends(Provide[Container.skill_relation_use_cases]),
 ):
-    return _unwrap(await use_case.update(student_id, relation_id, body.model_dump(exclude_unset=True)))
+    return _unwrap(await use_case.update(student_id, relation_id, body.model_dump(exclude_unset=True), current_user))
 
 
 @router.delete("/students/{student_id}/{relation_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -107,4 +159,4 @@ async def delete_relation(
     current_user: dict = Depends(require_roles(*WRITERS)),
     use_case: SkillRelationUseCases = Depends(Provide[Container.skill_relation_use_cases]),
 ):
-    _unwrap(await use_case.delete(student_id, relation_id))
+    _unwrap(await use_case.delete(student_id, relation_id, current_user))

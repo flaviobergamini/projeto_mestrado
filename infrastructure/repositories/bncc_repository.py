@@ -12,6 +12,7 @@ from infrastructure.repositories.responsibles import default_responsible, fill_r
 from infrastructure.database_context.database import Database
 from infrastructure.models.bncc import BnccSkill, StudentSkillScore, SkillReport, StudentSkillEvent
 from infrastructure.models.student import Student
+from infrastructure.models.skill_relation import StudentSkillGraph
 from core.services.bncc_codes import etapa_of, FUNDAMENTAL_1_YEARS
 
 
@@ -50,6 +51,7 @@ def _plan_dict(row: Optional[StudentSkillScore], actor: Optional[dict] = None) -
         "experience_fields": _load_codes(row.correlated_codes) if row else [],
         "ai_excluded": bool(row.ai_excluded) if row else False,
         "indirect_only": bool(row.indirect_only) if row else False,
+        "finalistic": bool(row.finalistic) if row else False,
         "in_plan": bool(row.in_plan) if row else False,
         "plan_ai_at": row.plan_ai_at.isoformat() if row and row.plan_ai_at else None,
     }
@@ -264,6 +266,8 @@ class BnccRepository(IBnccRepository):
                 row.ai_excluded = bool(fields["ai_excluded"])
             if "indirect_only" in fields and fields["indirect_only"] is not None:
                 row.indirect_only = bool(fields["indirect_only"])
+            if "finalistic" in fields and fields["finalistic"] is not None:
+                row.finalistic = bool(fields["finalistic"])
             if "in_plan" in fields and fields["in_plan"] is not None:
                 was = bool(row.in_plan)
                 row.in_plan = bool(fields["in_plan"])
@@ -284,11 +288,43 @@ class BnccRepository(IBnccRepository):
                     evidence_card_ids=json.dumps(fields.get("evidence_card_ids") or []) if fields.get("evidence_card_ids") else None,
                     user_id=user.get("user_id"), username=user.get("username"),
                 ))
+                if row.finalistic:  # as estrelas da finalística valem para toda a relação (o grafo em JSON)
+                    await self._propagate_score(session, student_id, skill, row.score, user)
             await session.commit()
             await session.refresh(row)
             return {**_skill_dict(skill), "score": row.score, "observation": row.observation or "",
                     **_plan_dict(row, actor_from_user(user)),
                     "updated_at": row.updated_at.isoformat() if row.updated_at else None}
+
+    async def _propagate_score(self, session, student_id: str, finalistic_skill: BnccSkill, score: int, user: dict) -> None:
+        """Copia a nota da finalística para as habilidades ligadas a ela no grafo (um nível; registra no histórico de cada uma).
+        Habilidades já concluídas (5 estrelas) só mudam para quem pode destravar."""
+        graph = await session.get(StudentSkillGraph, (student_id, finalistic_skill.id))
+        if not graph:
+            return
+        try:
+            related = json.loads(graph.document or "{}").get("related") or []
+        except Exception:
+            return
+        for r in related:
+            rid = r.get("skill_id")
+            if r.get("kind") == "field" or not rid or rid == finalistic_skill.id:
+                continue
+            target = await session.get(StudentSkillScore, (student_id, rid))
+            if not target:
+                target = StudentSkillScore(student_id=student_id, skill_id=rid, score=0, ai_excluded=False, in_plan=False)
+                session.add(target)
+            before = target.score or 0
+            if before == score or (before >= 5 and user.get("role") not in LOCK_OVERRIDE_ROLES):
+                continue
+            target.score = score
+            target.updated_by_user_id = user.get("user_id")
+            target.updated_by_username = user.get("username")
+            session.add(StudentSkillEvent(
+                id=str(uuid.uuid4()), student_id=student_id, skill_id=rid, kind="score", old_score=before, new_score=score,
+                note=f"Nota acompanhou a finalística {finalistic_skill.code}.",
+                user_id=user.get("user_id"), username=user.get("username"),
+            ))
 
     async def clear_events(self, student_id: str, skill_id: str, event_ids: Optional[list[str]]) -> dict:
         """Apaga registros da linha do tempo (todos, se `event_ids` for None) e recalcula a nota pelo que sobrou:

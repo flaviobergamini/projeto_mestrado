@@ -1,34 +1,33 @@
-"""Relações entre habilidades do aluno (habilidade → outra habilidade ou campo de experiência)."""
+"""Grafo de relações do aluno: um documento JSON por habilidade finalística (tabela student_skill_graphs)."""
 import json
-import uuid
-from typing import Optional
-from sqlalchemy import select, func
+from typing import Callable, Optional
+from sqlalchemy import select
 
-from core.constants.bncc_fields import EXPERIENCE_FIELDS
-from core.interfaces.i_skill_relation_repository import ISkillRelationRepository, SkillRelationError
+from core.interfaces.i_skill_relation_repository import ISkillRelationRepository, SkillRelationError  # noqa: F401
 from infrastructure.database_context.database import Database
 from infrastructure.models.bncc import BnccSkill, StudentSkillScore
-from infrastructure.models.skill_relation import StudentSkillRelation, KIND_SKILL, KIND_FIELD
-from infrastructure.models.student import Student
+from infrastructure.models.skill_relation import StudentSkillGraph
+from core.services.skill_actions import normalize_adaptations, dump_adaptations, with_ids
+from infrastructure.repositories.responsibles import default_responsible, fill_responsibles
 
 
-def _actions(raw: Optional[str]) -> list[str]:
-    if not raw:
-        return []
+def _empty() -> dict:
+    return {"schema": 1, "related": []}
+
+
+def _load(raw: Optional[str]) -> dict:
     try:
-        v = json.loads(raw)
+        doc = json.loads(raw) if raw else _empty()
     except Exception:
-        return []
-    return [str(a).strip() for a in v if str(a).strip()] if isinstance(v, list) else []
+        doc = _empty()
+    if not isinstance(doc, dict) or not isinstance(doc.get("related"), list):
+        doc = _empty()
+    return doc
 
 
-def _skill_brief(s: BnccSkill, score: int = 0) -> dict:
-    return {"id": s.id, "code": s.code, "grade": s.grade, "area": s.area, "description": s.description, "score": score}
-
-
-def _dump_actions(value) -> Optional[str]:
-    items = [str(a).strip() for a in (value or []) if str(a).strip()]
-    return json.dumps(items, ensure_ascii=False) if items else None
+def _brief(s: BnccSkill, score: int, observation: str = "") -> dict:
+    return {"id": s.id, "code": s.code, "grade": s.grade, "area": s.area, "description": s.description,
+            "score": score, "observation": observation}
 
 
 class SkillRelationRepository(ISkillRelationRepository):
@@ -37,45 +36,67 @@ class SkillRelationRepository(ISkillRelationRepository):
 
     async def overview(self, student_id: str) -> list[dict]:
         async with self.database.session() as session:
-            counts = dict((await session.execute(
-                select(StudentSkillRelation.skill_id, func.count())
-                .where(StudentSkillRelation.student_id == student_id, StudentSkillRelation.deleted == False)  # noqa: E712
-                .group_by(StudentSkillRelation.skill_id)
-            )).all())
             rows = (await session.execute(
                 select(StudentSkillScore, BnccSkill).join(BnccSkill, BnccSkill.id == StudentSkillScore.skill_id)
                 .where(StudentSkillScore.student_id == student_id, BnccSkill.deleted == False,  # noqa: E712
-                       (StudentSkillScore.score > 0) | (StudentSkillScore.indirect_only == True)  # noqa: E712
-                       | StudentSkillScore.skill_id.in_(list(counts) or [""]))
+                       StudentSkillScore.score >= 1, StudentSkillScore.score <= 4)  # 0 e 5 estrelas não aparecem
                 .order_by(BnccSkill.grade_order, BnccSkill.code)
             )).all()
-            return [{**_skill_brief(sk, sc.score or 0), "indirect_only": bool(sc.indirect_only),
-                     "relations": counts.get(sk.id, 0)} for sc, sk in rows]
+            graphs = (await session.execute(select(StudentSkillGraph).where(StudentSkillGraph.student_id == student_id))).scalars().all()
+            docs = {g.skill_id: _load(g.document)["related"] for g in graphs}
+            linked_ids = {r["skill_id"] for rel in docs.values() for r in rel if r.get("skill_id")}  # já ligadas a alguma finalística
+            scores = {sk.id: sc.score or 0 for sc, sk in rows}
+            codes = {s.id: s for s in (await session.execute(
+                select(BnccSkill).where(BnccSkill.id.in_(linked_ids)))).scalars().all()} if linked_ids else {}
+            if linked_ids - set(scores):
+                for sc in (await session.execute(select(StudentSkillScore).where(
+                        StudentSkillScore.student_id == student_id, StudentSkillScore.skill_id.in_(linked_ids)))).scalars().all():
+                    scores.setdefault(sc.skill_id, sc.score or 0)
 
-    async def list_relations(self, student_id: str, skill_id: str) -> list[dict]:
+            def items(skill_id: str) -> list[dict]:  # os nós ligados à finalística (para listar no card)
+                out = []
+                for r in docs.get(skill_id, []):
+                    if r.get("kind") == "field":
+                        out.append({"id": None, "kind": "field", "label": r.get("field_key") or "", "score": None})
+                    elif r.get("skill_id") in codes:
+                        out.append({"id": r["skill_id"], "kind": "skill", "label": codes[r["skill_id"]].code,
+                                    "score": scores.get(r["skill_id"], 0)})
+                return out
+
+            return [{**{k: v for k, v in _brief(sk, sc.score or 0).items() if k != "observation"},
+                     "finalistic": bool(sc.finalistic), "relations": len(docs.get(sk.id, [])), "items": items(sk.id),
+                     "linked": sk.id in linked_ids,
+                     "updated_at": sc.updated_at.isoformat() if sc.updated_at else None} for sc, sk in rows]
+
+    async def get_document(self, student_id: str, skill_id: str) -> tuple[dict, int]:
         async with self.database.session() as session:
-            rels = (await session.execute(
-                select(StudentSkillRelation).where(
-                    StudentSkillRelation.student_id == student_id, StudentSkillRelation.skill_id == skill_id,
-                    StudentSkillRelation.deleted == False)  # noqa: E712
-                .order_by(StudentSkillRelation.created_at)
-            )).scalars().all()
-            ids = [r.related_skill_id for r in rels if r.related_skill_id]
-            skills = {s.id: s for s in (await session.execute(select(BnccSkill).where(BnccSkill.id.in_(ids or [""])))).scalars().all()}
-            scores = {sc.skill_id: sc.score or 0 for sc in (await session.execute(
-                select(StudentSkillScore).where(StudentSkillScore.student_id == student_id,
-                                                StudentSkillScore.skill_id.in_(ids or [""])))).scalars().all()}
-            return [self._dict(r, skills.get(r.related_skill_id), scores.get(r.related_skill_id, 0)) for r in rels]
+            row = await session.get(StudentSkillGraph, (student_id, skill_id))
+            return (_load(row.document), row.revision) if row else (_empty(), 0)
 
-    @staticmethod
-    def _dict(r: StudentSkillRelation, related: Optional[BnccSkill], score: int) -> dict:
-        return {
-            "id": r.id, "skill_id": r.skill_id, "kind": r.kind, "field_key": r.field_key,
-            "related_skill": _skill_brief(related, score) if related else None,
-            "adaptation": r.adaptation or "", "justification": r.justification or "", "actions": _actions(r.actions),
-            "source": r.source, "created_by": r.created_by,
-            "created_at": r.created_at.isoformat() if r.created_at else None,
-        }
+    async def mutate(self, student_id: str, skill_id: str, change: Callable[[dict], None], user: dict) -> tuple[dict, int]:
+        async with self.database.session() as session:
+            row = (await session.execute(
+                select(StudentSkillGraph).where(StudentSkillGraph.student_id == student_id, StudentSkillGraph.skill_id == skill_id)
+                .with_for_update())).scalars().first()
+            doc = _load(row.document) if row else _empty()
+            change(doc)  # pode abortar com SkillRelationError
+            payload = json.dumps(doc, ensure_ascii=False)
+            if row:
+                row.document, row.revision, row.updated_by = payload, (row.revision or 0) + 1, user.get("username")
+            else:
+                row = StudentSkillGraph(student_id=student_id, skill_id=skill_id, document=payload, revision=1,
+                                        updated_by=user.get("username"))
+                session.add(row)
+            await session.commit()
+            return doc, row.revision
+
+    async def find_skill_of_relation(self, student_id: str, relation_id: str) -> Optional[str]:
+        async with self.database.session() as session:
+            graphs = (await session.execute(select(StudentSkillGraph).where(StudentSkillGraph.student_id == student_id))).scalars().all()
+            for g in graphs:
+                if any(r.get("id") == relation_id for r in _load(g.document)["related"]):
+                    return g.skill_id
+            return None
 
     async def skill_info(self, student_id: str, skill_id: str) -> Optional[dict]:
         async with self.database.session() as session:
@@ -83,85 +104,61 @@ class SkillRelationRepository(ISkillRelationRepository):
             if not skill or skill.deleted:
                 return None
             sc = await session.get(StudentSkillScore, (student_id, skill_id))
-            return {**_skill_brief(skill, sc.score if sc else 0), "indirect_only": bool(sc.indirect_only) if sc else False}
+            return {**_brief(skill, sc.score if sc else 0, (sc.observation or "") if sc else ""),
+                    "finalistic": bool(sc.finalistic) if sc else False}
 
-    async def resolve_codes(self, codes: list[str]) -> dict[str, dict]:
-        if not codes:
+    async def skill_briefs(self, student_id: str, skill_ids: list[str]) -> dict[str, dict]:
+        if not skill_ids:
             return {}
         async with self.database.session() as session:
-            rows = (await session.execute(
-                select(BnccSkill).where(BnccSkill.code.in_(codes), BnccSkill.deleted == False))).scalars().all()  # noqa: E712
-            return {s.code: _skill_brief(s) for s in rows}
+            skills = {s.id: s for s in (await session.execute(
+                select(BnccSkill).where(BnccSkill.id.in_(skill_ids), BnccSkill.deleted == False))).scalars().all()}  # noqa: E712
+            scores = {sc.skill_id: sc for sc in (await session.execute(select(StudentSkillScore).where(
+                StudentSkillScore.student_id == student_id, StudentSkillScore.skill_id.in_(skill_ids)))).scalars().all()}
+            return {i: _brief(s, (scores[i].score or 0) if i in scores else 0, (scores[i].observation or "") if i in scores else "")
+                    for i, s in skills.items()}
 
-    async def create(self, student_id: str, skill_id: str, data: dict, user: dict, source: str) -> dict:
-        kind = data.get("kind")
-        related_id, field_key = data.get("related_skill_id"), data.get("field_key")
+    async def plan_adaptations(self, student_id: str, skill_id: str) -> list[dict]:
         async with self.database.session() as session:
-            if not await session.get(Student, student_id):
-                raise SkillRelationError("Aluno não encontrado.")
-            skill = await session.get(BnccSkill, skill_id)
-            if not skill or skill.deleted:
-                raise SkillRelationError("Habilidade não encontrada.")
-            related = None
-            if kind == KIND_SKILL:
-                if not related_id or related_id == skill_id:
-                    raise SkillRelationError("Escolha outra habilidade para relacionar.")
-                related = await session.get(BnccSkill, related_id)
-                if not related or related.deleted:
-                    raise SkillRelationError("Habilidade relacionada não encontrada.")
-                field_key = None
-            elif kind == KIND_FIELD:
-                if field_key not in EXPERIENCE_FIELDS:
-                    raise SkillRelationError("Campo de experiência inválido.")
-                related_id = None
+            row = await session.get(StudentSkillScore, (student_id, skill_id))
+            return [{k: g.get(k) for k in ("id", "adaptation", "justification", "actions")}
+                    for g in (normalize_adaptations(row.actions) if row else [])]
+
+    async def save_finalistic_adaptation(self, student_id: str, skill_id: str, group_id: Optional[str], adaptation: str,
+                                         justification: str, actions: list[str]) -> str:
+        async with self.database.session() as session:
+            row = await session.get(StudentSkillScore, (student_id, skill_id))
+            if not row:
+                raise SkillRelationError("Habilidade do aluno não encontrada.")
+            groups = with_ids(normalize_adaptations(row.actions))
+            old = next((g for g in groups if group_id and g["id"] == group_id), None)
+            old_actions = (old or {}).get("actions", [])
+            new = {"id": (old or {}).get("id", ""), "adaptation": adaptation, "justification": justification,
+                   # regerar mantém o id das ações já existentes (o card do Kanban é atualizado, não duplicado)
+                   "actions": [{"id": old_actions[i]["id"] if i < len(old_actions) else "", "action": a} for i, a in enumerate(actions)]}
+            if old:
+                for k in ("responsible", "responsibles"):
+                    if k in old:
+                        new[k] = old[k]
+                idx = next(i for i, g in enumerate(groups) if g["id"] == old["id"])
+                groups[idx] = new
             else:
-                raise SkillRelationError("Tipo de relação inválido.")
-            same = (await session.execute(select(StudentSkillRelation).where(
-                StudentSkillRelation.student_id == student_id, StudentSkillRelation.skill_id == skill_id,
-                StudentSkillRelation.kind == kind, StudentSkillRelation.related_skill_id.is_(related_id) if related_id is None
-                else StudentSkillRelation.related_skill_id == related_id,
-                StudentSkillRelation.field_key.is_(field_key) if field_key is None else StudentSkillRelation.field_key == field_key,
-                StudentSkillRelation.deleted == False))).scalars().first()  # noqa: E712
-            if same:
-                raise SkillRelationError("Essa relação já existe.")
-            row = StudentSkillRelation(
-                id=str(uuid.uuid4()), student_id=student_id, skill_id=skill_id, kind=kind, related_skill_id=related_id,
-                field_key=field_key, adaptation=(data.get("adaptation") or "").strip() or None,
-                justification=(data.get("justification") or "").strip() or None,
-                actions=_dump_actions(data.get("actions")), source=source, created_by=user.get("username"),
-            )
-            session.add(row)
+                default = await default_responsible(session, student_id)
+                if default:
+                    new["responsibles"] = [default]
+                groups.append(new)
+                idx = len(groups) - 1
+            groups = with_ids(await fill_responsibles(session, groups))
+            row.actions = dump_adaptations(groups)
             await session.commit()
-            await session.refresh(row)
-            score = 0
-            if related:
-                sc = await session.get(StudentSkillScore, (student_id, related.id))
-                score = sc.score if sc else 0
-            return self._dict(row, related, score)
+            return groups[idx]["id"]
 
-    async def update(self, student_id: str, relation_id: str, data: dict) -> dict:
+    async def candidates(self, student_id: str, exclude_skill_id: str) -> list[dict]:
         async with self.database.session() as session:
-            row = await session.get(StudentSkillRelation, relation_id)
-            if not row or row.deleted or row.student_id != student_id:
-                raise SkillRelationError("Relação não encontrada.")
-            if "adaptation" in data:
-                row.adaptation = (data["adaptation"] or "").strip() or None
-            if "justification" in data:
-                row.justification = (data["justification"] or "").strip() or None
-            if "actions" in data:
-                row.actions = _dump_actions(data["actions"])
-            row.source = "manual"  # editada por uma pessoa
-            await session.commit()
-            await session.refresh(row)
-            related = await session.get(BnccSkill, row.related_skill_id) if row.related_skill_id else None
-            sc = await session.get(StudentSkillScore, (student_id, row.related_skill_id)) if related else None
-            return self._dict(row, related, sc.score if sc else 0)
-
-    async def delete(self, student_id: str, relation_id: str) -> bool:
-        async with self.database.session() as session:
-            row = await session.get(StudentSkillRelation, relation_id)
-            if not row or row.deleted or row.student_id != student_id:
-                return False
-            row.deleted = True
-            await session.commit()
-            return True
+            rows = (await session.execute(
+                select(StudentSkillScore, BnccSkill).join(BnccSkill, BnccSkill.id == StudentSkillScore.skill_id)
+                .where(StudentSkillScore.student_id == student_id, BnccSkill.deleted == False,  # noqa: E712
+                       StudentSkillScore.score >= 1, StudentSkillScore.score <= 4, BnccSkill.id != exclude_skill_id)
+                .order_by(BnccSkill.grade_order, BnccSkill.code)
+            )).all()
+            return [_brief(sk, sc.score or 0, sc.observation or "") for sc, sk in rows]

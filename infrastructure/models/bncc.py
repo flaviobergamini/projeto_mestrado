@@ -45,6 +45,7 @@ class StudentSkillScore(Base):
     correlated_codes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON list: campos de experiência (BNCC). Nome da coluna é histórico (antes: habilidades correlatas)
     ai_excluded: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     in_plan: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    finalistic: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")  # raiz do conjunto de relações
     indirect_only: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")  # "não trabalhar diretamente": só como relação
     plan_ai_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     updated_by_user_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
