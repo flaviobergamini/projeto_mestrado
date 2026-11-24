@@ -16,6 +16,11 @@ from core.use_case.skill_plan.prompts import SKILL_PLAN_SETTINGS_KEY, DEFAULT_SK
 logger = logging.getLogger(__name__)
 
 MAX_RELATIONS = 6  # teto de relações novas por geração (a IA usa menos quando o caso pede)
+FIELD_NAMES = {
+    "selfOtherUs": "O eu, o outro e o nós", "bodyGestures": "Corpo, gestos e movimentos",
+    "linesSounds": "Traços, sons, cores e formas", "listeningSpeaking": "Escuta, fala, pensamento e imaginação",
+    "spacesTimes": "Espaços, tempos, quantidades, relações e transformações",
+}
 MIN_STARS, MAX_STARS = 1, 4  # só habilidades em andamento entram no grafo (0 = não avaliada, 5 = concluída)
 
 
@@ -138,6 +143,11 @@ class SkillRelationUseCases:
                 raise SkillRelationError("Relação não encontrada.")
             if data.get("direction") in ("in", "out"):
                 r["direction"] = data["direction"]
+            if data.get("adaptation") is not None:
+                r["adaptation"], r["adaptation_origin"] = str(data["adaptation"]).strip(), "manual"
+            if isinstance(data.get("actions"), list):
+                r["actions"] = [str(a).strip() for a in data["actions"] if str(a).strip()]
+                r["adaptation_origin"] = "manual"
             reason = data.get("reason", data.get("justification"))
             if reason is not None:
                 r["reason"] = str(reason).strip()
@@ -249,3 +259,69 @@ class GenerateSkillRelationsUseCase:
 
         await self.repository.mutate(student_id, skill_id, change, user)
         return Result.ok({"created": len(created), "skipped": len(raw.get("relations") or []) - len(created)})
+
+
+class GenerateRelationAdaptationsUseCase:
+    """2º botão da IA: para cada nó do grafo (habilidade ou campo), escreve adaptação + ações e grava no mesmo JSON.
+    Não sobrescreve o que a professora editou à mão (adaptation_origin == "manual")."""
+
+    def __init__(self, repository: ISkillRelationRepository, students: IStudentReader, ai: IAiGateway,
+                 prompts: IPromptProvider, settings) -> None:
+        self.repository, self.students, self.ai, self.prompts, self.settings = repository, students, ai, prompts, settings
+
+    async def execute(self, student_id: str, skill_id: str, user: dict) -> Result:
+        if not await self.students.get_by_id(student_id):
+            return Result.not_found("Aluno não encontrado.")
+        info = await self.repository.skill_info(student_id, skill_id)
+        if not info:
+            return Result.not_found("Habilidade não encontrada.")
+        if not info["finalistic"]:
+            return Result.bad_request("Marque a habilidade como finalística antes de gerar as adaptações.")
+        doc, _ = await self.repository.get_document(student_id, skill_id)
+        if not doc["related"]:
+            return Result.bad_request("Ligue ao menos uma habilidade à finalística antes de gerar as adaptações.")
+        graph = await build_ai_graph(self.repository, student_id, skill_id)
+        graph["fields"] = [{"key": r["field_key"], "name": FIELD_NAMES.get(r["field_key"], r["field_key"]), "reason": r.get("reason") or ""}
+                           for r in doc["related"] if r.get("kind") == "field" and r.get("field_key")]
+        cfg = resolve_round1_settings(await self.settings.get(SKILL_PLAN_SETTINGS_KEY, DEFAULT_SKILL_PLAN_SETTINGS))
+        extra = {}
+        if "diary_summary" in cfg["sources"]:
+            extra["diary_summary_since"] = (date.today() - timedelta(days=30 * cfg["diary_summary_months"])).isoformat()
+        context, name_map = await self.ai.build_context(student_id, cfg["sources"], **extra)
+        prompt = self.ai.reanonymize(
+            f"ID do aluno (anonimizado): {student_id}\n\n=== CONTEXTO ===\n{context}\n\n"
+            f"=== GRAFO (JSON) ===\n{json.dumps(graph, ensure_ascii=False, indent=1)}\n\nGere o JSON.", name_map)
+        system = await self.prompts.get("skill_adaptations")
+        raw = None
+        for attempt in (1, 2):
+            try:
+                raw = await self.ai.generate_json("skill_adaptations", system, prompt, user.get("user_id"))
+                break
+            except ValueError as e:
+                logger.warning("Adaptações: JSON inválido (aluno %s, tentativa %s): %s", student_id, attempt, e)
+                if attempt == 2:
+                    return Result.err(f"A IA não devolveu JSON válido ({e}). Tente novamente.")
+
+        briefs = await self.repository.skill_briefs(student_id, [r["skill_id"] for r in doc["related"] if r.get("skill_id")])
+        by_ref: dict[str, str] = {}  # código (ou chave do campo) -> id da relação
+        for r in doc["related"]:
+            ref = r.get("field_key") if r.get("kind") == "field" else (briefs.get(r.get("skill_id")) or {}).get("code")
+            if ref:
+                by_ref[str(ref)] = r["id"]
+        picks: dict[str, tuple[str, list[str]]] = {}
+        for item in [i for i in (raw.get("adaptations") or []) if isinstance(i, dict)]:
+            rid = by_ref.get(str(item.get("code") or "").strip())  # anti-alucinação: só nós que existem no grafo
+            if rid and rid not in picks:
+                actions = [self.ai.deanonymize(str(a), name_map).strip() for a in (item.get("actions") or []) if str(a).strip()][:6]
+                picks[rid] = (self.ai.deanonymize(str(item.get("adaptation") or ""), name_map).strip(), actions)
+        done: list[str] = []
+
+        def change(d: dict) -> None:
+            for r in d["related"]:
+                if r["id"] in picks and r.get("adaptation_origin") != "manual" and picks[r["id"]][0]:
+                    r["adaptation"], r["actions"] = picks[r["id"]]
+                    r["adaptation_origin"] = "ai"
+                    done.append(r["id"])
+
+        await self.repository.mutate(student_id, skill_id, change, user)
+        return Result.ok({"adapted": len(done), "skipped": len(doc["related"]) - len(done)})

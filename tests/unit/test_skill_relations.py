@@ -5,7 +5,7 @@ import json
 from core.kernel.container import Container  # noqa: F401  (evita import circular)
 from core.interfaces.i_skill_relation_repository import SkillRelationError
 from core.use_case.skill_relations.skill_relation_use_cases import (
-    GenerateSkillRelationsUseCase, SkillRelationUseCases, build_ai_graph, build_view,
+    GenerateRelationAdaptationsUseCase, GenerateSkillRelationsUseCase, SkillRelationUseCases, build_ai_graph, build_view,
 )
 
 SKILLS = {
@@ -146,3 +146,29 @@ def test_generation_requires_a_finalistic_skill():
     res = asyncio.run(GenerateSkillRelationsUseCase(Repo(finalistic=False), Students(), Ai({}), Prompts(), Settings())
                       .execute("s1", "k1", USER))
     assert res.is_bad_request
+
+
+def test_adaptations_are_written_into_the_json_and_keep_manual_edits():
+    repo = Repo()
+    repo.doc["related"] = [
+        {"id": "r1", "kind": "skill", "skill_id": "a", "direction": "out", "origin": "ai", "reason": "", "x": None, "y": None},
+        {"id": "r2", "kind": "skill", "skill_id": "b", "direction": "out", "origin": "ai", "reason": "", "adaptation": "da professora",
+         "adaptation_origin": "manual", "x": None, "y": None},
+        {"id": "r3", "kind": "field", "field_key": "bodyGestures", "direction": "out", "origin": "manual", "reason": "", "x": None, "y": None}]
+    ai = Ai({"adaptations": [{"code": "EI03EO03", "adaptation": "usar cartões", "actions": ["a1", "a2"]},
+                             {"code": "EF05AR01", "adaptation": "da IA", "actions": []},
+                             {"code": "bodyGestures", "adaptation": "movimento", "actions": ["m"]},
+                             {"code": "XX", "adaptation": "inventada", "actions": []}]})
+    res = asyncio.run(GenerateRelationAdaptationsUseCase(repo, Students(), ai, Prompts(), Settings()).execute("s1", "k1", USER))
+    assert res.is_ok and res.value["adapted"] == 2
+    by = {r["id"]: r for r in repo.doc["related"]}
+    assert by["r1"]["adaptation"] == "usar cartões" and by["r1"]["actions"] == ["a1", "a2"] and by["r1"]["adaptation_origin"] == "ai"
+    assert by["r2"]["adaptation"] == "da professora"          # edição manual preservada
+    assert by["r3"]["adaptation"] == "movimento"
+
+
+def test_adaptations_need_finalistic_and_relations():
+    uc = GenerateRelationAdaptationsUseCase(Repo(), Students(), Ai({}), Prompts(), Settings())
+    assert asyncio.run(uc.execute("s1", "k1", USER)).is_bad_request  # sem relações
+    uc = GenerateRelationAdaptationsUseCase(Repo(finalistic=False), Students(), Ai({}), Prompts(), Settings())
+    assert asyncio.run(uc.execute("s1", "k1", USER)).is_bad_request

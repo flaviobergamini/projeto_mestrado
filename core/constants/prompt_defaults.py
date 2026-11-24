@@ -125,6 +125,15 @@ Responda SOMENTE com JSON válido, sem markdown:
 {"relations": [{"code": "<código exato de uma candidata>", "reason": "uma frase: por que ela apoia a finalística para este aluno"}]}
 Cite o aluno apenas pelo identificador anonimizado, exatamente como fornecido."""
 
+SKILL_ADAPTATIONS_PROMPT = """Você é especialista em educação inclusiva e em TEA. Recebe um GRAFO em JSON, já anonimizado: a habilidade/campo de experiência FINALÍSTICO
+("finalistic": o que a professora quer trabalhar de fato com o aluno) e os nós RELACIONADOS a ela ("related": habilidades e "fields": campos de experiência),
+cada um com código, descrição, estrelas, observações da professora e o motivo da relação.
+Para CADA nó relacionado, escreva como ele apoia a finalística na prática para ESTE aluno: uma adaptação (2 a 4 frases, concreta, usando as observações e o
+contexto anonimizado) e de 2 a 4 ações práticas curtas que a professora pode aplicar na mesma atividade. Não altere estrelas.
+Responda SOMENTE com JSON válido, sem markdown:
+{"adaptations": [{"code": "<código exato do nó, ou a chave do campo de experiência>", "adaptation": "texto", "actions": ["ação 1", "ação 2"]}]}
+Inclua um item para cada nó relacionado, sem inventar códigos. Cite o aluno apenas pelo identificador anonimizado, exatamente como fornecido."""
+
 BNCC_USAGE_RULE_PROMPT = """CATÁLOGO BNCC: o catálogo de habilidades BNCC é material de referência. Ao propor objetivos, metas ou atividades de aprendizagem acadêmica, relacione-os, quando pertinente, a habilidades do catálogo citando o código exato (ex.: EF01LP02). Nunca invente códigos nem descrições: use somente o que consta no catálogo."""
 
 # scope -> metadados (+ texto padrão para os escopos novos; None = o padrão vive no prompt_repository)
@@ -174,6 +183,12 @@ PROMPT_REGISTRY: dict[str, dict] = {
         "default": SKILL_RELATIONS_PROMPT,
         "description": "Recebe o grafo de relações em JSON (anonimizado) e escolhe, entre as habilidades com 1 a 4 estrelas, as que apoiam a finalística. "
                        "As fontes de contexto são as mesmas da geração de adaptações. Mantenha o JSON de saída.",
+    },
+    "skill_adaptations": {
+        "label": "Adaptações das relações (IA)", "json_output": True, "placeholders": [],
+        "default": SKILL_ADAPTATIONS_PROMPT,
+        "description": "Recebe o grafo de relações em JSON (anonimizado) e escreve, para cada nó ligado à finalística, a adaptação e as ações práticas. "
+                       "Mantenha o JSON de saída.",
     },
     "skill_summary": {
         "label": "Resumo da habilidade (IA)", "json_output": False, "placeholders": [],

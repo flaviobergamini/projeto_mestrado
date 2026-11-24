@@ -8,7 +8,9 @@ from api.dependencies import require_roles
 from api.student_access import guard_student_scope
 from core.kernel.container import Container
 from core.kernel.result import Result
-from core.use_case.skill_relations.skill_relation_use_cases import SkillRelationUseCases, GenerateSkillRelationsUseCase
+from core.use_case.skill_relations.skill_relation_use_cases import (
+    SkillRelationUseCases, GenerateSkillRelationsUseCase, GenerateRelationAdaptationsUseCase,
+)
 
 router = APIRouter(prefix="/skill-relations", tags=["Skill Relations"], dependencies=[Depends(guard_student_scope)])
 
@@ -25,6 +27,8 @@ class RelationBody(BaseModel):
 
 
 class RelationPatch(BaseModel):
+    adaptation: Optional[str] = Field(None, max_length=4000)
+    actions: Optional[list[str]] = Field(None, max_length=10)
     direction: Optional[str] = Field(None, pattern="^(in|out)$")
     reason: Optional[str] = Field(None, max_length=2000)
     justification: Optional[str] = Field(None, max_length=2000)  # nome antigo de `reason`
@@ -120,6 +124,18 @@ async def generate_relations(
     use_case: GenerateSkillRelationsUseCase = Depends(Provide[Container.generate_skill_relations_use_case]),
 ):
     """IA relaciona a habilidade com outras habilidades e campos de experiência (só acrescenta; custo no Gemini)."""
+    return _unwrap(await use_case.execute(student_id, skill_id, current_user))
+
+
+@router.post("/students/{student_id}/skills/{skill_id}/adaptations")
+@inject
+async def generate_adaptations(
+    student_id: str,
+    skill_id: str,
+    current_user: dict = Depends(require_roles(*WRITERS)),
+    use_case: GenerateRelationAdaptationsUseCase = Depends(Provide[Container.generate_relation_adaptations_use_case]),
+):
+    """IA escreve a adaptação e as ações de cada nó do grafo (grava no JSON; não sobrescreve edições manuais)."""
     return _unwrap(await use_case.execute(student_id, skill_id, current_user))
 
 
