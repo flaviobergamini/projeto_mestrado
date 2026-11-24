@@ -53,7 +53,8 @@ async def build_view(repo: ISkillRelationRepository, student_id: str, skill_id: 
             "source": r.get("origin") or "manual", "created_by": None, "x": r.get("x"), "y": r.get("y"),
         })
     return {"skill": {k: v for k, v in info.items() if k != "observation"}, "relations": relations,
-            "revision": revision, "document": doc}
+            "revision": revision, "document": doc,
+            "adaptations": await repo.plan_adaptations(student_id, skill_id)}  # plano da finalística (alimenta o Kanban)
 
 
 async def build_ai_graph(repo: ISkillRelationRepository, student_id: str, skill_id: str, with_candidates: bool = False) -> Optional[dict]:
@@ -143,11 +144,6 @@ class SkillRelationUseCases:
                 raise SkillRelationError("Relação não encontrada.")
             if data.get("direction") in ("in", "out"):
                 r["direction"] = data["direction"]
-            if data.get("adaptation") is not None:
-                r["adaptation"], r["adaptation_origin"] = str(data["adaptation"]).strip(), "manual"
-            if isinstance(data.get("actions"), list):
-                r["actions"] = [str(a).strip() for a in data["actions"] if str(a).strip()]
-                r["adaptation_origin"] = "manual"
             reason = data.get("reason", data.get("justification"))
             if reason is not None:
                 r["reason"] = str(reason).strip()
@@ -262,8 +258,8 @@ class GenerateSkillRelationsUseCase:
 
 
 class GenerateRelationAdaptationsUseCase:
-    """2º botão da IA: para cada nó do grafo (habilidade ou campo), escreve adaptação + ações e grava no mesmo JSON.
-    Não sobrescreve o que a professora editou à mão (adaptation_origin == "manual")."""
+    """2º botão da IA: UMA adaptação (justificativa + ações práticas) só para a finalística, usando as relações como apoio.
+    Grava no plano da finalística (o mesmo que alimenta o Kanban); regerar atualiza a mesma adaptação."""
 
     def __init__(self, repository: ISkillRelationRepository, students: IStudentReader, ai: IAiGateway,
                  prompts: IPromptProvider, settings) -> None:
@@ -302,26 +298,21 @@ class GenerateRelationAdaptationsUseCase:
                 if attempt == 2:
                     return Result.err(f"A IA não devolveu JSON válido ({e}). Tente novamente.")
 
-        briefs = await self.repository.skill_briefs(student_id, [r["skill_id"] for r in doc["related"] if r.get("skill_id")])
-        by_ref: dict[str, str] = {}  # código (ou chave do campo) -> id da relação
-        for r in doc["related"]:
-            ref = r.get("field_key") if r.get("kind") == "field" else (briefs.get(r.get("skill_id")) or {}).get("code")
-            if ref:
-                by_ref[str(ref)] = r["id"]
-        picks: dict[str, tuple[str, list[str]]] = {}
-        for item in [i for i in (raw.get("adaptations") or []) if isinstance(i, dict)]:
-            rid = by_ref.get(str(item.get("code") or "").strip())  # anti-alucinação: só nós que existem no grafo
-            if rid and rid not in picks:
-                actions = [self.ai.deanonymize(str(a), name_map).strip() for a in (item.get("actions") or []) if str(a).strip()][:6]
-                picks[rid] = (self.ai.deanonymize(str(item.get("adaptation") or ""), name_map).strip(), actions)
-        done: list[str] = []
+        adaptation = self.ai.deanonymize(str(raw.get("adaptation") or ""), name_map).strip()
+        if not adaptation:
+            return Result.err("A IA não devolveu a adaptação. Tente novamente.")
+        justification = self.ai.deanonymize(str(raw.get("justification") or ""), name_map).strip()
+        actions = [self.ai.deanonymize(str(a), name_map).strip() for a in (raw.get("actions") or []) if str(a).strip()][:6]
+        if not actions:
+            return Result.err("A IA não devolveu ações práticas. Tente novamente.")
+        try:
+            group_id = await self.repository.save_finalistic_adaptation(
+                student_id, skill_id, doc.get("adaptation_id"), adaptation, justification, actions)
+        except SkillRelationError as e:
+            return Result.bad_request(str(e))
 
         def change(d: dict) -> None:
-            for r in d["related"]:
-                if r["id"] in picks and r.get("adaptation_origin") != "manual" and picks[r["id"]][0]:
-                    r["adaptation"], r["actions"] = picks[r["id"]]
-                    r["adaptation_origin"] = "ai"
-                    done.append(r["id"])
+            d["adaptation_id"] = group_id  # regerar atualiza esta mesma adaptação (e os cards do Kanban dela)
 
         await self.repository.mutate(student_id, skill_id, change, user)
-        return Result.ok({"adapted": len(done), "skipped": len(doc["related"]) - len(done)})
+        return Result.ok({"adapted": 1, "actions": len(actions)})

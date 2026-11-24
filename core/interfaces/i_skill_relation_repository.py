@@ -37,5 +37,14 @@ class ISkillRelationRepository(ABC):
         """{skill_id: {id, code, grade, area, description, score, observation}} com a nota ATUAL do aluno."""
 
     @abstractmethod
+    async def plan_adaptations(self, student_id: str, skill_id: str) -> list[dict]:
+        """Adaptações do plano da habilidade (finalística): [{id, adaptation, justification, actions: [{id, action}]}]."""
+
+    @abstractmethod
+    async def save_finalistic_adaptation(self, student_id: str, skill_id: str, group_id: Optional[str], adaptation: str,
+                                         justification: str, actions: list[str]) -> str:
+        """Grava UMA adaptação no plano da finalística (atualiza a de `group_id`, senão cria) e devolve o id dela."""
+
+    @abstractmethod
     async def candidates(self, student_id: str, exclude_skill_id: str) -> list[dict]:
         """Habilidades do aluno com 1 a 4 estrelas (as únicas que podem entrar no grafo), com a observação de cada uma."""

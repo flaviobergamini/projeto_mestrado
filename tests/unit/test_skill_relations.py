@@ -24,7 +24,7 @@ class Students:
 
 class Repo:
     def __init__(self, finalistic=True):
-        self.doc, self.revision, self.finalistic = {"schema": 1, "related": []}, 0, finalistic
+        self.doc, self.revision, self.finalistic, self.plan = {"schema": 1, "related": []}, 0, finalistic, []
 
     async def get_document(self, sid, kid):
         return json.loads(json.dumps(self.doc)), self.revision
@@ -43,6 +43,14 @@ class Repo:
 
     async def skill_briefs(self, sid, ids):
         return {i: SKILLS[i] for i in ids if i in SKILLS}
+
+    async def plan_adaptations(self, sid, kid):
+        return list(self.plan)
+
+    async def save_finalistic_adaptation(self, sid, kid, group_id, adaptation, justification, actions):
+        gid = group_id or "g1"
+        self.plan = [{"id": gid, "adaptation": adaptation, "justification": justification, "actions": [{"id": "", "action": a} for a in actions]}]
+        return gid
 
     async def candidates(self, sid, kid):
         return [s for k, s in SKILLS.items() if k != kid and 1 <= s["score"] <= 4]
@@ -148,27 +156,29 @@ def test_generation_requires_a_finalistic_skill():
     assert res.is_bad_request
 
 
-def test_adaptations_are_written_into_the_json_and_keep_manual_edits():
+def test_adaptation_is_only_for_the_finalistic_and_regenerating_updates_the_same_one():
     repo = Repo()
     repo.doc["related"] = [
         {"id": "r1", "kind": "skill", "skill_id": "a", "direction": "out", "origin": "ai", "reason": "", "x": None, "y": None},
-        {"id": "r2", "kind": "skill", "skill_id": "b", "direction": "out", "origin": "ai", "reason": "", "adaptation": "da professora",
-         "adaptation_origin": "manual", "x": None, "y": None},
         {"id": "r3", "kind": "field", "field_key": "bodyGestures", "direction": "out", "origin": "manual", "reason": "", "x": None, "y": None}]
-    ai = Ai({"adaptations": [{"code": "EI03EO03", "adaptation": "usar cartões", "actions": ["a1", "a2"]},
-                             {"code": "EF05AR01", "adaptation": "da IA", "actions": []},
-                             {"code": "bodyGestures", "adaptation": "movimento", "actions": ["m"]},
-                             {"code": "XX", "adaptation": "inventada", "actions": []}]})
-    res = asyncio.run(GenerateRelationAdaptationsUseCase(repo, Students(), ai, Prompts(), Settings()).execute("s1", "k1", USER))
-    assert res.is_ok and res.value["adapted"] == 2
-    by = {r["id"]: r for r in repo.doc["related"]}
-    assert by["r1"]["adaptation"] == "usar cartões" and by["r1"]["actions"] == ["a1", "a2"] and by["r1"]["adaptation_origin"] == "ai"
-    assert by["r2"]["adaptation"] == "da professora"          # edição manual preservada
-    assert by["r3"]["adaptation"] == "movimento"
+    ai = Ai({"adaptation": "usar cartões no jogo", "justification": "apoio da comunicação", "actions": ["a1", "a2"]})
+    uc = GenerateRelationAdaptationsUseCase(repo, Students(), ai, Prompts(), Settings())
+    assert asyncio.run(uc.execute("s1", "k1", USER)).is_ok
+    assert len(repo.plan) == 1 and repo.plan[0]["adaptation"] == "usar cartões no jogo" and len(repo.plan[0]["actions"]) == 2
+    assert repo.doc["adaptation_id"] == "g1"
+    assert all("adaptation" not in r for r in repo.doc["related"])           # nenhuma adaptação por relação
+    assert '"fields"' in ai.prompt and "bodyGestures" in ai.prompt
+    ai.raw = {"adaptation": "nova", "justification": "j", "actions": ["x"]}
+    assert asyncio.run(uc.execute("s1", "k1", USER)).is_ok
+    assert len(repo.plan) == 1 and repo.plan[0]["adaptation"] == "nova"      # atualizou a mesma
 
 
-def test_adaptations_need_finalistic_and_relations():
+def test_adaptation_needs_finalistic_relations_and_a_valid_answer():
     uc = GenerateRelationAdaptationsUseCase(Repo(), Students(), Ai({}), Prompts(), Settings())
     assert asyncio.run(uc.execute("s1", "k1", USER)).is_bad_request  # sem relações
     uc = GenerateRelationAdaptationsUseCase(Repo(finalistic=False), Students(), Ai({}), Prompts(), Settings())
     assert asyncio.run(uc.execute("s1", "k1", USER)).is_bad_request
+    repo = Repo()
+    repo.doc["related"] = [{"id": "r1", "kind": "skill", "skill_id": "a", "direction": "out", "origin": "ai", "reason": "", "x": None, "y": None}]
+    res = asyncio.run(GenerateRelationAdaptationsUseCase(repo, Students(), Ai({"adaptation": "", "actions": []}), Prompts(), Settings()).execute("s1", "k1", USER))
+    assert not res.is_ok and repo.plan == []

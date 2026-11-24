@@ -7,6 +7,8 @@ from core.interfaces.i_skill_relation_repository import ISkillRelationRepository
 from infrastructure.database_context.database import Database
 from infrastructure.models.bncc import BnccSkill, StudentSkillScore
 from infrastructure.models.skill_relation import StudentSkillGraph
+from core.services.skill_actions import normalize_adaptations, dump_adaptations, with_ids
+from infrastructure.repositories.responsibles import default_responsible, fill_responsibles
 
 
 def _empty() -> dict:
@@ -115,6 +117,41 @@ class SkillRelationRepository(ISkillRelationRepository):
                 StudentSkillScore.student_id == student_id, StudentSkillScore.skill_id.in_(skill_ids)))).scalars().all()}
             return {i: _brief(s, (scores[i].score or 0) if i in scores else 0, (scores[i].observation or "") if i in scores else "")
                     for i, s in skills.items()}
+
+    async def plan_adaptations(self, student_id: str, skill_id: str) -> list[dict]:
+        async with self.database.session() as session:
+            row = await session.get(StudentSkillScore, (student_id, skill_id))
+            return [{k: g.get(k) for k in ("id", "adaptation", "justification", "actions")}
+                    for g in (normalize_adaptations(row.actions) if row else [])]
+
+    async def save_finalistic_adaptation(self, student_id: str, skill_id: str, group_id: Optional[str], adaptation: str,
+                                         justification: str, actions: list[str]) -> str:
+        async with self.database.session() as session:
+            row = await session.get(StudentSkillScore, (student_id, skill_id))
+            if not row:
+                raise SkillRelationError("Habilidade do aluno não encontrada.")
+            groups = with_ids(normalize_adaptations(row.actions))
+            old = next((g for g in groups if group_id and g["id"] == group_id), None)
+            old_actions = (old or {}).get("actions", [])
+            new = {"id": (old or {}).get("id", ""), "adaptation": adaptation, "justification": justification,
+                   # regerar mantém o id das ações já existentes (o card do Kanban é atualizado, não duplicado)
+                   "actions": [{"id": old_actions[i]["id"] if i < len(old_actions) else "", "action": a} for i, a in enumerate(actions)]}
+            if old:
+                for k in ("responsible", "responsibles"):
+                    if k in old:
+                        new[k] = old[k]
+                idx = next(i for i, g in enumerate(groups) if g["id"] == old["id"])
+                groups[idx] = new
+            else:
+                default = await default_responsible(session, student_id)
+                if default:
+                    new["responsibles"] = [default]
+                groups.append(new)
+                idx = len(groups) - 1
+            groups = with_ids(await fill_responsibles(session, groups))
+            row.actions = dump_adaptations(groups)
+            await session.commit()
+            return groups[idx]["id"]
 
     async def candidates(self, student_id: str, exclude_skill_id: str) -> list[dict]:
         async with self.database.session() as session:
