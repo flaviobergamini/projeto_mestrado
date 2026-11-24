@@ -114,7 +114,7 @@ class SkillRelationUseCases:
         if not _in_range(related["score"]):
             return Result.bad_request("Só habilidades com 1 a 4 estrelas podem ser relacionadas.")
         new = {"id": str(uuid.uuid4()), "kind": "skill", "skill_id": related_id, "direction": "in" if data.get("direction") == "in" else "out",
-               "origin": "manual", "reason": (data.get("reason") or "").strip(), "x": None, "y": None}
+               "origin": "manual", "reason": (data.get("reason") or "").strip(), "x": data.get("x"), "y": data.get("y")}
 
         def change(doc: dict) -> None:
             if any(r.get("skill_id") == related_id for r in doc["related"]):

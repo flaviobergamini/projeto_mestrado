@@ -41,9 +41,29 @@ class SkillRelationRepository(ISkillRelationRepository):
                 .order_by(BnccSkill.grade_order, BnccSkill.code)
             )).all()
             graphs = (await session.execute(select(StudentSkillGraph).where(StudentSkillGraph.student_id == student_id))).scalars().all()
-            counts = {g.skill_id: len(_load(g.document)["related"]) for g in graphs}
+            docs = {g.skill_id: _load(g.document)["related"] for g in graphs}
+            linked_ids = {r["skill_id"] for rel in docs.values() for r in rel if r.get("skill_id")}  # já ligadas a alguma finalística
+            scores = {sk.id: sc.score or 0 for sc, sk in rows}
+            codes = {s.id: s for s in (await session.execute(
+                select(BnccSkill).where(BnccSkill.id.in_(linked_ids)))).scalars().all()} if linked_ids else {}
+            if linked_ids - set(scores):
+                for sc in (await session.execute(select(StudentSkillScore).where(
+                        StudentSkillScore.student_id == student_id, StudentSkillScore.skill_id.in_(linked_ids)))).scalars().all():
+                    scores.setdefault(sc.skill_id, sc.score or 0)
+
+            def items(skill_id: str) -> list[dict]:  # os nós ligados à finalística (para listar no card)
+                out = []
+                for r in docs.get(skill_id, []):
+                    if r.get("kind") == "field":
+                        out.append({"id": None, "kind": "field", "label": r.get("field_key") or "", "score": None})
+                    elif r.get("skill_id") in codes:
+                        out.append({"id": r["skill_id"], "kind": "skill", "label": codes[r["skill_id"]].code,
+                                    "score": scores.get(r["skill_id"], 0)})
+                return out
+
             return [{**{k: v for k, v in _brief(sk, sc.score or 0).items() if k != "observation"},
-                     "finalistic": bool(sc.finalistic), "relations": counts.get(sk.id, 0),
+                     "finalistic": bool(sc.finalistic), "relations": len(docs.get(sk.id, [])), "items": items(sk.id),
+                     "linked": sk.id in linked_ids,
                      "updated_at": sc.updated_at.isoformat() if sc.updated_at else None} for sc, sk in rows]
 
     async def get_document(self, student_id: str, skill_id: str) -> tuple[dict, int]:

@@ -20,6 +20,8 @@ class RelationBody(BaseModel):
     related_skill_id: str
     direction: str = Field("out", pattern="^(in|out)$")  # out: finalística -> habilidade; in: o inverso
     reason: str = Field("", max_length=2000)
+    x: Optional[float] = None  # onde o card foi solto no mapa
+    y: Optional[float] = None
 
 
 class RelationPatch(BaseModel):
