@@ -61,6 +61,7 @@ class ScoreBody(BaseModel):
     in_plan: Optional[bool] = None
     indirect_only: Optional[bool] = None
     finalistic: Optional[bool] = None
+    is_base: Optional[bool] = None
     change_note: Optional[str] = Field(None, max_length=2000)
     evidence_card_ids: Optional[list[str]] = None
 

@@ -47,4 +47,4 @@ class ISkillRelationRepository(ABC):
 
     @abstractmethod
     async def candidates(self, student_id: str, exclude_skill_id: str) -> list[dict]:
-        """Habilidades do aluno com 1 a 4 estrelas (as únicas que podem entrar no grafo), com a observação de cada uma."""
+        """Candidatas da IA: habilidades do aluno com estrelas (1 a 5) ou com observação, com a observação de cada uma."""
