@@ -290,29 +290,33 @@ class AnonymizationService:
             # ── School ───────────────────────────────────────────────────────
             school_dict = None
             school_anon: dict = {}
-            if include_school and student_row.school_id:
+            # Escola e docentes entram SEMPRE no mapa ID -> nome, mesmo sem a fonte marcada: o identificador deles pode
+            # aparecer no pré-cadastro, nos diários ou na regra do chat/PEI, e precisa voltar como nome na resposta
+            # (e o nome precisa virar ID no histórico). A fonte marcada decide só o que vai no contexto.
+            if student_row.school_id:
                 school_row = await session.get(School, student_row.school_id)
                 if school_row:
                     school_dict = {"id": school_row.id, "name": school_row.name,
                                    "institution_type": school_row.institution_type}
-                    school_anon = anon_school(school_dict)
+                    if include_school:
+                        school_anon = anon_school(school_dict)
 
             # ── Linked teachers ──────────────────────────────────────────────
             teacher_dicts: list[dict] = []
             teachers_anon: list[dict] = []
-            if include_teacher:
-                links_result = await session.execute(
-                    select(TeacherStudentLink)
-                    .options(selectinload(TeacherStudentLink.teacher))
-                    .where(TeacherStudentLink.student_id == student_id,
-                           TeacherStudentLink.deleted == False)
-                )
-                for link in links_result.scalars().all():
-                    t = link.teacher
-                    if t:
-                        td = {"id": t.id, "name": t.name, "school_id": t.school_id,
-                              "specialization": t.specialization}
-                        teacher_dicts.append(td)
+            links_result = await session.execute(
+                select(TeacherStudentLink)
+                .options(selectinload(TeacherStudentLink.teacher))
+                .where(TeacherStudentLink.student_id == student_id,
+                       TeacherStudentLink.deleted == False)
+            )
+            for link in links_result.scalars().all():
+                t = link.teacher
+                if t:
+                    td = {"id": t.id, "name": t.name, "school_id": t.school_id,
+                          "specialization": t.specialization}
+                    teacher_dicts.append(td)
+                    if include_teacher:
                         teachers_anon.append(anon_teacher(td))
 
             # ── Estudo de caso (respostas de questionário, anonimizadas) ────────
