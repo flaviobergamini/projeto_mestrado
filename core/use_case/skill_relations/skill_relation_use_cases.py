@@ -32,6 +32,11 @@ def _in_range(score: int) -> bool:
     return MIN_STARS <= (score or 0) <= MAX_STARS
 
 
+def _for_ai(brief: dict) -> bool:
+    """Vai para a IA: tem estrela (1 a 5) ou, mesmo com 0, tem observação."""
+    return (brief.get("score") or 0) > 0 or bool((brief.get("observation") or "").strip())
+
+
 def _public(brief: dict) -> dict:
     return {k: brief[k] for k in ("id", "code", "grade", "area", "description", "score")}
 
@@ -79,12 +84,12 @@ async def build_ai_graph(repo: ISkillRelationRepository, student_id: str, skill_
             {**node(briefs[r["skill_id"]]),
              "arrow": ARROW_BY_DIRECTION.get(r.get("direction") or "both", "none"),
              "origin": r.get("origin") or "manual", "reason": r.get("reason") or ""}
-            for r in doc["related"] if r.get("skill_id") in briefs
+            for r in doc["related"] if r.get("skill_id") in briefs and _for_ai(briefs[r["skill_id"]])  # 0 estrela sem observação não vai à IA
         ],
     }
     if with_candidates:
         linked = {r.get("skill_id") for r in doc["related"]}
-        out["candidates"] = [node(c) for c in await repo.candidates(student_id, skill_id) if c["id"] not in linked]
+        out["candidates"] = [node(c) for c in await repo.candidates(student_id, skill_id) if c["id"] not in linked and _for_ai(c)]
     return out
 
 
@@ -198,7 +203,7 @@ class SkillRelationUseCases:
 
 
 class GenerateSkillRelationsUseCase:
-    """A IA escolhe, entre as habilidades do aluno com 1 a 4 estrelas, as que apoiam a finalística. Recebe o grafo em JSON
+    """A IA escolhe, entre as habilidades do aluno com estrelas (1 a 5) ou observação, as que apoiam a finalística. Recebe o grafo em JSON
     anonimizado (+ o contexto anonimizado do aluno) e devolve um JSON; as relações válidas entram no documento do grafo."""
 
     def __init__(self, repository: ISkillRelationRepository, students: IStudentReader, ai: IAiGateway,
@@ -214,7 +219,7 @@ class GenerateSkillRelationsUseCase:
         if not (await self.repository.skill_info(student_id, skill_id))["finalistic"]:
             return Result.bad_request("Marque a habilidade como finalística antes de gerar as relações.")
         if not graph["candidates"]:
-            return Result.bad_request("Não há outras habilidades com 1 a 4 estrelas para relacionar.")
+            return Result.bad_request("Não há outras habilidades com estrelas ou observação para relacionar.")
         cfg = resolve_round1_settings(await self.settings.get(SKILL_PLAN_SETTINGS_KEY, DEFAULT_SKILL_PLAN_SETTINGS))
         extra = {}
         if "diary_summary" in cfg["sources"]:
@@ -255,7 +260,7 @@ class GenerateSkillRelationsUseCase:
         by_code = {c["code"]: c for c in await self.repository.candidates(student_id, skill_id) if c["code"] in v["allowed"]}
         picks: list[tuple[dict, str, str]] = []
         for item in [i for i in (raw.get("relations") or []) if isinstance(i, dict)][:MAX_RELATIONS]:
-            target = by_code.get(str(item.get("code") or "").strip())  # anti-alucinação: só candidatas com 1 a 4 estrelas
+            target = by_code.get(str(item.get("code") or "").strip())  # anti-alucinação: só as candidatas enviadas
             if target and all(target["id"] != p[0]["id"] for p in picks):
                 picks.append((target, self.ai.deanonymize(str(item.get("reason") or ""), v["name_map"]).strip(),
                               DIRECTION_BY_ARROW.get(str(item.get("arrow") or "").strip(), "both")))  # o prompt decide se há seta
@@ -283,7 +288,8 @@ class GenerateRelationAdaptationsUseCase:
                  prompts: IPromptProvider, settings) -> None:
         self.repository, self.students, self.ai, self.prompts, self.settings = repository, students, ai, prompts, settings
 
-    async def execute(self, student_id: str, skill_id: str, user: dict) -> Result:
+    async def build_request(self, student_id: str, skill_id: str) -> Result:
+        """Monta exatamente o que vai para a IA (usado na geração e na pré-visualização)."""
         if not await self.students.get_by_id(student_id):
             return Result.not_found("Aluno não encontrado.")
         info = await self.repository.skill_info(student_id, skill_id)
@@ -306,6 +312,20 @@ class GenerateRelationAdaptationsUseCase:
             f"ID do aluno (anonimizado): {student_id}\n\n=== CONTEXTO ===\n{context}\n\n"
             f"=== GRAFO (JSON) ===\n{json.dumps(graph, ensure_ascii=False, indent=1)}\n\nGere o JSON.", name_map)
         system = await self.prompts.get("skill_adaptations")
+        return Result.ok({"system": system, "prompt": prompt, "name_map": name_map, "doc": doc, "sources": cfg["sources"]})
+
+    async def preview(self, student_id: str, skill_id: str) -> Result:
+        built = await self.build_request(student_id, skill_id)
+        if not built.is_ok:
+            return built
+        v = built.value  # o mapa de nomes nunca sai do servidor
+        return Result.ok({"system": v["system"], "prompt": v["prompt"], "sources": v["sources"]})
+
+    async def execute(self, student_id: str, skill_id: str, user: dict) -> Result:
+        built = await self.build_request(student_id, skill_id)
+        if not built.is_ok:
+            return built
+        system, prompt, name_map, doc = (built.value[k] for k in ("system", "prompt", "name_map", "doc"))
         raw = None
         for attempt in (1, 2):
             try:

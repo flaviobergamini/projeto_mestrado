@@ -127,6 +127,21 @@ async def clear_relations(
     return _unwrap(await use_case.clear(student_id, skill_id, current_user))
 
 
+@router.get("/students/{student_id}/skills/{skill_id}/preview")
+@inject
+async def preview_ai_request(
+    student_id: str,
+    skill_id: str,
+    action: str = "relations",
+    current_user: dict = Depends(require_roles(*WRITERS)),
+    relations: GenerateSkillRelationsUseCase = Depends(Provide[Container.generate_skill_relations_use_case]),
+    adaptations: GenerateRelationAdaptationsUseCase = Depends(Provide[Container.generate_relation_adaptations_use_case]),
+):
+    """O que seria enviado à IA (anonimizado) ao gerar relações ou adaptações. Não chama a IA."""
+    use_case = adaptations if action == "adaptations" else relations
+    return _unwrap(await use_case.preview(student_id, skill_id))
+
+
 @router.post("/students/{student_id}/skills/{skill_id}/generate")
 @inject
 async def generate_relations(
