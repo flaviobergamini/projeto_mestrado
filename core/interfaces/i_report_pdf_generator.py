@@ -10,3 +10,7 @@ class IReportPdfGenerator(ABC):
     @abstractmethod
     def kanban_report(self, report: dict, student_name: str) -> bytes:
         ...
+
+    @abstractmethod
+    def functional_profile(self, profile: dict, student_name: str) -> bytes:
+        ...
