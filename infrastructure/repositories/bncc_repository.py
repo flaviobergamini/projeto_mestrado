@@ -52,6 +52,7 @@ def _plan_dict(row: Optional[StudentSkillScore], actor: Optional[dict] = None) -
         "ai_excluded": bool(row.ai_excluded) if row else False,
         "indirect_only": bool(row.indirect_only) if row else False,
         "finalistic": bool(row.finalistic) if row else False,
+        "is_base": bool(row.is_base) if row else False,
         "in_plan": bool(row.in_plan) if row else False,
         "plan_ai_at": row.plan_ai_at.isoformat() if row and row.plan_ai_at else None,
     }
@@ -268,6 +269,10 @@ class BnccRepository(IBnccRepository):
                 row.indirect_only = bool(fields["indirect_only"])
             if "finalistic" in fields and fields["finalistic"] is not None:
                 row.finalistic = bool(fields["finalistic"])
+            if "is_base" in fields and fields["is_base"] is not None:
+                row.is_base = bool(fields["is_base"])
+            if row.finalistic and row.is_base:  # um ou outro (ou nenhum), nunca os dois
+                raise BnccError("A habilidade não pode ser base e finalística ao mesmo tempo. Desmarque uma delas.")
             if "in_plan" in fields and fields["in_plan"] is not None:
                 was = bool(row.in_plan)
                 row.in_plan = bool(fields["in_plan"])

@@ -46,6 +46,8 @@ class StudentSkillScore(Base):
     ai_excluded: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     in_plan: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     finalistic: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")  # raiz do conjunto de relações
+    # base: apoia várias finalísticas (continua disponível para relacionar); nunca é finalística ao mesmo tempo
+    is_base: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     indirect_only: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")  # "não trabalhar diretamente": só como relação
     plan_ai_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     updated_by_user_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)

@@ -22,6 +22,11 @@ LEVEL_SCALE = (
 
 # Fontes que o perfil funcional pode usar quando gerado por IA (nunca ele mesmo; diários não são mais entrada da IA).
 DEFAULT_SOURCES = [
-    "student", "school", "teacher", "case_study", "pdi", "generated_pei",
+    "student", "school", "case_study", "pdi", "generated_pei",
     "kanban_progress", "diary_summary", "skill_report", "bncc_catalog",
 ]
+
+# Intervalo mínimo entre gerações por IA (configurável pelo admin, para facilitar testes). Blocos do calendário.
+SETTINGS_KEY = "functional_profile_settings"
+INTERVAL_OPTIONS = (0, 1, 2, 3, 4, 6, 12)  # meses; 0 = sem limite
+DEFAULT_SETTINGS = {"interval_months": 6}

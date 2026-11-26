@@ -82,8 +82,8 @@ def anon_teacher(teacher: dict) -> dict:
 def format_skill_report(title: str, content: dict, name_map: dict[str, str], max_chars: int = 20000) -> str:
     """Texto compacto de um relatório de habilidades BNCC para o contexto da IA.
 
-    Habilidades com nota > 0 (ou observação) levam descrição; as de nota 0 sem observação
-    entram só como lista de códigos, para o relatório completo não estourar o prompt.
+    Habilidades com nota 0 e SEM observação não vão para a IA, nem o código: não acrescentam informação sobre o aluno.
+    Com observação (ou resumo), entram mesmo com nota 0; as de 1 a 5 estrelas entram sempre.
     Observações livres passam por reanonimização (nome real → ID), como os resumos."""
     f = content.get("filters", {})
     s = content.get("summary", {})
@@ -91,25 +91,25 @@ def format_skill_report(title: str, content: dict, name_map: dict[str, str], max
         f"=== RELATÓRIO DE HABILIDADES BNCC — {title} ===",
         "Notas de 0 a 5 dadas pelo professor (0 = habilidade ainda não consolidada, 5 = totalmente consolidada).",
         f"Gerado em {str(content.get('generated_at', ''))[:10]} | Anos: {', '.join(f.get('grades') or []) or 'todos'}"
-        f" | total de habilidades no relatório: {s.get('total', 0)} | média: {s.get('average', 0)}"
-        f" | quantidade por nota: " + ", ".join(f"{n}={v}" for n, v in sorted((s.get('by_score') or {}).items())),
+        f" | quantidade por nota: " + ", ".join(f"{n}={v}" for n, v in sorted((s.get('by_score') or {}).items()) if str(n) != "0"),
     ]
     for group in content.get("groups", []):
+        areas = [(a["area"], [sk for sk in a["skills"]
+                                if (sk.get("score") or 0) > 0 or str(sk.get("summary") or sk.get("observation") or "").strip()])
+                 for a in group["areas"]]
+        if not any(skills for _, skills in areas):
+            continue  # ano sem nenhuma habilidade com nota ou observação
         lines.append(f"\n## {group['grade']}")
-        for area in group["areas"]:
-            lines.append(f"{area['area']}:")
-            zero_codes = []
-            for sk in area["skills"]:
+        for area_name, skills in areas:
+            if not skills:
+                continue
+            lines.append(f"{area_name}:")
+            for sk in skills:
                 obs = sk.get("summary") or sk.get("observation")
-                if sk["score"] == 0 and not obs:
-                    zero_codes.append(sk["code"])
-                    continue
                 line = f"- {sk['code']} (nota {sk['score']}): {sk['description']}"
                 if obs:
                     line += f" | Resumo: {reanonymize(obs, name_map)}"
                 lines.append(line)
-            if zero_codes:
-                lines.append(f"- Nota 0 (ainda não consolidadas): {', '.join(zero_codes)}")
     text = "\n".join(lines)
     if len(text) > max_chars:
         text = text[:max_chars] + "\n[... relatório truncado por tamanho ...]"
@@ -290,29 +290,33 @@ class AnonymizationService:
             # ── School ───────────────────────────────────────────────────────
             school_dict = None
             school_anon: dict = {}
-            if include_school and student_row.school_id:
+            # Escola e docentes entram SEMPRE no mapa ID -> nome, mesmo sem a fonte marcada: o identificador deles pode
+            # aparecer no pré-cadastro, nos diários ou na regra do chat/PEI, e precisa voltar como nome na resposta
+            # (e o nome precisa virar ID no histórico). A fonte marcada decide só o que vai no contexto.
+            if student_row.school_id:
                 school_row = await session.get(School, student_row.school_id)
                 if school_row:
                     school_dict = {"id": school_row.id, "name": school_row.name,
                                    "institution_type": school_row.institution_type}
-                    school_anon = anon_school(school_dict)
+                    if include_school:
+                        school_anon = anon_school(school_dict)
 
             # ── Linked teachers ──────────────────────────────────────────────
             teacher_dicts: list[dict] = []
             teachers_anon: list[dict] = []
-            if include_teacher:
-                links_result = await session.execute(
-                    select(TeacherStudentLink)
-                    .options(selectinload(TeacherStudentLink.teacher))
-                    .where(TeacherStudentLink.student_id == student_id,
-                           TeacherStudentLink.deleted == False)
-                )
-                for link in links_result.scalars().all():
-                    t = link.teacher
-                    if t:
-                        td = {"id": t.id, "name": t.name, "school_id": t.school_id,
-                              "specialization": t.specialization}
-                        teacher_dicts.append(td)
+            links_result = await session.execute(
+                select(TeacherStudentLink)
+                .options(selectinload(TeacherStudentLink.teacher))
+                .where(TeacherStudentLink.student_id == student_id,
+                       TeacherStudentLink.deleted == False)
+            )
+            for link in links_result.scalars().all():
+                t = link.teacher
+                if t:
+                    td = {"id": t.id, "name": t.name, "school_id": t.school_id,
+                          "specialization": t.specialization}
+                    teacher_dicts.append(td)
+                    if include_teacher:
                         teachers_anon.append(anon_teacher(td))
 
             # ── Estudo de caso (respostas de questionário, anonimizadas) ────────

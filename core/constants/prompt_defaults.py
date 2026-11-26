@@ -116,13 +116,15 @@ Responda apenas com o texto do resumo, em parágrafo corrido, sem títulos, sem 
 
 SKILL_RELATIONS_PROMPT = """Você é especialista em educação inclusiva e em TEA. Recebe um GRAFO em JSON, já anonimizado: a habilidade/campo de experiência FINALÍSTICO
 ("finalistic": a relação principal, a que a professora quer trabalhar de fato com o aluno), as habilidades já relacionadas a ela ("related") e as CANDIDATAS
-("candidates": as demais habilidades que o aluno tem em andamento, de 1 a 4 estrelas). Cada nó traz código, descrição, estrelas e as observações da professora.
+("candidates": as demais habilidades do aluno que têm estrelas, de 1 a 5, ou observação da professora). Cada nó traz código, descrição, estrelas e as observações da professora.
 Escolha, SOMENTE entre as candidatas (use o código exato), as que podem apoiar o trabalho da finalística, isto é, que podem ser trabalhadas junto com ela numa
 mesma atividade. Exemplo: para uma finalística de esportes (queimada), a comunicação pode entrar como apoio, usando cartões durante o jogo.
 Use as observações e o contexto anonimizado do aluno como base. Proponha poucas relações, só as que o caso realmente pede; não repita as já existentes em "related".
-Você NÃO altera estrelas e NÃO escreve adaptações aqui: só diz quais se relacionam e por quê. A seta sai da finalística.
+Você NÃO altera estrelas e NÃO escreve adaptações aqui: só diz quais se relacionam e por quê.
+SETAS: a relação é BIDIRECIONAL, portanto use sempre "arrow": "none" (sem seta). Os valores aceitos são "none" (sem seta),
+"finalistic_to_related" (seta da finalística para a candidata) e "related_to_finalistic" (seta da candidata para a finalística).
 Responda SOMENTE com JSON válido, sem markdown:
-{"relations": [{"code": "<código exato de uma candidata>", "reason": "uma frase: por que ela apoia a finalística para este aluno"}]}
+{"relations": [{"code": "<código exato de uma candidata>", "arrow": "none", "reason": "uma frase: por que ela se relaciona com a finalística para este aluno"}]}
 Cite o aluno apenas pelo identificador anonimizado, exatamente como fornecido."""
 
 SKILL_ADAPTATIONS_PROMPT = """Você é especialista em educação inclusiva e em TEA. Recebe um GRAFO em JSON, já anonimizado: a habilidade/campo de experiência FINALÍSTICO
@@ -183,7 +185,7 @@ PROMPT_REGISTRY: dict[str, dict] = {
     "skill_relations": {
         "label": "Relações entre habilidades (IA)", "json_output": True, "placeholders": [],
         "default": SKILL_RELATIONS_PROMPT,
-        "description": "Recebe o grafo de relações em JSON (anonimizado) e escolhe, entre as habilidades com 1 a 4 estrelas, as que apoiam a finalística. "
+        "description": "Recebe o grafo de relações em JSON (anonimizado) e escolhe, entre as habilidades com estrelas (1 a 5) ou observação, as que apoiam a finalística. "
                        "As fontes de contexto são as mesmas da geração de adaptações. Mantenha o JSON de saída.",
     },
     "skill_adaptations": {

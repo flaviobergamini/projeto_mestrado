@@ -190,11 +190,17 @@ class Container(containers.DeclarativeContainer):
     generate_functional_profile_use_case = providers.Factory(
         fp_uc.GenerateFunctionalProfileUseCase, repository=functional_profile_repository,
         students=student_repository, bncc=bncc_repository, ai=ai_gateway, prompts=prompt_repository,
+        settings=app_settings_repository,
     )
+    functional_profile_settings_use_case = providers.Factory(fp_uc.FunctionalProfileSettingsUseCase, settings=app_settings_repository)
     create_manual_profile_use_case = providers.Factory(fp_uc.CreateManualProfileUseCase, repository=functional_profile_repository)
     list_student_profiles_use_case = providers.Factory(fp_uc.ListStudentProfilesUseCase, repository=functional_profile_repository)
     get_profile_evolution_use_case = providers.Factory(fp_uc.GetProfileEvolutionUseCase, repository=functional_profile_repository)
     get_profile_use_case = providers.Factory(fp_uc.GetProfileUseCase, repository=functional_profile_repository)
+    render_profile_pdf_use_case = providers.Factory(
+        fp_uc.RenderProfilePdfUseCase, repository=functional_profile_repository, students=student_repository,
+        pdf=report_pdf_generator,
+    )
     update_profile_use_case = providers.Factory(fp_uc.UpdateProfileUseCase, repository=functional_profile_repository)
     delete_profile_use_case = providers.Factory(fp_uc.DeleteProfileUseCase, repository=functional_profile_repository)
 

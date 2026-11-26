@@ -1,15 +1,16 @@
 """Use cases do perfil funcional."""
 import logging
 from typing import Optional
-from core.constants.functional_profile import DOMAINS, LEVEL_SCALE, DEFAULT_SOURCES
+from core.constants.functional_profile import DOMAINS, LEVEL_SCALE, DEFAULT_SOURCES, SETTINGS_KEY, INTERVAL_OPTIONS, DEFAULT_SETTINGS
 from core.kernel.result import Result
 from core.interfaces.i_ai_gateway import IAiGateway
 from core.interfaces.i_bncc_repository import IBnccRepository
 from core.interfaces.i_functional_profile_repository import IFunctionalProfileRepository, ProfileError
 from core.interfaces.i_prompt_provider import IPromptProvider
+from core.interfaces.i_report_pdf_generator import IReportPdfGenerator
 from core.interfaces.i_student_reader import IStudentReader
 from core.services.functional_profile_content import normalize_content, map_strings
-from core.services.semester import same_semester
+from core.services.semester import same_period
 from datetime import date
 
 logger = logging.getLogger(__name__)
@@ -22,11 +23,32 @@ class ListFunctionalDomainsUseCase:
         return Result.ok({"domains": [{"key": k, "label": v} for k, v in DOMAINS], "scale": LEVEL_SCALE})
 
 
+async def interval_months(settings) -> int:
+    saved = await settings.get(SETTINGS_KEY, DEFAULT_SETTINGS) if settings else DEFAULT_SETTINGS
+    months = saved.get("interval_months")
+    return months if months in INTERVAL_OPTIONS else DEFAULT_SETTINGS["interval_months"]
+
+
+class FunctionalProfileSettingsUseCase:
+    def __init__(self, settings) -> None:
+        self.settings = settings
+
+    async def get(self) -> Result:
+        return Result.ok({"interval_months": await interval_months(self.settings), "options": list(INTERVAL_OPTIONS)})
+
+    async def set(self, months: int) -> Result:
+        if months not in INTERVAL_OPTIONS:
+            return Result.bad_request("Intervalo inválido.")
+        await self.settings.set(SETTINGS_KEY, {"interval_months": months})
+        return await self.get()
+
+
 class GenerateFunctionalProfileUseCase:
     """Gera o perfil funcional com IA a partir do contexto anonimizado do aluno."""
 
     def __init__(self, repository: IFunctionalProfileRepository, students: IStudentReader,
-                 bncc: IBnccRepository, ai: IAiGateway, prompts: IPromptProvider) -> None:
+                 bncc: IBnccRepository, ai: IAiGateway, prompts: IPromptProvider, settings=None) -> None:
+        self.settings = settings
         self.prompts = prompts
         self.repository = repository
         self.students = students
@@ -40,17 +62,19 @@ class GenerateFunctionalProfileUseCase:
         if not student:
             return Result.not_found("Aluno não encontrado.")
 
-        # Só uma geração por semestre por aluno; se o perfil gerado for apagado, dá para gerar de novo.
+        # Só uma geração por período por aluno (padrão: semestre; o admin ajusta); apagar o perfil libera outra.
+        months = await interval_months(self.settings)
         already = [p for p in await self.repository.list_for_student(student_id)
-                   if p.get("origin") == "ai" and same_semester(p.get("created_at"), date.today())]
+                   if p.get("origin") == "ai" and same_period(p.get("created_at"), date.today(), months)]
         if already:
+            period = {1: "neste mês", 6: "neste semestre", 12: "neste ano"}.get(months, f"neste período de {months} meses")
             return Result.bad_request(
-                "Já existe um perfil funcional gerado neste semestre para este aluno. "
+                f"Já existe um perfil funcional gerado {period} para este aluno. "
                 "Para gerar outro, apague o existente."
             )
 
-        # O perfil funcional nunca usa a si mesmo como fonte.
-        chosen = [s for s in (sources or DEFAULT_SOURCES) if s != "functional_profile"] or DEFAULT_SOURCES
+        # O perfil funcional nunca usa a si mesmo como fonte; o pré-cadastro dos docentes não entra.
+        chosen = [s for s in (sources or DEFAULT_SOURCES) if s not in ("functional_profile", "teacher")] or DEFAULT_SOURCES
         context, name_map = await self.ai.build_context(
             student_id, chosen,
             kanban_date_from=str(period_start) if period_start else None, kanban_date_to=str(period_end) if period_end else None,
@@ -144,6 +168,20 @@ class GetProfileUseCase:
     async def execute(self, profile_id: str) -> Result:
         profile = await self.repository.get(profile_id)
         return Result.ok(profile) if profile else Result.not_found(NOT_FOUND)
+
+
+class RenderProfilePdfUseCase:
+    def __init__(self, repository: IFunctionalProfileRepository, students: IStudentReader, pdf: IReportPdfGenerator) -> None:
+        self.repository, self.students, self.pdf = repository, students, pdf
+
+    async def execute(self, student_id: str, profile_id: str) -> Result:
+        profile = await self.repository.get(profile_id)
+        if not profile or profile.get("student_id") != student_id:  # o perfil precisa ser do aluno do caminho (escopo)
+            return Result.not_found(NOT_FOUND)
+        student = await self.students.get_by_id(student_id)
+        if not student:
+            return Result.not_found("Aluno não encontrado.")
+        return Result.ok(self.pdf.functional_profile(profile, student.get("name") or ""))
 
 
 class UpdateProfileUseCase:

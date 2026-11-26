@@ -20,7 +20,7 @@ WRITERS = ("admin", "coordenacao", "professor")
 
 class RelationBody(BaseModel):
     related_skill_id: str
-    direction: str = Field("out", pattern="^(in|out)$")  # out: finalística -> habilidade; in: o inverso
+    direction: str = Field("both", pattern="^(in|out|both)$")  # both: sem seta; out: finalística -> habilidade; in: o inverso
     reason: str = Field("", max_length=2000)
     x: Optional[float] = None  # onde o card foi solto no mapa
     y: Optional[float] = None
@@ -29,7 +29,7 @@ class RelationBody(BaseModel):
 class RelationPatch(BaseModel):
     adaptation: Optional[str] = Field(None, max_length=4000)
     actions: Optional[list[str]] = Field(None, max_length=10)
-    direction: Optional[str] = Field(None, pattern="^(in|out)$")
+    direction: Optional[str] = Field(None, pattern="^(in|out|both)$")
     reason: Optional[str] = Field(None, max_length=2000)
     justification: Optional[str] = Field(None, max_length=2000)  # nome antigo de `reason`
     x: Optional[float] = Field(None, ge=0, le=2000)
@@ -113,6 +113,33 @@ async def save_layout(
     """Grava as posições dos nós no mapa (parte do JSON do grafo)."""
     return _unwrap(await use_case.set_layout(
         student_id, skill_id, {k: (v.model_dump() if v else None) for k, v in body.positions.items()}, current_user))
+
+
+@router.delete("/students/{student_id}/skills/{skill_id}/relations")
+@inject
+async def clear_relations(
+    student_id: str,
+    skill_id: str,
+    current_user: dict = Depends(require_roles(*WRITERS)),
+    use_case: SkillRelationUseCases = Depends(Provide[Container.skill_relation_use_cases]),
+):
+    """Apaga todas as relações da finalística (as habilidades voltam para "sem relações")."""
+    return _unwrap(await use_case.clear(student_id, skill_id, current_user))
+
+
+@router.get("/students/{student_id}/skills/{skill_id}/preview")
+@inject
+async def preview_ai_request(
+    student_id: str,
+    skill_id: str,
+    action: str = "relations",
+    current_user: dict = Depends(require_roles(*WRITERS)),
+    relations: GenerateSkillRelationsUseCase = Depends(Provide[Container.generate_skill_relations_use_case]),
+    adaptations: GenerateRelationAdaptationsUseCase = Depends(Provide[Container.generate_relation_adaptations_use_case]),
+):
+    """O que seria enviado à IA (anonimizado) ao gerar relações ou adaptações. Não chama a IA."""
+    use_case = adaptations if action == "adaptations" else relations
+    return _unwrap(await use_case.preview(student_id, skill_id))
 
 
 @router.post("/students/{student_id}/skills/{skill_id}/generate")
