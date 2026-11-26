@@ -120,9 +120,11 @@ SKILL_RELATIONS_PROMPT = """Você é especialista em educação inclusiva e em T
 Escolha, SOMENTE entre as candidatas (use o código exato), as que podem apoiar o trabalho da finalística, isto é, que podem ser trabalhadas junto com ela numa
 mesma atividade. Exemplo: para uma finalística de esportes (queimada), a comunicação pode entrar como apoio, usando cartões durante o jogo.
 Use as observações e o contexto anonimizado do aluno como base. Proponha poucas relações, só as que o caso realmente pede; não repita as já existentes em "related".
-Você NÃO altera estrelas e NÃO escreve adaptações aqui: só diz quais se relacionam e por quê. A seta sai da finalística.
+Você NÃO altera estrelas e NÃO escreve adaptações aqui: só diz quais se relacionam e por quê.
+SETAS: a relação é BIDIRECIONAL, portanto use sempre "arrow": "none" (sem seta). Os valores aceitos são "none" (sem seta),
+"finalistic_to_related" (seta da finalística para a candidata) e "related_to_finalistic" (seta da candidata para a finalística).
 Responda SOMENTE com JSON válido, sem markdown:
-{"relations": [{"code": "<código exato de uma candidata>", "reason": "uma frase: por que ela apoia a finalística para este aluno"}]}
+{"relations": [{"code": "<código exato de uma candidata>", "arrow": "none", "reason": "uma frase: por que ela se relaciona com a finalística para este aluno"}]}
 Cite o aluno apenas pelo identificador anonimizado, exatamente como fornecido."""
 
 SKILL_ADAPTATIONS_PROMPT = """Você é especialista em educação inclusiva e em TEA. Recebe um GRAFO em JSON, já anonimizado: a habilidade/campo de experiência FINALÍSTICO
