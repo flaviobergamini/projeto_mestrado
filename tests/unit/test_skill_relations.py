@@ -147,7 +147,7 @@ def test_ai_receives_anonymized_graph_json_and_only_valid_picks_are_saved():
     assert "Ana" not in ai.prompt and "ALUNO_1 usa cartões" in ai.prompt        # nome real some, até dentro das observações
     assert '"candidates"' in ai.prompt and "EF02MA18" not in ai.prompt         # só candidatas com 1 a 4 estrelas
     graph = asyncio.run(build_ai_graph(repo, "s1", "k1"))
-    assert graph["related"][0]["arrow"] == "finalistic_to_related" and "id" not in graph["related"][0]  # sem ids internos
+    assert graph["related"][0]["arrow"] == "none" and "id" not in graph["related"][0]  # bidirecional por padrão; sem ids internos
 
 
 def test_generation_requires_a_finalistic_skill():
@@ -182,3 +182,23 @@ def test_adaptation_needs_finalistic_relations_and_a_valid_answer():
     repo.doc["related"] = [{"id": "r1", "kind": "skill", "skill_id": "a", "direction": "out", "origin": "ai", "reason": "", "x": None, "y": None}]
     res = asyncio.run(GenerateRelationAdaptationsUseCase(repo, Students(), Ai({"adaptation": "", "actions": []}), Prompts(), Settings()).execute("s1", "k1", USER))
     assert not res.is_ok and repo.plan == []
+
+
+def test_arrow_is_bidirectional_by_default_and_the_prompt_answer_can_set_it():
+    repo = Repo()
+    ai = Ai({"relations": [{"code": "EF05AR01", "reason": "r", "arrow": "related_to_finalistic"}, {"code": "EI03EO03", "reason": "r", "arrow": "??"}]})
+    assert asyncio.run(GenerateSkillRelationsUseCase(repo, Students(), ai, Prompts(), Settings()).execute("s1", "k1", USER)).is_ok
+    assert [r["direction"] for r in repo.doc["related"]] == ["in", "both"]
+    manual = Repo()
+    asyncio.run(_uc(manual).create("s1", "k1", {"related_skill_id": "a"}, USER))
+    assert manual.doc["related"][0]["direction"] == "both"
+
+
+def test_clear_removes_every_relation_and_keeps_the_finalistic_skill():
+    repo = Repo()
+    uc = _uc(repo)
+    asyncio.run(uc.create("s1", "k1", {"related_skill_id": "a"}, USER))
+    asyncio.run(uc.create("s1", "k1", {"related_skill_id": "b"}, USER))
+    res = asyncio.run(uc.clear("s1", "k1", USER))
+    assert res.is_ok and res.value["removed"] == 2 and repo.doc["related"] == [] and repo.finalistic
+

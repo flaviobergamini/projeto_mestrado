@@ -9,7 +9,7 @@ class SkillRelationError(Exception):
 class ISkillRelationRepository(ABC):
     """Persistência do grafo de relações: UM documento JSON por aluno + habilidade finalística.
 
-    Documento: {"schema": 1, "related": [{"id", "skill_id", "direction": "out"|"in", "origin": "ai"|"manual", "reason", "x", "y"}]}
+    Documento: {"schema": 1, "related": [{"id", "skill_id", "direction": "both"|"out"|"in", "origin": "ai"|"manual", "reason", "x", "y"}]}
     Só estrutura; estrelas e observações são lidas das notas do aluno na hora de montar a visão."""
 
     @abstractmethod
