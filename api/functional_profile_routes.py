@@ -1,5 +1,5 @@
 """Perfil funcional do aluno. Camada HTTP apenas: a regra fica nos use cases."""
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from api.student_access import guard_student_scope
 from pydantic import BaseModel, Field
 from typing import Any, Optional
@@ -23,6 +23,10 @@ class GenerateBody(BaseModel):
     period_start: Optional[str] = None
     period_end: Optional[str] = None
     notes: Optional[str] = Field(None, max_length=2000)
+
+
+class SettingsBody(BaseModel):
+    interval_months: int
 
 
 class ProfileBody(BaseModel):
@@ -50,6 +54,26 @@ async def list_domains(
     use_case: uc.ListFunctionalDomainsUseCase = Depends(Provide[Container.list_functional_domains_use_case]),
 ):
     return _unwrap(await use_case.execute())
+
+
+@router.get("/settings")
+@inject
+async def get_settings(
+    current_user: dict = Depends(require_roles(*READERS)),
+    use_case: uc.FunctionalProfileSettingsUseCase = Depends(Provide[Container.functional_profile_settings_use_case]),
+):
+    return _unwrap(await use_case.get())
+
+
+@router.put("/settings")
+@inject
+async def set_settings(
+    body: SettingsBody,
+    current_user: dict = Depends(require_roles("admin")),
+    use_case: uc.FunctionalProfileSettingsUseCase = Depends(Provide[Container.functional_profile_settings_use_case]),
+):
+    """Intervalo entre gerações por IA (só o admin)."""
+    return _unwrap(await use_case.set(body.interval_months))
 
 
 @router.post("/generate", status_code=status.HTTP_201_CREATED)
@@ -95,6 +119,19 @@ async def evolution(
     use_case: uc.GetProfileEvolutionUseCase = Depends(Provide[Container.get_profile_evolution_use_case]),
 ):
     return _unwrap(await use_case.execute(student_id))
+
+
+@router.get("/student/{student_id}/{profile_id}/pdf")
+@inject
+async def profile_pdf(
+    student_id: str,
+    profile_id: str,
+    current_user: dict = Depends(require_roles(*READERS)),
+    use_case: uc.RenderProfilePdfUseCase = Depends(Provide[Container.render_profile_pdf_use_case]),
+):
+    pdf = _unwrap(await use_case.execute(student_id, profile_id))
+    return Response(content=pdf, media_type="application/pdf",
+                    headers={"Content-Disposition": f'attachment; filename="perfil_funcional_{profile_id[:8]}.pdf"'})
 
 
 @router.get("/{profile_id}")

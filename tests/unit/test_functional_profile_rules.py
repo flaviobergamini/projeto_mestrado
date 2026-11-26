@@ -58,3 +58,45 @@ def test_manual_or_previous_semester_profiles_do_not_block():
     except AttributeError:
         pass  # o teste para depois da trava (os fakes não implementam o resto do fluxo da IA)
     assert Ai.called  # passou da trava e chegou ao contexto da IA
+
+
+class Settings:
+    def __init__(self, months):
+        self.months = months
+
+    async def get(self, key, default):
+        return {"interval_months": self.months}
+
+
+def test_admin_interval_controls_when_a_new_profile_is_allowed():
+    from core.services.semester import same_period
+    today = date(2026, 11, 25)
+    assert same_period("2026-07-01T00:00:00", today, 6) and not same_period("2026-07-01T00:00:00", today, 3)
+    assert same_period("2026-11-02T00:00:00", today, 1) and not same_period("2026-10-31T00:00:00", today, 1)
+    assert not same_period(today, today, 0)
+    now = [{"origin": "ai", "created_at": datetime.now().isoformat()}]
+    for months, blocked in ((0, False), (6, True), (1, True)):
+        Ai.called = False
+        uc = GenerateFunctionalProfileUseCase(Repo(now), Students(), None, Ai(), None, settings=Settings(months))
+        try:
+            asyncio.run(uc.execute("s1", {"user_id": "u"}))
+        except AttributeError:
+            pass
+        assert Ai.called is (not blocked), months
+
+
+def test_pdf_is_generated_only_for_the_student_of_the_profile():
+    from core.use_case.functional_profile.functional_profile_use_cases import RenderProfilePdfUseCase
+    from infrastructure.services.report_pdf_generator import ReportPdfGenerator
+    profile = {"student_id": "s1", "title": "P <1>", "origin": "ai", "created_at": "2026-11-25T10:00:00",
+               "content": {"summary": "a & b", "evidence": ["e"], "domains": [
+                   {"label": "Comunicação", "level": None, "description": "d", "strengths": ["s"], "needs": [], "supports": [], "bncc_references": ["EI03EO01"]}]}}
+
+    class Profiles:
+        async def get(self, pid):
+            return profile
+
+    uc = RenderProfilePdfUseCase(Profiles(), Students(), ReportPdfGenerator())
+    ok = asyncio.run(uc.execute("s1", "p1"))
+    assert ok.is_ok and ok.value[:4] == b"%PDF"
+    assert asyncio.run(uc.execute("outro", "p1")).is_not_found
